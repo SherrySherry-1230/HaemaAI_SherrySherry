@@ -1,0 +1,21 @@
+{
+  "name": "@haema/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Haema — AI memory management system. An artificial hippocampus for AI.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "console": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/console.ts",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/adapter-contract.test.ts tests/file-adapter.test.ts tests/recall.test.ts",
+    "typecheck": "tsc --noEmit",
+    "seed": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/seed.ts",
+    "scenario": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/scenario.ts"
+  },
+  "dependencies": {
+    "openai": "^7.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2"
+  }
+}

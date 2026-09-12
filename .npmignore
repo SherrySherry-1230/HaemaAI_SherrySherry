@@ -1,0 +1,7 @@
+local-server/
+tools/
+tests/
+docs/
+CLAUDE.md
+.gitignore
+tsconfig.json
