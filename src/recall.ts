@@ -3,7 +3,7 @@
  * 회상 엔진 (2-a) — AI 없이 결정론적으로 동작한다.
  *
  * recall(ownerId, cues) 는 매 턴 3종을 돌려준다:
- *   ① 회상 후보  — 단서(이름·별칭·H-tag)에 걸린 점 + 선 확산(기본 1홉·최대 2홉·weight 상위 N·토큰 상한)
+ *   ① 회상 후보  — 단서(이름·별칭·H-tag)에 걸린 쩜 + 쩜선 확산(기본 1홉·최대 2홉·weight 상위 N·토큰 상한)
  *   ② 답변 가이드 — 규칙 기반 뼈대 { mode, allowed, comfortCues, forbidden, followUpQuestions }
  *   ③ 이야깃거리  — 대화가 끊길 때 던질 화제 (긍정·중립만)
  *
@@ -17,12 +17,12 @@ import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { earliestUpcomingEvent, num } from './proactive.ts';
 import { GUIDE_MODES, type GuideMode } from './guideModes.ts';
-import { strongestTails } from './tails.ts';
+import { strongestSeons } from './tails.ts';
 
 export { GUIDE_MODES, type GuideMode };
 
 export interface RecallOptions {
-  /** 선 확산 홉 수. 기본 1, 최대 2 (초과 지정 시 2로 잘린다) */
+  /** 쩜선 확산 홉 수. 기본 1, 최대 2 (초과 지정 시 2로 잘린다) */
   hops?: number;
   /** 홉마다 살릴 상위 N개 (weight·점수순). 기본 10 */
   topN?: number;
@@ -35,7 +35,7 @@ export interface RecallOptions {
   /** 이야깃거리 '오래 언급 없음' 기준(일). 기본 14 */
   topicStaleDays?: number;
   now?: HaemaTimestamp;
-  /** recallCount · 선 lastActivated 갱신 여부. 기본 true */
+  /** recallCount · 쩜선 lastActivated 갱신 여부. 기본 true */
   touch?: boolean;
 }
 
@@ -45,20 +45,20 @@ export interface RecallCandidate {
   cell: JJum;
   /** 0~1 규칙 기반 점수 */
   score: number;
-  /** 0 = 단서 직접 매칭, 1·2 = 선 확산 */
+  /** 0 = 단서 직접 매칭, 1·2 = 쩜선 확산 */
   hop: 0 | 1 | 2;
   matchedBy: MatchedBy;
   /** 선으로 왔다면 어느 점에서 */
   via?: JJumId;
   valence: Valence;
-  /** 부정 점 flag — 호스트는 "유저가 먼저 꺼냈을 때 알아봐 주는" 용도로만 쓴다 */
+  /** 부정 쩜 flag — 호스트는 "유저가 먼저 꺼냈을 때 알아봐 주는" 용도로만 쓴다 */
   negative: boolean;
   reasons: string[];
   tokens: number;
 }
 
 export interface FollowUpQuestion {
-  /** 관련 점. 단서 자체가 미지일 때는 없음 */
+  /** 관련 쩜. 단서 자체가 미지일 때는 없음 */
   cellId?: JJumId;
   /** 비어 있는 필드 또는 'unmatched-cue'(처음 듣는 단서) */
   field: 'type' | 'summary' | 'tags' | 'facts' | 'unmatched-cue';
@@ -89,9 +89,9 @@ export interface Topic {
 
 export interface RecallStats {
   cues: string[];
-  /** 단서에 직접 걸린 점 수 */
+  /** 단서에 직접 걸린 쩜 수 */
   direct: number;
-  /** 선으로 확산된 점 수 (토큰 상한 적용 전) */
+  /** 선으로 확산된 쩜 수 (토큰 상한 적용 전) */
   expanded: number;
   tokensUsed: number;
   /** 토큰 상한으로 잘려 나간 후보 수 */
@@ -118,13 +118,13 @@ export function renderCell(cell: JJum): string {
   const alias = cell.aliases.length > 0 ? `(${cell.aliases.join('/')})` : '';
   const facts = cell.facts.slice(-3).map((f) => f.text).join('; ');
   const tags = cell.tags.length > 0 ? `#${cell.tags.join(' #')}` : '';
-  return [`[${cell.canonicalName}${alias}]`, cell.type, cell.summary, facts, tags].filter(Boolean).join(' · ');
+  return [`[${cell.jjumName}${alias}]`, cell.type, cell.summary, facts, tags].filter(Boolean).join(' · ');
 }
 
 function tailWeightMax(cell: JJum): number {
   return cell.seons.reduce((m, t) => Math.max(m, t.weight), 0) || 1;
 }
-// 같은 상대로 가는 선이 여럿(라벨 다름)이면 가장 굵은 것 기준 — 선 중복 규칙
+// 같은 상대로 가는 선이 여럿(라벨 다름)이면 가장 굵은 것 기준 — 쩜선 중복 규칙
 
 /** 규칙 기반 답변 가이드 뼈대 */
 function buildGuide(
@@ -154,11 +154,11 @@ function buildGuide(
 
   const comfortCues = candidates
     .filter((c) => c.valence === 'positive')
-    .map((c) => `${c.cell.canonicalName} — ${c.cell.summary || c.cell.facts.at(-1)?.text || c.cell.type}`);
+    .map((c) => `${c.cell.jjumName} — ${c.cell.summary || c.cell.facts.at(-1)?.text || c.cell.type}`);
 
   const followUpQuestions: FollowUpQuestion[] = [];
   for (const c of direct) {
-    const name = c.cell.canonicalName;
+    const name = c.cell.jjumName;
     if (!c.cell.type || c.cell.type === 'unknown') {
       followUpQuestions.push({ cellId: c.cell.jjumId, field: 'type', prompt: `${name}: 누구/무엇인지 아직 모름 — 물어볼 것` });
     }
@@ -203,7 +203,7 @@ export function buildTopics(
     }
     const staleDays = Math.floor((now - cell.lastMentioned) / DAY);
     if (!cell.summary || cell.facts.length === 0) {
-      topics.push({ cell, kind: 'followup', score: 0.5 + Math.min(0.2, staleDays / 100), reason: '답이 비어 있는 점 — 팔로업 거리' });
+      topics.push({ cell, kind: 'followup', score: 0.5 + Math.min(0.2, staleDays / 100), reason: '답이 비어 있는 쩜 — 팔로업 거리' });
       continue;
     }
     if (staleDays >= staleLimit) {
@@ -227,14 +227,14 @@ export async function recall(
   const touch = options.touch ?? true;
 
   const cueList = [...new Set(cues.map(norm).filter(Boolean))];
-  const active = await adapter.listCells(ownerId, { status: 'active' });
+  const active = await adapter.listJJums(ownerId, { status: 'active' });
   const byId = new Map(active.map((c) => [c.jjumId, c]));
 
   // ── 직접 매칭: 이름·별칭 / H-tag ──
   const found = new Map<JJumId, RecallCandidate>();
   const matchedCues = new Set<string>();
   for (const cell of active) {
-    const names = [cell.canonicalName, ...cell.aliases].map(norm);
+    const names = [cell.jjumName, ...cell.aliases].map(norm);
     const nameHits = cueList.filter((q) => names.includes(q));
     const tagSet = new Set(cell.tags.map(norm));
     const tagHits = cueList.filter((q) => tagSet.has(q));
@@ -265,14 +265,14 @@ export async function recall(
   const directCount = found.size;
   const unmatchedCues = cueList.filter((q) => !matchedCues.has(q));
 
-  // ── 선 확산: 홉마다 weight·점수 상위 N. 같은 점으로 가는 경로가 여럿이면 가장 강한 경로를 채택 ──
+  // ── 쩜선 확산: 홉마다 weight·점수 상위 N. 같은 점으로 가는 경로가 여럿이면 가장 강한 경로를 채택 ──
   const adoptedTails = new Map<JJumId, { source: JJum; tail: Seon }>();
   let frontier = [...found.values()];
   for (let hop = 1; hop <= hops && frontier.length > 0; hop++) {
     const discovered = new Map<JJumId, RecallCandidate>();
     for (const parent of [...frontier].sort((a, b) => b.score - a.score)) {
       const wMax = tailWeightMax(parent.cell);
-      for (const tail of strongestTails(parent.cell).sort((a, b) => b.weight - a.weight)) {
+      for (const tail of strongestSeons(parent.cell).sort((a, b) => b.weight - a.weight)) {
         if (found.has(tail.targetId)) continue; // 더 가까운 홉(또는 직접 매칭)에서 이미 발견
         const target = byId.get(tail.targetId);
         if (!target) continue; // archived·삭제된 점은 따라가지 않는다
@@ -289,7 +289,7 @@ export async function recall(
           via: parent.cell.jjumId,
           valence,
           negative: valence === 'negative',
-          reasons: [`선: ${parent.cell.canonicalName} → (w${tail.weight}${tail.label ? ` ${tail.label}` : ''})`],
+          reasons: [`쩜선: ${parent.cell.jjumName} → (w${tail.weight}${tail.label ? ` ${tail.label}` : ''})`],
           tokens: estimateTokens(renderCell(target)),
         });
         adoptedTails.set(target.jjumId, { source: parent.cell, tail });
@@ -324,7 +324,7 @@ export async function recall(
     staleDays: options.topicStaleDays,
   });
 
-  // ── 자극 반영: recallCount · 선 lastActivated ──
+  // ── 자극 반영: recallCount · 쩜선 lastActivated ──
   if (touch && candidates.length > 0) {
     const dirty = new Map<JJumId, JJum>();
     const included = new Set(candidates.map((c) => c.cell.jjumId));
@@ -334,10 +334,10 @@ export async function recall(
     }
     for (const { source, tail } of adoptedTails.values()) {
       if (!included.has(tail.targetId)) continue;
-      tail.lastActivated = now; // 채택된 바로 그 선(가장 굵은 것)만 갱신
+      tail.lastActivated = now; // 채택된 바로 그 쩜선(가장 굵은 것)만 갱신
       dirty.set(source.jjumId, source);
     }
-    await adapter.putCells(ownerId, [...dirty.values()]);
+    await adapter.putJJums(ownerId, [...dirty.values()]);
   }
 
   return {

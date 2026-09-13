@@ -20,11 +20,11 @@ export const CAREFUL_INSTRUCTION = '내용을 먼저 말하지 말 것. "고민 
 
 const norm = (s: string): string => s.trim().toLowerCase();
 
-export function isConcern(cell: Pick<HCell, 'type'>): boolean {
+export function isConcern(cell: Pick<JJum, 'type'>): boolean {
   return norm(cell.type) === CONCERN_TYPE;
 }
 
-export function isUnresolvedConcern(cell: Pick<HCell, 'type' | 'tags'>): boolean {
+export function isUnresolvedConcern(cell: Pick<JJum, 'type' | 'tags'>): boolean {
   return isConcern(cell) && cell.tags.some((t) => norm(t) === TAG_UNRESOLVED);
 }
 
@@ -32,10 +32,10 @@ export function isUnresolvedConcern(cell: Pick<HCell, 'type' | 'tags'>): boolean
  * 고민을 해결 상태로 바꾼다 — 미해결 태그를 떼고 해결 태그를 달며, 해결 시점을 사건으로 남긴다.
  * 세포를 제자리에서 고치고 같은 객체를 돌려준다 (저장은 호출자가).
  */
-export function resolveConcern(cell: HCell, now: HaemaTimestamp, note?: string): HCell {
+export function resolveConcern(cell: JJum, now: HaemaTimestamp, note?: string): JJum {
   cell.tags = cell.tags.filter((t) => norm(t) !== TAG_UNRESOLVED);
   if (!cell.tags.some((t) => norm(t) === TAG_RESOLVED)) cell.tags.push(TAG_RESOLVED);
-  cell.events.push({ date: now, summary: note ? `해결: ${note}` : '해결됨', refCellIds: [] });
+  cell.events.push({ date: now, summary: note ? `해결: ${note}` : '해결됨', refJJumIds: [] });
   cell.editHistory.push({ date: now, action: 'resolve', field: 'tags', by: 'user' });
   return cell;
 }

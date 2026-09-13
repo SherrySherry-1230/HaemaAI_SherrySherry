@@ -140,8 +140,8 @@ export interface StorageAdapter {
   listJJums(ownerId: string, query?: CellQuery): Promise<JJum[]>;
 
   /**
-   * 이름 조회 — canonicalName 또는 aliases 중 어느 것에 히트해도 반환.
-   * (별칭 통합의 검색 전제: "어느 이름으로 언급돼도 같은 쩜 히트")
+   * 이름 조회 — jjumName 또는 aliases 중 어느 것에 히트해도 반환.
+   * (별칭 통합의 검색 전제: "어느 이름으로 언급돼도 같은 점 히트")
    */
   findByName(ownerId: string, name: string): Promise<JJum[]>;
 
