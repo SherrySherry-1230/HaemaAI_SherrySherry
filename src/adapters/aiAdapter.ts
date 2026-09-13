@@ -3,8 +3,8 @@
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
  *
- * 역할은 "해마세포를 만드는 것"까지다.
- * - 하는 일: 대화에서 해마세포 추출 / summary·관계 요약 생성 / 병합 후보 판정 / 회상 후보 점수화
+ * 역할은 "쩜(JJum)를 만드는 것"까지다.
+ * - 하는 일: 대화에서 쩜(JJum) 추출 / summary·관계 요약 생성 / 병합 후보 판정 / 회상 후보 점수화
  * - 안 하는 일: 유저에게 말하기(말투·연출·꺼낼지 침묵할지는 호스트 챗봇 몫) / 기억 지어내기
  *
  * 키 정책: apiKey는 호출 시 메모리에서만 쓴다. **Haema는 키를 저장하거나 로깅하지 않는다.**
@@ -46,9 +46,9 @@ export interface ConversationTurn {
   at?: HaemaTimestamp;
 }
 
-/** 대화에서 추출된 해마세포 초안 — 저장 전 단계 (병합·저장은 코어/호스트가 결정) */
+/** 대화에서 추출된 쩜(JJum) 초안 — 저장 전 단계 (병합·저장은 코어/호스트가 결정) */
 export interface ExtractedDraft {
-  canonicalName: string;
+  jjumName: string;
   type: string;
   aliases: string[];
   tags: string[];
@@ -88,13 +88,13 @@ export interface RecallScore {
 export interface AIAdapter {
   readonly config: AIAdapterConfig;
 
-  /** 대화에서 해마세포 초안을 추출한다. 근거 없는 내용은 만들지 않는다(기억 지어내기 금지). */
+  /** 대화에서 쩜(JJum) 초안을 추출한다. 근거 없는 내용은 만들지 않는다(기억 지어내기 금지). */
   extractCells(req: ExtractRequest): Promise<ExtractedDraft[]>;
 
-  /** 해마세포의 summary(관계 요약 포함)를 생성·갱신한다. */
+  /** 쩜(JJum)의 summary(관계 요약 포함)를 생성·갱신한다. */
   summarizeCell(cell: JJum, hint?: string): Promise<{ summary: string }>;
 
-  /** 두 해마세포가 같은 대상인지 판정한다(점수화까지 — 병합 실행은 코어, 연출은 호스트). */
+  /** 두 쩜(JJum)가 같은 대상인지 판정한다(점수화까지 — 병합 실행은 코어, 연출은 호스트). */
   judgeMergeCandidate(a: JJum, b: JJum, hint?: string): Promise<MergeJudgement>;
 
   /** 현재 맥락에서 회상 후보들을 점수화한다(점수까지 — 꺼낼지/침묵할지는 호스트). */

@@ -3,7 +3,7 @@
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
  * 사람이 파인더에서 직접 열어 보고 고칠 수 있는 저장소:
- * - local-server/haema/{ownerId}/{canonicalName}.jj — 쩜 1개 = .jj 파일 1개 (2칸 들여쓰기)
+ * - local-server/haema/{ownerId}/{jjumName}.jj — 쩜 1개 = .jj 파일 1개 (2칸 들여쓰기)
  * - local-server/haema/_index.jj — 이름·별칭 → jjumId 조회 인덱스
  *
  * 내성 정책:
@@ -115,7 +115,7 @@ export class FileAdapter implements StorageAdapter {
       oi.names[key] = oi.names[key].filter((id) => id !== cell.cellId);
       if (oi.names[key].length === 0) delete oi.names[key];
     }
-    for (const name of [cell.canonicalName, ...cell.aliases]) {
+    for (const name of [jjum.jjumName, ...jjum.aliases]) {
       const key = normName(name);
       if (!key) continue;
       if (!oi.names[key]) oi.names[key] = [];
@@ -151,17 +151,18 @@ export class FileAdapter implements StorageAdapter {
     }
     const result = validateJJum(data);
     if (!result.ok || !result.cell) {
+    if (!result.ok || !result.cell) {
       return { error: `스키마 검증 실패: ${result.errors.join(' / ')}` };
     }
-    return { cell: result.cell };
+    return { jjum: result.cell };
   }
 
-  /** canonicalName 기반 파일명 결정 — 다른 점과 충돌하면 jjumId 앞 8자리를 붙인다 */
-  private filenameFor(cell: JJum, oi: OwnerIndex): string {
-    const base = `${sanitize(cell.canonicalName)}.jj`;
-    const takenBy = Object.entries(oi.files).find(([id, f]) => f === base && id !== cell.jjumId);
+  /** jjumName 기반 파일명 결정 — 다른 점과 충돌하면 jjumId 앞 8자리를 붙인다 */
+  private filenameFor(jjum: JJum, oi: OwnerIndex): string {
+    const base = `${sanitize(jjum.jjumName)}.jj`;
+    const takenBy = Object.entries(oi.files).find(([id, f]) => f === base && id !== jjum.jjumId);
     if (!takenBy) return base;
-    return `${sanitize(cell.canonicalName)}_${cell.jjumId.slice(0, 8)}.jj`;
+    return `${sanitize(jjum.jjumName)}_${jjum.jjumId.slice(0, 8)}.jj`;
   }
 
   /** 소유자 폴더 전체 스캔 — 인덱스 자가 복구의 원천 */
@@ -211,14 +212,18 @@ export class FileAdapter implements StorageAdapter {
 
   async getCell(ownerId: string, cellId: CellId): Promise<JJum | null> {
     const index = this.loadIndex();
-    const filename = index.owners[ownerId]?.files[cellId];
+    const filename = index.owners[ownerId]?.files[jjumId];
+    console.log('[DEBUG getJJum] ownerId:', ownerId, 'jjumId:', jjumId, 'filename:', filename);
     if (filename) {
-      const { cell } = this.readCellFile(path.join(this.ownerDir(ownerId), filename));
-      if (cell && cell.jjumId === cellId) return cell;
+      const { jjum } = this.readJJumFile(path.join(this.ownerDir(ownerId), filename));
+      console.log('[DEBUG getJJum] readJJumFile result:', jjum);
+      if (jjum && jjum.jjumId === jjumId) return jjum;
     }
     // 인덱스 불일치 — 스캔으로 찾고 자가 복구
-    const { cells, files } = this.scanOwner(ownerId);
-    const found = cells.find((n) => n.jjumId === cellId) ?? null;
+    const { jjums, files } = this.scanOwner(ownerId);
+    console.log('[DEBUG getJJum] scanOwner result:', jjums, files);
+    const found = jjums.find((n) => n.jjumId === jjumId) ?? null;
+    console.log('[DEBUG getJJum] found:', found);
     if (found) {
       this.registerInIndex(index, found, files[found.jjumId]);
       this.saveIndex(index);
@@ -235,9 +240,11 @@ export class FileAdapter implements StorageAdapter {
 
     const oldFilename = oi.files[stored.jjumId];
     const newFilename = this.filenameFor(stored, oi);
+    console.log('[DEBUG putJJum] ownerId:', ownerId, 'jjumId:', stored.jjumId, 'jjumName:', stored.jjumName);
+    console.log('[DEBUG putJJum] dir:', dir, 'oldFilename:', oldFilename, 'newFilename:', newFilename);
     atomicWrite(path.join(dir, newFilename), JSON.stringify(stored, null, 2));
     if (oldFilename && oldFilename !== newFilename) {
-      // canonicalName이 바뀌면 파일명도 따라간다
+      // jjumName이 바뀌면 파일명도 따라간다
       try {
         fs.unlinkSync(path.join(dir, oldFilename));
       } catch {
@@ -248,6 +255,20 @@ export class FileAdapter implements StorageAdapter {
     this.saveIndex(index);
   }
 
+  async putJJums(ownerId: string, jjums: JJum[]): Promise<void> {
+    // 파일 단위 원자 쓰기(tmp→rename)의 순차 적용 — 단일 프로세스 전제의 최선
+    for (const jjum of jjums) {
+      await this.putJJum(ownerId, jjum);
+    }
+  }
+
+  async putJjums(ownerId: string, jjums: JJum[]): Promise<void> {
+    // 파일 단위 원자 쓰기(tmp→rename)의 순차 적용 — 단일 프로세스 전제의 최선
+    for (const jjum of jjums) {
+      await this.putJJum(ownerId, jjum);
+    }
+  }
+
   async putCells(ownerId: string, cells: JJum[]): Promise<void> {
     // 파일 단위 원자 쓰기(tmp→rename)의 순차 적용 — 단일 프로세스 전제의 최선
     for (const cell of cells) {
@@ -255,10 +276,21 @@ export class FileAdapter implements StorageAdapter {
     }
   }
 
-  async patchCell(ownerId: string, cellId: CellId, partial: Partial<JJum>): Promise<void> {
-    const existing = await this.getCell(ownerId, cellId);
-    if (!existing) throw new Error(`patchCell: 쩜 없음 — ${ownerId}/${cellId}`);
-    await this.putCell(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
+  async patchJJum(ownerId: string, jjumId: JJumId, partial: Partial<JJum>): Promise<void> {
+    const existing = await this.getJJum(ownerId, jjumId);
+    if (!existing) {
+      // 인덱스에 없지만 파일에 있을 수 있음 — 스캔으로 찾는다
+      const { jjums, files } = this.scanOwner(ownerId);
+      const found = jjums.find((n) => n.jjumId === jjumId) ?? null;
+      if (found) {
+        this.registerInIndex(this.loadIndex(), found, files[found.jjumId]);
+        this.saveIndex(this.loadIndex());
+        await this.putJJum(ownerId, { ...found, ...partial, jjumId: found.jjumId, ownerId });
+        return;
+      }
+      throw new Error(`patchJJum: 쩜 없음 — ${ownerId}/${jjumId}`);
+    }
+    await this.putJJum(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
   }
 
   async deleteCell(ownerId: string, cellId: CellId): Promise<void> {
@@ -305,16 +337,16 @@ export class FileAdapter implements StorageAdapter {
     const ids = index.owners[ownerId]?.names[key] ?? [];
     const viaIndex: JJum[] = [];
     for (const id of ids) {
-      const cell = await this.getCell(ownerId, id);
-      if (cell && [cell.canonicalName, ...cell.aliases].some((n) => normName(n) === key)) {
-        viaIndex.push(cell);
+      const jjum = await this.getJJum(ownerId, id);
+      if (jjum && [jjum.jjumName, ...jjum.aliases].some((n) => normName(n) === key)) {
+        viaIndex.push(jjum);
       }
     }
     if (viaIndex.length > 0) return viaIndex;
 
     // 인덱스 미스 — 손으로 고친 파일 대비 스캔 폴백 + 자가 복구
-    const { cells, files } = this.scanOwner(ownerId);
-    const found = cells.filter((n) => [n.canonicalName, ...n.aliases].some((x) => normName(x) === key));
+    const { jjums, files } = this.scanOwner(ownerId);
+    const found = jjums.filter((n) => [n.jjumName, ...n.aliases].some((x) => normName(x) === key));
     if (found.length > 0) {
       for (const cell of found) this.registerInIndex(index, cell, files[cell.jjumId]);
       this.saveIndex(index);

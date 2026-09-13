@@ -2,13 +2,13 @@
 /**
  * 먼저 말 걸 거리 · 선제 안부 재료 (2-a, 집계만)
  *
- * getProactiveCues(ownerId, now)   — 회상과 같은 선 탐색인데 단서가 "현재 발화"가 아니라 "현재 시각".
- *   종류: 팔로업(답 비어 있는 점) / 다가오는 것(날짜 임박) / 오래된 긍정 점 / 패턴(반복 주기 도래).
+ * getProactiveCues(ownerId, now)   — 회상과 같은 쩜선 탐색인데 단서가 "현재 발화"가 아니라 "현재 시각".
+ *   종류: 팔로업(답 비어 있는 쩜) / 다가오는 것(날짜 임박) / 오래된 긍정 쩜 / 패턴(반복 주기 도래).
  *   점수 + 이유. 긍정·중립만 — 단 미해결 고민(부정)은 careful 표시로 팔로업 허용, 상처는 여전히 안 꺼낸다.
  *   후보 없으면 빈 결과 (억지로 말 걸지 않게).
  *   언제 깨울지·말 걸어도 되는지·푸시 발송은 전부 호스트 몫.
  *
- * getOpenConcerns(ownerId)         — 열린 고민 조회 뷰: type=고민 & 미해결 점을 최근순으로. (저장은 고민 하나 = 점 하나 그대로,
+ * getOpenConcerns(ownerId)         — 열린 고민 조회 뷰: type=고민 & 미해결 점을 최근순으로. (저장은 고민 하나 = 쩜 하나 그대로,
  *   보기만 묶는다 — 선이 어느 고민의 것인지 구분되고 부분 해결이 가능해야 하므로 한 파일에 여러 고민을 넣지 않는다)
  *
  * getRecentMoodSignals(ownerId)    — 최근 점의 valence 분포 · 대화 빈도 변화 집계.
@@ -43,7 +43,7 @@ export function selectOpenConcerns(cells: JJum[]): JJum[] {
 
 /** 열린 고민 조회 뷰 — type=고민 & 미해결, 최근순 */
 export async function getOpenConcerns(adapter: StorageAdapter, ownerId: string): Promise<JJum[]> {
-  return selectOpenConcerns(await adapter.listCells(ownerId, { status: 'active' }));
+  return selectOpenConcerns(await adapter.listJJums(ownerId, { status: 'active' }));
 }
 
 export type ProactiveKind = 'followup' | 'upcoming' | 'stale-positive' | 'pattern';
@@ -83,7 +83,7 @@ export async function getProactiveCues(
   const upcomingDays = num(options.upcomingDays, 14);
   const minEvents = Math.max(2, Math.floor(num(options.patternMinEvents, 3)));
 
-  const active = await adapter.listCells(ownerId, { status: 'active' });
+  const active = await adapter.listJJums(ownerId, { status: 'active' });
   const best = new Map<JJumId, ProactiveCue>();
   const offer = (cue: ProactiveCue) => {
     const prev = best.get(cue.cell.jjumId);
@@ -100,12 +100,12 @@ export async function getProactiveCues(
       offer({ cell, kind: 'upcoming', score: Math.min(1, 0.95 - days * 0.02), reason: `${days}일 뒤 예정: ${upcoming.summary}`, careful: false });
     }
 
-    // 팔로업 — 답이 비어 있는 점
+    // 팔로업 — 답이 비어 있는 쩜
     if (!cell.summary || cell.facts.length === 0) {
       offer({ cell, kind: 'followup', score: 0.5, reason: `답이 비어 있음 (${!cell.summary ? 'summary' : 'facts'}) — 물어볼 거리`, careful: false });
     }
 
-    // 오래된 긍정 점
+    // 오래된 긍정 쩜
     const silentDays = Math.floor((now - cell.lastMentioned) / DAY);
     if (valenceOf(cell) === 'positive' && silentDays >= staleDays) {
       offer({ cell, kind: 'stale-positive', score: Math.min(0.8, 0.3 + silentDays / 90), reason: `좋은 기억인데 ${silentDays}일째 언급 없음`, careful: false });
@@ -139,9 +139,9 @@ export interface MoodSignals {
   windowDays: number;
   /** 최근 창에서 활동이 있었던 점의 valence 분포 */
   valence: Record<Valence, number>;
-  /** 최근 창에서 활동이 있었던 점 수 (같은 점이 두 창에 모두 잡힐 수 있다) */
+  /** 최근 창에서 활동이 있었던 쩜 수 (같은 점이 두 창에 모두 잡힐 수 있다) */
   touched: number;
-  /** 직전 창에서 활동이 있었던 점 수 */
+  /** 직전 창에서 활동이 있었던 쩜 수 */
   touchedPrevious: number;
   /** 최근 창의 활동 횟수 — 점별 시각 기록(생성·언급·사실·사건·편집)의 합 */
   activity: number;
@@ -153,7 +153,7 @@ export interface MoodSignals {
   negativeShare: number;
 }
 
-/** 점 안의 시각 기록 전부 — 창별 활동 집계의 재료 (now 이후는 제외) */
+/** 쩜 안의 시각 기록 전부 — 창별 활동 집계의 재료 (now 이후는 제외) */
 function activityTimes(cell: JJum, now: HaemaTimestamp): number[] {
   const times = new Set<number>([cell.firstSeen, cell.lastMentioned]);
   for (const f of cell.facts) times.add(f.addedAt);
@@ -178,7 +178,7 @@ export async function getRecentMoodSignals(
   const from = now - windowDays * DAY;
   const prevFrom = from - windowDays * DAY;
 
-  const active = await adapter.listCells(ownerId, { status: 'active' });
+  const active = await adapter.listJJums(ownerId, { status: 'active' });
   const valence: Record<Valence, number> = { positive: 0, neutral: 0, negative: 0, unknown: 0 };
   let touched = 0;
   let touchedPrevious = 0;

@@ -7,7 +7,7 @@ import { SCHEMA_VERSION } from './types/jjum.ts';
 
 export interface CreateJJumInput {
   ownerId: string;
-  canonicalName: string;
+  jjumName: string;
   type?: string;
   aliases?: string[];
   tags?: string[];
@@ -22,7 +22,7 @@ export function createJJum(input: CreateJJumInput): JJum {
   const now = input.now ?? Date.now();
   return {
     jjumId: randomUUID(),
-    canonicalName: input.canonicalName.trim(),
+    jjumName: input.jjumName.trim(),
     aliases: input.aliases ?? [],
     type: input.type ?? 'unknown',
     tags: input.tags ?? [],
