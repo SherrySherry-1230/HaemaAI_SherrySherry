@@ -25,7 +25,7 @@ const NEGATIVE = new Set(['부정', 'negative']);
 
 const norm = (s: string): string => s.trim().toLowerCase();
 
-export function valenceOf(cell: Pick<HCell, 'tags'>): Valence {
+export function valenceOf(cell: Pick<JJum, 'tags'>): Valence {
   const tags = cell.tags.map(norm);
   if (tags.some((t) => NEGATIVE.has(t))) return 'negative';
   if (tags.some((t) => POSITIVE.has(t))) return 'positive';
@@ -33,7 +33,7 @@ export function valenceOf(cell: Pick<HCell, 'tags'>): Valence {
   return 'unknown';
 }
 
-export const isNegative = (cell: Pick<HCell, 'tags'>): boolean => valenceOf(cell) === 'negative';
+export const isNegative = (cell: Pick<JJum, 'tags'>): boolean => valenceOf(cell) === 'negative';
 
 /** 먼저 꺼내도 되는가 — 긍정·중립(표식 없음 포함)만 */
-export const canBringUpFirst = (cell: Pick<HCell, 'tags'>): boolean => !isNegative(cell);
+export const canBringUpFirst = (cell: Pick<JJum, 'tags'>): boolean => !isNegative(cell);

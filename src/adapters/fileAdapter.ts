@@ -3,7 +3,7 @@
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
  * 사람이 파인더에서 직접 열어 보고 고칠 수 있는 저장소:
- * - local-server/haema/{ownerId}/{canonicalName}.jj — 점 1개 = .jj 파일 1개 (2칸 들여쓰기)
+ * - local-server/haema/{ownerId}/{canonicalName}.jj — 쩜 1개 = .jj 파일 1개 (2칸 들여쓰기)
  * - local-server/haema/_index.jj — 이름·별칭 → jjumId 조회 인덱스
  *
  * 내성 정책:
@@ -257,7 +257,7 @@ export class FileAdapter implements StorageAdapter {
 
   async patchCell(ownerId: string, cellId: CellId, partial: Partial<JJum>): Promise<void> {
     const existing = await this.getCell(ownerId, cellId);
-    if (!existing) throw new Error(`patchCell: 점 없음 — ${ownerId}/${cellId}`);
+    if (!existing) throw new Error(`patchCell: 쩜 없음 — ${ownerId}/${cellId}`);
     await this.putCell(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
   }
 
