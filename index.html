@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Haema 로컬 콘솔</title>
+  <style>
+    :root {
+      --bg-light: #f3f3e9;
+      --bg-card: #ffffff;
+      --bg-drawer: #fafaf7;
+      --text-primary: #2d2a26;
+      --text-secondary: #6b6560;
+      --border-light: #e8e0d8;
+      --brand-pink: #ffade0;
+      --brand-peach: #ffdab9;
+      --accent: #2563eb;
+      --danger: #dc2626;
+      --ok: #16a34a;
+      --api-key-bg: #fff8f5;
+      --api-key-border: #e8d5c4;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-light);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, var(--brand-pink) 0%, var(--brand-peach) 100%);
+      box-shadow: 0 2px 8px rgba(255, 173, 222, 0.3);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    .logo-icon img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .header-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: #2d2a26;
+      letter-spacing: -0.5px;
+    }
+
+    .header-subtitle {
+      font-size: 11px;
+      color: #6b6560;
+      font-weight: 500;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .api-key-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      background: rgba(255,255,255,0.9);
+      border: none;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #2d2a26;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .api-key-btn:hover {
+      background: #fff;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    }
+
+    .api-key-btn .key-status {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ccc;
+    }
+
+    .api-key-btn .key-status.setted {
+      background: var(--ok);
+    }
+
+    .api-key-btn .key-status.error {
+      background: var(--danger);
+    }
+
+    .main-container {
+      max-width: 900px;
+      margin: 24px auto;
+      padding: 0 20px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-light);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    h1 { font-size: 20px; margin: 0 0 6px; }
+    h2 { font-size: 15px; margin: 0 0 12px; color: var(--text-secondary); }
+    .muted { color: var(--text-secondary); }
+    label { display: block; font-size: 13px; margin-bottom: 6px; }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      background: #fff;
+      color: var(--text);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-secondary {
+      background: var(--bg-light);
+      color: var(--text-primary);
+    }
+
+    .btn-secondary:hover {
+      background: #e8e0d8;
+    }
+
+    .btn-danger {
+      background: #fff;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+
+    .btn-danger:hover {
+      background: #fde8e8;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .status {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      font-size: 13px;
+    }
+
+    .status.ok { background: #e6f7e6; color: var(--ok); }
+    .status.err { background: #fde8e8; color: var(--danger); }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      background: rgba(255,255,255,0.7);
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      backdrop-filter: blur(10px);
+    }
+
+    .status-emojis {
+      font-size: 14px;
+      letter-spacing: 2px;
+    }
+
+    .config-display {
+      background: var(--bg-light);
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+    }
+
+    .config-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .config-row:last-child {
+      border-bottom: none;
+    }
+
+    .config-label {
+      color: var(--text-secondary);
+    }
+
+    .config-value {
+      color: var(--text-primary);
+      font-weight: 500;
+      word-break: break-all;
+    }
+
+    .chip {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--brand-pink);
+      font-size: 12px;
+      color: #2d2a26;
+    }
+
+    .key-mask {
+      font-family: monospace;
+      letter-spacing: 0.1em;
+    }
+
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: var(--bg-light); }
+    ::-webkit-scrollbar-thumb { background: #d5ccc5; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #b8ada5; }
+
+    @media (max-width: 600px) {
+      .api-key-drawer {
+        width: 100vw;
+        right: -100vw;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-icon">
+        <img src="Resources/h_LOGO.png" alt="HAEMA.AI 로고">
+      </div>
+      <div>
+        <div class="header-title">HAEMA.AI</div>
+        <div class="header-subtitle">해마.AI 실험실</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="status-bar">
+        <span class="status-emojis">💛💚💛</span>
+        <span class="status-text">해마 쉬는 중...</span>
+      </div>
+      <button class="api-key-btn" id="apiKeyToggleBtn">
+        <span class="key-status" id="keyStatusIcon"></span>
+        <span id="apiKeyBtnText">API 키 설정</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="main-container">
+    <div class="card">
+      <h1>Haema 로컬 콘솔</h1>
+      <p class="muted">
+        이 콘솔은 Haema 테스트용 화면입니다. API 키는 브라우저 로컬 저장소에 암호화되어 저장됩니다.
+      </p>
+    </div>
+
+    <div class="card">
+      <h2>현재 저장된 설정</h2>
+      <div id="currentConfig">
+        <p class="muted">저장된 설정이 없습니다. 우측 상단 [API 키 설정] 버튼을 눌러 키를 입력하세요.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>연결 지점 (구조 확인용)</h2>
+      <p class="muted">
+        아래는 콘솔에서 저장한 키를 AI 어댑터 설정으로 넘기는 예시 구조입니다.
+        실제 호출부는 호스트(마이풉 등)가 조립합니다.
+      </p>
+      <pre id="connectionExample" style="background:var(--bg-light);border:1px solid var(--border-light);border-radius:8px;padding:12px;font-size:12px;white-space:pre;overflow:auto;max-height:260px;margin-top:12px;"></pre>
+    </div>
+  </div>
+
+  <div class="drawer-overlay" id="drawerOverlay"></div>
+
+  <div class="api-key-drawer" id="apiKeyDrawer">
+    <div class="drawer-header">
+      <div class="drawer-title">
+        <span>🔑</span> API 키 설정
+      </div>
+      <button class="drawer-close" id="drawerCloseBtn">✕</button>
+    </div>
+    <div class="drawer-body">
+      <form id="keyForm">
+        <div class="form-group">
+          <label class="form-label" for="provider">제공자</label>
+          <select class="form-select" id="provider">
+            <option value="openai-compatible">OpenAI 호환 (Upstage Solar 등)</option>
+            <option value="anthropic">Anthropic</option>
+            <option value="google">Google</option>
+            <option value="custom">커스텀</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="model">모델</label>
+          <input class="form-input" id="model" type="text" placeholder="예: solar-pro, claude-sonnet, gpt-4o" />
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="apiKey">API 키</label>
+          <input class="form-input" id="apiKey" type="password" placeholder="여기에 API 키를 넣습니다" autocomplete="off" />
+          <div class="form-hint">입력한 키는 브라우저에 암호화되어 저장됩니다.</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="baseURL">Base URL (OpenAI 호환 제공자용, 선택)</label>
+          <input class="form-input" id="baseURL" type="text" placeholder="예: https://api.upstage.ai/v1/solar" />
+          <div class="form-hint">비워 두면 기존 기본값을 사용합니다.</div>
+        </div>
+
+        <div id="status" class="status" style="display:none;"></div>
+      </form>
+
+      <div id="currentConfigDrawer" class="config-display" style="display:none;">
+        <div style="font-size:13px;font-weight:500;margin-bottom:8px;">현재 활성 설정</div>
+        <div id="configDetails"></div>
+      </div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-secondary" id="cancelBtn">취소</button>
+      <button class="btn btn-danger" id="clearBtn">키 초기화</button>
+      <button class="btn btn-primary" id="saveBtn">저장 & 전송</button>
+    </div>
+  </div>
+
+  <script type="module" src="console.js"></script>
+</body>
+</html>
