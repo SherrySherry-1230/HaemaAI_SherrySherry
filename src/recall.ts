@@ -17,7 +17,7 @@ import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { earliestUpcomingEvent, num } from './proactive.ts';
 import { GUIDE_MODES, type GuideMode } from './guideModes.ts';
-import { strongestSeons } from './tails.ts';
+import { strongestSeons } from './seons.ts';
 
 export { GUIDE_MODES, type GuideMode };
 
@@ -39,10 +39,10 @@ export interface RecallOptions {
   touch?: boolean;
 }
 
-export type MatchedBy = 'name' | 'tag' | 'tail';
+export type MatchedBy = 'name' | 'tag' | 'seon';
 
 export interface RecallCandidate {
-  cell: JJum;
+  jjum: JJum;
   /** 0~1 규칙 기반 점수 */
   score: number;
   /** 0 = 단서 직접 매칭, 1·2 = 쩜선 확산 */
@@ -51,15 +51,15 @@ export interface RecallCandidate {
   /** 선으로 왔다면 어느 점에서 */
   via?: JJumId;
   valence: Valence;
-  /** 부정 쩜 flag — 호스트는 "유저가 먼저 꺼냈을 때 알아봐 주는" 용도로만 쓴다 */
+  /** 부정 점 flag — 호스트는 "유저가 먼저 꺼냈을 때 알아봐 주는" 용도로만 쓴다 */
   negative: boolean;
   reasons: string[];
   tokens: number;
 }
 
 export interface FollowUpQuestion {
-  /** 관련 쩜. 단서 자체가 미지일 때는 없음 */
-  cellId?: JJumId;
+  /** 관련 점. 단서 자체가 미지일 때는 없음 */
+  jjumId?: JJumId;
   /** 비어 있는 필드 또는 'unmatched-cue'(처음 듣는 단서) */
   field: 'type' | 'summary' | 'tags' | 'facts' | 'unmatched-cue';
   /** 호스트가 말투를 입힐 질문 재료 (문장이 아니라 방향) */
@@ -81,7 +81,7 @@ export interface AnswerGuide {
 export type TopicKind = 'upcoming' | 'stale' | 'followup';
 
 export interface Topic {
-  cell: JJum;
+  jjum: JJum;
   kind: TopicKind;
   score: number;
   reason: string;
@@ -114,15 +114,15 @@ export function estimateTokens(text: string): number {
 }
 
 /** 호스트 프롬프트에 실릴 한 줄 표현 — 토큰 계산의 기준 */
-export function renderCell(cell: JJum): string {
-  const alias = cell.aliases.length > 0 ? `(${cell.aliases.join('/')})` : '';
-  const facts = cell.facts.slice(-3).map((f) => f.text).join('; ');
-  const tags = cell.tags.length > 0 ? `#${cell.tags.join(' #')}` : '';
-  return [`[${cell.jjumName}${alias}]`, cell.type, cell.summary, facts, tags].filter(Boolean).join(' · ');
+export function renderJJum(jjum: JJum): string {
+  const alias = jjum.aliases.length > 0 ? `(${jjum.aliases.join('/')})` : '';
+  const facts = jjum.facts.slice(-3).map((f) => f.text).join('; ');
+  const tags = jjum.tags.length > 0 ? `#${jjum.tags.join(' #')}` : '';
+  return [`[${jjum.jjumName}${alias}]`, jjum.type, jjum.summary, facts, tags].filter(Boolean).join(' · ');
 }
 
-function tailWeightMax(cell: JJum): number {
-  return cell.seons.reduce((m, t) => Math.max(m, t.weight), 0) || 1;
+function tailWeightMax(jjum: JJum): number {
+  return jjum.seons.reduce((m, t) => Math.max(m, t.weight), 0) || 1;
 }
 // 같은 상대로 가는 선이 여럿(라벨 다름)이면 가장 굵은 것 기준 — 쩜선 중복 규칙
 
@@ -154,22 +154,22 @@ function buildGuide(
 
   const comfortCues = candidates
     .filter((c) => c.valence === 'positive')
-    .map((c) => `${c.cell.jjumName} — ${c.cell.summary || c.cell.facts.at(-1)?.text || c.cell.type}`);
+    .map((c) => `${c.jjum.jjumName} — ${c.jjum.summary || c.jjum.facts.at(-1)?.text || c.jjum.type}`);
 
   const followUpQuestions: FollowUpQuestion[] = [];
   for (const c of direct) {
-    const name = c.cell.jjumName;
-    if (!c.cell.type || c.cell.type === 'unknown') {
-      followUpQuestions.push({ cellId: c.cell.jjumId, field: 'type', prompt: `${name}: 누구/무엇인지 아직 모름 — 물어볼 것` });
+    const name = c.jjum.jjumName;
+    if (!c.jjum.type || c.jjum.type === 'unknown') {
+      followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'type', prompt: `${name}: 누구/무엇인지 아직 모름 — 물어볼 것` });
     }
-    if (!c.cell.summary) {
-      followUpQuestions.push({ cellId: c.cell.jjumId, field: 'summary', prompt: `${name}: 어떤 사이·어떤 맥락인지 요약 없음 — 관계/배경을 물어볼 것` });
+    if (!c.jjum.summary) {
+      followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'summary', prompt: `${name}: 어떤 사이·어떤 맥락인지 요약 없음 — 관계/배경을 물어볼 것` });
     }
-    if (c.cell.tags.length === 0) {
-      followUpQuestions.push({ cellId: c.cell.jjumId, field: 'tags', prompt: `${name}: 표식(H-tag) 없음 — 어떤 종류의 이야기인지 물어볼 것` });
+    if (c.jjum.tags.length === 0) {
+      followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'tags', prompt: `${name}: 표식(H-tag) 없음 — 어떤 종류의 이야기인지 물어볼 것` });
     }
-    if (c.cell.facts.length === 0) {
-      followUpQuestions.push({ cellId: c.cell.jjumId, field: 'facts', prompt: `${name}: 알려진 사실 없음 — 구체적인 이야기를 물어볼 것` });
+    if (c.jjum.facts.length === 0) {
+      followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'facts', prompt: `${name}: 알려진 사실 없음 — 구체적인 이야기를 물어볼 것` });
     }
   }
   for (const cue of unmatchedCues) {
@@ -198,19 +198,19 @@ export function buildTopics(
     const upcoming = earliestUpcomingEvent(cell, now, upcomingDays);
     if (upcoming) {
       const days = Math.ceil((upcoming.date - now) / DAY);
-      topics.push({ cell, kind: 'upcoming', score: 0.9, reason: `${days}일 뒤: ${upcoming.summary}` });
+      topics.push({ jjum, kind: 'upcoming', score: 0.9, reason: `${days}일 뒤: ${upcoming.summary}` });
       continue;
     }
-    const staleDays = Math.floor((now - cell.lastMentioned) / DAY);
-    if (!cell.summary || cell.facts.length === 0) {
-      topics.push({ cell, kind: 'followup', score: 0.5 + Math.min(0.2, staleDays / 100), reason: '답이 비어 있는 쩜 — 팔로업 거리' });
+    const staleDays = Math.floor((now - jjum.lastMentioned) / DAY);
+    if (!jjum.summary || jjum.facts.length === 0) {
+      topics.push({ jjum, kind: 'followup', score: 0.5 + Math.min(0.2, staleDays / 100), reason: '답이 비어 있는 점 — 팔로업 거리' });
       continue;
     }
     if (staleDays >= staleLimit) {
-      topics.push({ cell, kind: 'stale', score: Math.min(0.8, staleDays / 60), reason: `${staleDays}일째 언급 없음` });
+      topics.push({ jjum, kind: 'stale', score: Math.min(0.8, staleDays / 60), reason: `${staleDays}일째 언급 없음` });
     }
   }
-  return topics.sort((a, b) => b.score - a.score || b.cell.mentionCount - a.cell.mentionCount).slice(0, limit);
+  return topics.sort((a, b) => b.score - a.score || b.jjum.mentionCount - a.jjum.mentionCount).slice(0, limit);
 }
 
 export async function recall(
@@ -233,10 +233,10 @@ export async function recall(
   // ── 직접 매칭: 이름·별칭 / H-tag ──
   const found = new Map<JJumId, RecallCandidate>();
   const matchedCues = new Set<string>();
-  for (const cell of active) {
-    const names = [cell.jjumName, ...cell.aliases].map(norm);
+  for (const jjum of active) {
+    const names = [jjum.jjumName, ...jjum.aliases].map(norm);
     const nameHits = cueList.filter((q) => names.includes(q));
-    const tagSet = new Set(cell.tags.map(norm));
+    const tagSet = new Set(jjum.tags.map(norm));
     const tagHits = cueList.filter((q) => tagSet.has(q));
     if (nameHits.length === 0 && tagHits.length === 0) continue;
     for (const q of [...nameHits, ...tagHits]) matchedCues.add(q);
@@ -250,16 +250,16 @@ export async function recall(
       score = Math.max(score, Math.min(0.9, 0.7 + 0.1 * (tagHits.length - 1)));
       reasons.push(`H-tag 일치: ${tagHits.join(', ')}`);
     }
-    const valence = valenceOf(cell);
-    found.set(cell.jjumId, {
-      cell,
+    const valence = valenceOf(jjum);
+    found.set(jjum.jjumId, {
+      jjum,
       score,
       hop: 0,
       matchedBy: nameHits.length > 0 ? 'name' : 'tag',
       valence,
       negative: valence === 'negative',
       reasons,
-      tokens: estimateTokens(renderCell(cell)),
+      tokens: estimateTokens(renderJJum(jjum)),
     });
   }
   const directCount = found.size;
@@ -271,8 +271,8 @@ export async function recall(
   for (let hop = 1; hop <= hops && frontier.length > 0; hop++) {
     const discovered = new Map<JJumId, RecallCandidate>();
     for (const parent of [...frontier].sort((a, b) => b.score - a.score)) {
-      const wMax = tailWeightMax(parent.cell);
-      for (const tail of strongestSeons(parent.cell).sort((a, b) => b.weight - a.weight)) {
+      const wMax = tailWeightMax(parent.jjum);
+      for (const tail of strongestSeons(parent.jjum).sort((a, b) => b.weight - a.weight)) {
         if (found.has(tail.targetId)) continue; // 더 가까운 홉(또는 직접 매칭)에서 이미 발견
         const target = byId.get(tail.targetId);
         if (!target) continue; // archived·삭제된 점은 따라가지 않는다
@@ -282,27 +282,27 @@ export async function recall(
         if (prev && prev.score >= score) continue; // 같은 홉에서 더 강한 경로가 이미 채택됨
         const valence = valenceOf(target);
         discovered.set(target.jjumId, {
-          cell: target,
+          jjum: target,
           score,
           hop: hop as 1 | 2,
-          matchedBy: 'tail',
-          via: parent.cell.jjumId,
+          matchedBy: 'seon',
+          via: parent.jjum.jjumId,
           valence,
           negative: valence === 'negative',
-          reasons: [`쩜선: ${parent.cell.jjumName} → (w${tail.weight}${tail.label ? ` ${tail.label}` : ''})`],
-          tokens: estimateTokens(renderCell(target)),
+          reasons: [`쩜선: ${parent.jjum.jjumName} → (w${tail.weight}${tail.label ? ` ${tail.label}` : ''})`],
+          tokens: estimateTokens(renderJJum(target)),
         });
-        adoptedTails.set(target.jjumId, { source: parent.cell, tail });
+        adoptedTails.set(target.jjumId, { source: parent.jjum, tail });
       }
     }
     frontier = [...discovered.values()].sort((a, b) => b.score - a.score).slice(0, topN);
-    for (const c of frontier) found.set(c.cell.jjumId, c);
+    for (const c of frontier) found.set(c.jjum.jjumId, c);
   }
   const expanded = found.size - directCount;
 
   // ── 정렬 + 토큰 상한 ──
   const ordered = [...found.values()].sort(
-    (a, b) => b.score - a.score || a.hop - b.hop || b.cell.mentionCount - a.cell.mentionCount,
+    (a, b) => b.score - a.score || a.hop - b.hop || b.jjum.mentionCount - a.jjum.mentionCount,
   );
   const candidates: RecallCandidate[] = [];
   let tokensUsed = 0;
@@ -319,7 +319,7 @@ export async function recall(
 
   // ── 가이드 · 이야깃거리 ──
   const guide = buildGuide(candidates, unmatchedCues, directCount);
-  const topics = buildTopics(active, new Set(candidates.map((c) => c.cell.jjumId)), now, topicLimit, {
+  const topics = buildTopics(active, new Set(candidates.map((c) => c.jjum.jjumId)), now, topicLimit, {
     upcomingDays: options.topicUpcomingDays,
     staleDays: options.topicStaleDays,
   });
@@ -327,10 +327,10 @@ export async function recall(
   // ── 자극 반영: recallCount · 쩜선 lastActivated ──
   if (touch && candidates.length > 0) {
     const dirty = new Map<JJumId, JJum>();
-    const included = new Set(candidates.map((c) => c.cell.jjumId));
+    const included = new Set(candidates.map((c) => c.jjum.jjumId));
     for (const c of candidates) {
-      c.cell.recallCount += 1;
-      dirty.set(c.cell.jjumId, c.cell);
+      c.jjum.recallCount += 1;
+      dirty.set(c.jjum.jjumId, c.jjum);
     }
     for (const { source, tail } of adoptedTails.values()) {
       if (!included.has(tail.targetId)) continue;

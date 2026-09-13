@@ -1,6 +1,6 @@
 // @editedBy SherrySherry 2026-09-13
 /**
- * 쩜선(Seon) 중복 규칙 — 블루프린트의 "핀 여러 개" (2026-09-06 확정, 2026-09-13 용어 교체)
+ * 쩜선(Seon) — 두 쩜 사이 연상 연결 (블루프린트의 "핀 여러 개" 규칙, 2026-09-06 확정, 2026-09-13 용어 교체 완료)
  *
  * - 같은 두 쩜 사이에 라벨이 다르면 선 여러 개 허용 (예: "이전 동거" + "이사 원인").
  * - 라벨이 같은 선이 또 들어오면 새로 만들지 않고 기존 weight를 올린다.
@@ -12,30 +12,17 @@ import type { JJumId, JJum, HaemaTimestamp, Seon } from './types/jjum.ts';
 const sameLabel = (a: string | undefined, b: string | undefined): boolean => (a ?? '') === (b ?? '');
 
 /** 같은 상대로 가는 선 전부 */
-<<<<<<< HEAD
-export function tailsTo(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon[] {
-=======
 export function seonsTo(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon[] {
->>>>>>> e478941 ([SherrySherry] refactor: 구 용어(HCell/CellId/Tail) → JJum/Seon/SeonId 통일 및 createCell → createJJum 리팩토링)
   return cell.seons.filter((t) => t.targetId === targetId);
 }
 
 /** 같은 상대로 가는 선 중 가장 굵은 것 — 회상 점수의 기준 */
-<<<<<<< HEAD
-export function strongestTail(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon | undefined {
-  return tailsTo(cell, targetId).reduce<Seon | undefined>((best, t) => (!best || t.weight > best.weight ? t : best), undefined);
-}
-
-/** 상대별로 가장 굵은 선만 남긴 목록 — 확산 시 상대 하나당 한 번만 따라간다 */
-export function strongestTails(cell: Pick<JJum, 'seons'>): Seon[] {
-=======
 export function strongestSeon(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon | undefined {
   return seonsTo(cell, targetId).reduce<Seon | undefined>((best, t) => (!best || t.weight > best.weight ? t : best), undefined);
 }
 
 /** 상대별로 가장 굵은 선만 남긴 목록 — 확산 시 상대 하나당 한 번만 따라간다 */
 export function strongestSeons(cell: Pick<JJum, 'seons'>): Seon[] {
->>>>>>> e478941 ([SherrySherry] refactor: 구 용어(HCell/CellId/Tail) → JJum/Seon/SeonId 통일 및 createCell → createJJum 리팩토링)
   const best = new Map<JJumId, Seon>();
   for (const t of cell.seons) {
     const prev = best.get(t.targetId);
@@ -48,11 +35,7 @@ export function strongestSeons(cell: Pick<JJum, 'seons'>): Seon[] {
  * 선 추가/강화 — 같은 상대·같은 라벨이면 weight를 올리고, 라벨이 다르면 새 선을 단다.
  * 점을 제자리에서 고치고 해당 선을 돌려준다 (저장은 호출자가).
  */
-<<<<<<< HEAD
-export function upsertTail(
-=======
 export function upsertSeon(
->>>>>>> e478941 ([SherrySherry] refactor: 구 용어(HCell/CellId/Tail) → JJum/Seon/SeonId 통일 및 createCell → createJJum 리팩토링)
   cell: JJum,
   targetId: JJumId,
   weight: number,
@@ -65,13 +48,7 @@ export function upsertSeon(
     existing.lastActivated = now;
     return existing;
   }
-<<<<<<< HEAD
-  const tail: Seon = { targetId, weight, ...(label ? { label } : {}), lastActivated: now };
-  cell.seons.push(tail);
-  return tail;
-=======
   const seon: Seon = { targetId, weight, ...(label ? { label } : {}), lastActivated: now };
   cell.seons.push(seon);
   return seon;
->>>>>>> e478941 ([SherrySherry] refactor: 구 용어(HCell/CellId/Tail) → JJum/Seon/SeonId 통일 및 createCell → createJJum 리팩토링)
 }

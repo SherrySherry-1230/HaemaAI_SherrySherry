@@ -79,7 +79,7 @@ export interface MergeJudgement {
 
 /** 회상 후보 점수 — 꺼낼지·침묵할지의 최종 결정은 호스트 몫 */
 export interface RecallScore {
-  cellId: JJumId;
+  jjumId: JJumId;
   /** 0(무관)~1(지금 꺼낼 가치 높음) */
   score: number;
   reason?: string;
@@ -89,10 +89,10 @@ export interface AIAdapter {
   readonly config: AIAdapterConfig;
 
   /** 대화에서 쩜(JJum) 초안을 추출한다. 근거 없는 내용은 만들지 않는다(기억 지어내기 금지). */
-  extractCells(req: ExtractRequest): Promise<ExtractedDraft[]>;
+  extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]>;
 
   /** 쩜(JJum)의 summary(관계 요약 포함)를 생성·갱신한다. */
-  summarizeCell(cell: JJum, hint?: string): Promise<{ summary: string }>;
+  summarizeJJum(jjum: JJum, hint?: string): Promise<{ summary: string }>;
 
   /** 두 쩜(JJum)가 같은 대상인지 판정한다(점수화까지 — 병합 실행은 코어, 연출은 호스트). */
   judgeMergeCandidate(a: JJum, b: JJum, hint?: string): Promise<MergeJudgement>;

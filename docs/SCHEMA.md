@@ -72,7 +72,7 @@ schemaVersion   number      // 마이그레이션 대비
   - 타입명 `JJumId`는 PascalCase(타입 표준), 필드명은 `jjumId`(camelCase)로 구분.
   - 기존 v2(`cell_*.json`)는 점진적 전환 — 읽을 때 v3로 변환 저장. 구 파일은 대표님 정책 따라 처리.
   - 개인 데이터(`local-server/haema/user/`) 전부 `.jj`로 일괄 변환.
-- 2026-09-05 용어 교체: `nodeId`→`cellId`, `links`→`tails`, `refNodeIds`→`refCellIds`, 파일 `node_*`→`cell_*`.
+- 2026-09-05 용어 교체: `nodeId`→`jjumId`, `links`→`seons`, `refNodeIds`→`refJJumIds`, 파일 `node_*`→`jjum_*`.
   구조·의미는 동일 (schemaVersion 유지). 구형 `node_*.json`은 필수 필드(`cellId`)가 없어 검증 실패로 건너뛰며
   `reindex` 리포트에 잡힌다 — 콘솔 `demo`로 재생성.
 
