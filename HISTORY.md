@@ -1,3 +1,106 @@
+<!-- @editedBy SherrySherry 2026-09-13 -->
+## 2026-09-13 오전 — 백엔드 산출물 손수 배달 및 프론트엔드 콘솔 개발 (점/JJum 용어 전환, 쓰로틀 실시간 회상)
+
+### 목표
+- 백엔드에서 만들어온 .gitignore 처리 파일들을 프론트엔드 콘솔 개발에 활용할 수 있도록 손수 배달.
+- 프론트엔드 콘솔(`Resources/haema-console.html` + `haema-console.js`)을 점(JJum) 용어로 수정하고, 실시간 타이핑 쓰로틀(Throttle 500ms) 기반 회상 기능 구현.
+
+### 배경
+- `.gitignore`에 `tools/`, `src/`, `tests/`, `local-server/` 등이 포함되어 있어 해당 디렉토리 파일들은 저장소에 커밋되지 않음.
+- 백엔드에서 산출물들을 만들어왔고, 사용자가 직접 해당 파일들을 프론트엔드 개발 참고용으로 배달함.
+
+### .gitignore 처리 파일들 — 수정/생성 내역
+
+#### 1. `src/types/jjum.ts` (2026-09-12 수정)
+- 점(JJum) 스키마 v3 타입 정의
+- `JJum`, `Seon`, `JjumFact`, `JjumEvent` 인터페이스
+- `JjumStatus` = `'active' | 'archived' | 'merged'`
+- `FactSource`, `EditActor` 타입
+- `SCHEMA_VERSION = 3`
+
+#### 2. `src/createCell.ts` (2026-09-05)
+- 해마세포 생성 헬퍼 `createCell()` — 스키마 v2 기본값 채움
+
+#### 3. `src/recall.ts` (2026-09-06)
+- 회상 엔진 (2-a) — AI 없이 결정론적 동작
+- `recall(ownerId, cues)` → ① 회상 후보 ② 답변 가이드 ③ 이야깃거리
+
+#### 4. `src/tails.ts` (2026-09-06)
+- 꼬리 중복 규칙 — 같은 두 세포 사이 라벨 다르면 꼬리 여러 개 허용
+- `strongestTails()` — 상대별 가장 굵은 꼬리만 반환
+
+#### 5. `src/valence.ts` (2026-09-06, 09-12 수정)
+- valence — 세포의 긍정/중립/부정 표식 (H-tag의 일종)
+- `valenceOf()` 함수
+
+#### 6. `src/proactive.ts` (2026-09-12)
+- `getProactiveCues()` — 선제 안부 재료 조회
+- `getRecentMoodSignals()` — 최근 valence 분포 조회
+
+#### 7. `src/concern.ts` (2026-09-12)
+- 고민 세포 해결 로직 `resolveConcern()`
+
+#### 8. `src/adapters/` (2026-09-12)
+- `aiAdapter.ts` — AI 어댑터 인터페이스
+- `fileAdapter.ts` — 파일 시스템 어댑터 (local-server/haema/ .jj 파일)
+- `openaiAdapter.ts` — OpenAI 호환 어댑터
+- `storageAdapter.ts` — 저장소 어댑터 계약
+
+#### 9. `src/guideModes.ts` (2026-09-12)
+- 답변 가이드 모드 열거 (`GUIDE_MODES`)
+
+#### 10. `tools/console.ts` (2026-09-12 수정)
+- CLI 콘솔 — 점/JJum 용어로 수정 완료
+- 명령: create, stimulus, recall, proactive, concerns, resolve, mood, list, show, tails, rename, merge, archive, unarchive, delete, stats
+
+#### 11. `tools/console-web/` (2026-09-12)
+- 임시 웹콘솔 디렉토리 (API 키 설정용)
+- `index.html`, `console.js`, `configStore.js`, `configStore.ts`, `README.md`, `test-store.mjs`
+
+#### 12. `tests/` (2026-09-12)
+- `adapter-contract.test.ts` — 어댑터 계약 테스트
+- `file-adapter.test.ts` — 파일 어댑터 테스트
+- `recall.test.ts` — 회상 엔진 테스트 (시나리오 포함)
+
+#### 13. `local-server/haema/` (2026-09-12)
+- `_index.jj` — 소유자별 점 인덱스
+- `demo/`, `demo1/`, `user/` 하위 .jj 파일들 (실제 데이터)
+- 사용자 데이터: 안정훈.jj, 최연희.jj, 이서연.jj, 롤.jj, 전남편.jj, 문정동_집.jj, 근로특약_계약.jj, 셈스게임즈.jj, 서틴스플로어.jj, 대학_시절.jj, 생일_사건_2023.jj, 친구들에게_결별_어떻게_말할지.jj
+
+### 오늘 한 일 (2026-09-13 오전)
+
+#### 프론트엔드 콘솔 수정
+- `Resources/haema-console.html` — 점(JJum) 용어로 UI 수정
+- `Resources/haema-console.js` (600줄):
+  - 초기 샘플 데이터(김지수, 성수 카페, 사진 동아리, 비 오는 날) 제거 (야옹이 임의로 만든거)
+  - 점 데이터 빈 배열로 시작 (모달/create로 추가)
+  - UI placeholder 예시 일반화 (홍길동 등)
+  - `tails` → `seons` (백엔드 스키마 일치)
+  - `schemaVersion: 2` → `3`
+
+#### 실시간 타이핑 쓰로틀(Throttle 500ms) 구현
+- `throttleTimer` 속성 추가
+- `handleInput()` 함수 — 0.5초 간격 쓰로틀 로직
+- input 이벤트 리스너 연결
+- 타이핑 중에도 0.5초마다 `simulateRecall()` 호출
+- 우측 리스트 실시간 라이브 갱신
+
+### 저장소 구조
+- 프론트엔드 콘솔: `Resources/haema-console.html` + `Resources/haema-console.js`
+- 백엔드 소스: `src/` (gitignore)
+- 테스트: `tests/` (gitignore)
+- 실제 데이터: `local-server/haema/` (gitignore)
+- CLI 콘솔: `tools/console.ts` (gitignore)
+- 임시 웹콘솔: `tools/console-web/` (gitignore)
+
+### 현재 상태
+- 프론트엔드 콘솔: 점(JJum) 용어로 수정 완료, 쓰로틀 실시간 회상 구현 완료
+- 구문 검증 통과 (Node.js)
+- 초기 샘플 데이터 없음 (빈 상태로 시작, 모달로 점 추가 가능)
+- 백엔드 .gitignore 파일들은 손수 배달된 상태로 참고 가능
+
+---
+
 <!-- @editedBy SherrySherry 2026-09-11 -->
 ## 2026-09-11 — Haema 로컬 콘솔 API 키 설정 기능 구조 잡기 (임시 웹콘솔)
 
