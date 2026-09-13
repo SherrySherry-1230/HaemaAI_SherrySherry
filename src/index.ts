@@ -47,7 +47,7 @@ export {
   isUnresolvedConcern,
   resolveConcern,
 } from './concern.ts';
-export { upsertTail, tailsTo, strongestTail, strongestTails } from './tails.ts';
+export { upsertSeon, seonsTo, strongestSeon, strongestSeons } from './seons.ts';
 export {
   getOpenConcerns,
   selectOpenConcerns,
@@ -64,8 +64,8 @@ export {
 
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
-export { createCell, type CreateCellInput } from './createCell.ts';
-export type { CellQuery, CellSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
+export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export type { JjumQuery, JjumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
 export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
   AIAdapter,
@@ -83,7 +83,7 @@ export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
 export { valenceOf, isNegative, canBringUpFirst, VALENCE_TAGS, type Valence } from './valence.ts';
 export {
   recall,
-  renderCell,
+  renderJJum,
   estimateTokens,
   buildTopics,
   GUIDE_MODES,
@@ -108,7 +108,7 @@ export {
   isUnresolvedConcern,
   resolveConcern,
 } from './concern.ts';
-export { upsertTail, tailsTo, strongestTail, strongestTails } from './tails.ts';
+export { upsertSeon, seonsTo, strongestSeon, strongestSeons } from './tails.ts';
 export {
   getOpenConcerns,
   selectOpenConcerns,

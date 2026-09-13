@@ -60,7 +60,7 @@ export class GroqAdapter implements AIAdapter {
     }
   }
 
-  async extractCells(req: ExtractRequest): Promise<ExtractedDraft[]> {
+  async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {
     const turnsText = req.turns
       .map((t) => `${t.role}: ${t.text}`)
       .join('\n');
@@ -108,20 +108,20 @@ ${hint}
     }
   }
 
-  async summarizeCell(cell: JJum, hint?: string): Promise<{ summary: string }> {
+  async summarizeJJum(jjum: JJum, hint?: string): Promise<{ summary: string }> {
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';
 
     const system = `당신은 쩜(JJum)의 요약을 생성하는 AI입니다.
 쩜(JJum)의 정보를 바탕으로 간결한 요약을 작성하세요.
-요약에는 해당 세포의 핵심 정보와 관계를 포함해야 합니다.`;
+요약에는 해당 점의 핵심 정보와 관계를 포함해야 합니다.`;
 
     const user = `쩜(JJum) 정보:
-이름: ${cell.jjumName}
-유형: ${cell.type}
-별칭: ${cell.aliases.join(', ')}
-태그: ${cell.tags.join(', ')}
-사실: ${cell.facts.map(f => f.text).join('\n')}
-${cell.summary ? `기존 요약: ${cell.summary}` : ''}
+이름: ${jjum.jjumName}
+유형: ${jjum.type}
+별칭: ${jjum.aliases.join(', ')}
+태그: ${jjum.tags.join(', ')}
+사실: ${jjum.facts.map(f => f.text).join('\n')}
+${jjum.summary ? `기존 요약: ${jjum.summary}` : ''}
 ${hintText}
 
 요약을 작성하세요.`;
