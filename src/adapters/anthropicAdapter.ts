@@ -69,12 +69,12 @@ export class AnthropicAdapter implements AIAdapter {
     const hint = req.hint ? `\n\n추가 지시: ${req.hint}` : '';
 
     const system = `당신은 대화에서 기억할 만한 정보(사람, 장소, 사건 등)를 추출하는 AI입니다.
-대화 내용을 분석하여 해마세포(기억 단위)를 추출하세요.
+대화 내용을 분석하여 점(JJum)(기억 단위)를 추출하세요.
 
 출력 형식(JSON):
 [
   {
-    "canonicalName": "표준 이름",
+    "jjumName": "대표 명칭",
     "type": "유형(예: person, place, event, etc)",
     "aliases": ["별칭1", "별칭2"],
     "tags": ["태그1", "태그2"],
@@ -96,7 +96,7 @@ ${turnsText}
 이미 알고 있는 이름: ${knownNamesText}
 ${hint}
 
-해마세포를 추출하세요.`;
+점(JJum)를 추출하세요.`;
 
     const response = await this.callAI('extract', system, user);
 
@@ -111,12 +111,12 @@ ${hint}
   async summarizeCell(cell: JJum, hint?: string): Promise<{ summary: string }> {
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';
 
-    const system = `당신은 해마세포의 요약을 생성하는 AI입니다.
-해마세포의 정보를 바탕으로 간결한 요약을 작성하세요.
+    const system = `당신은 점(JJum)의 요약을 생성하는 AI입니다.
+점(JJum)의 정보를 바탕으로 간결한 요약을 작성하세요.
 요약에는 해당 세포의 핵심 정보와 관계를 포함해야 합니다.`;
 
-    const user = `해마세포 정보:
-이름: ${cell.canonicalName}
+    const user = `점(JJum) 정보:
+이름: ${cell.jjumName}
 유형: ${cell.type}
 별칭: ${cell.aliases.join(', ')}
 태그: ${cell.tags.join(', ')}
@@ -134,7 +134,7 @@ ${hintText}
   async judgeMergeCandidate(a: JJum, b: JJum, hint?: string): Promise<MergeJudgement> {
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';
 
-    const system = `당신은 두 해마세포가 같은 대상인지 판정하는 AI입니다.
+    const system = `당신은 두 점(JJum)가 같은 대상인지 판정하는 AI입니다.
 0(다른 대상)~1(같은 대상) 사이의 신뢰도 점수를 매기세요.
 
 출력 형식(JSON):
@@ -144,13 +144,13 @@ ${hintText}
 }`;
 
     const user = `세포 A:
-이름: ${a.canonicalName}
+이름: ${a.jjumName}
 유형: ${a.type}
 별칭: ${a.aliases.join(', ')}
 사실: ${a.facts.map(f => f.text).join('\n')}
 
 세포 B:
-이름: ${b.canonicalName}
+이름: ${b.jjumName}
 유형: ${b.type}
 별칭: ${b.aliases.join(', ')}
 사실: ${b.facts.map(f => f.text).join('\n')}
@@ -181,7 +181,7 @@ ${hintText}
       .join('\n');
 
     const candidatesText = candidates
-      .map((c) => `- ${c.canonicalName} (${c.type}): ${c.summary || c.facts[0]?.text || ''}`)
+      .map((c) => `- ${c.jjumName} (${c.type}): ${c.summary || c.facts[0]?.text || ''}`)
       .join('\n');
 
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';

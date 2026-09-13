@@ -3,7 +3,7 @@
  * 점(JJum) 스키마 v3 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
  * 정책:
- * - 하드 필수(jjumId · canonicalName · ownerId)가 없으면 로드 실패(ok=false).
+ * - 하드 필수(jjumId · jjumName · ownerId)가 없으면 로드 실패(ok=false).
  * - 그 외 필드는 기본값을 채워서 살린다 — 사람이 파일을 고치다 필드를 지워도 깨지지 않는다.
  * - 고친 흔적이 스키마와 어긋나면 errors에 리포트하되, 살릴 수 있으면 살린다.
  */
@@ -55,7 +55,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
   }
   const d = data as Record<string, unknown>;
 
-  for (const key of ['jjumId', 'canonicalName', 'ownerId'] as const) {
+  for (const key of ['jjumId', 'jjumName', 'ownerId'] as const) {
     if (!str(d[key]) || (d[key] as string).trim() === '') {
       errors.push(`하드 필수 필드 누락/오류: ${key}`);
     }
@@ -135,7 +135,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
 
   const cell: JJum = {
     jjumId: (d.jjumId as string).trim(),
-    canonicalName: (d.canonicalName as string).trim(),
+    jjumName: (d.jjumName as string).trim(),
     aliases: toStringArray(d.aliases),
     type: str(d.type) && d.type.trim() !== '' ? d.type : 'unknown',
     tags: toStringArray(d.tags),
