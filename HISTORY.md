@@ -99,10 +99,80 @@
 - 초기 샘플 데이터 없음 (빈 상태로 시작, 모달로 점 추가 가능)
 - 백엔드 .gitignore 파일들은 손수 배달된 상태로 참고 가능
 
+<!-- @editedBy SherrySherry 2026-09-12 -->
+## 2026-09-12 오후 — 로컬 서버 데이터 구조 및 .jj 형식 정리
+
+### 목표
+- 로컬 서버 쪽 데이터 구조를 .jj 중심으로 정리한다.
+- .jj 는 해마 시스템에서 사용하는 특수한 데이터 형식임을 명시한다.
+- 특수한 데이터 구조로 업데이트한다는 점을 기록한다.
+
+### 한 일
+- 로컬 서버 데이터 구조를 .jj 파일 기반으로 정리.
+- .jj 는 해마 시스템에서 사용하는 특수한 데이터 형식임을 확인/기록.
+- 데이터 저장·읽기 구조를 특수한 데이터 구조(.jj) 기준으로 업데이트.
+
+### 파일
+- `HISTORY.md`
+- 로컬 서버 관련 데이터 구조 파일들
+
+### 작업자
+- **SherrySherry** (맥북, 백엔드·데이터 전문가)
+
 ---
 
 <!-- @editedBy SherrySherry 2026-09-11 -->
-## 2026-09-11 — Haema 로컬 콘솔 API 키 설정 기능 구조 잡기 (임시 웹콘솔)
+## 2026-09-12 — 용어·확장자 전면 교체: 해마세포(HCell) → 점(JJum), 꼬리(Tail) → 선(Seon), .json → .jj
+
+### 목표
+- Haema 코어의 기본 단위 용어를 점(jjum)으로, 점 사이 연관을 선(Seon)으로 전면 교체.
+- 파일 확장자 `.json` → `.jj`, 스키마 v2 → v3.
+- Haema 먼저. 마이풉 문서는 나중에.
+
+### 한 일
+- 스키마 v3: 타입명 `HCell`→`JJum`, `Tail`→`Seon`, `CellId`→`JJumId`(타입명)/`jjumId`(필드명), `tails`→`seons`, `CellStatus`→`JjumStatus`, `CellFact`→`JjumFact`, `CellEvent`→`JjumEvent`, `CellEditEntry`→`JjumEditEntry`.
+- 파일: `src/types/cell.ts` → `src/types/jjum.ts`, `src/types/validateCell.ts` → `src/types/validateJJum.ts`.
+- 검증기: `validateHCell` → `validateJJum`, v3 기준.
+- 공개 진입점(`src/index.ts`): export 경로 `cell.ts`→`jjum.ts`, `validateHCell`→`validateJJum`.
+- 직접 import 하는 파일 12곳의 import 문·타입 참조를 JJum 기준으로 교체 (B 방식).
+- `docs/SCHEMA.md`: 점(jjum) 스키마로 재작성, 발표 메시지 "생각과 기억의 최소단위, 생각점·기억점, 그래서 점이다!" 삽입.
+- `AI/agents/CLAUDE.md`: 용어 표·금지 표현 업데이트.
+- `HISTORY.md`: 본 항목 추가.
+
+### 정책 (대표님 확정)- .jj 는 해마.ai에서 사용하는 특수한 데이터 형식.
+- 파일 명명: `{canonicalName}.jj`
+- 인덱스: `_index.jj`로 확장자 변경, 내부 경로도 .jj 기준 
+- 스키마 버전: v3
+- 기존 v2(`cell_*.json`) 처리: 점진적 전환 — 읽을 때 v3로 변환 저장, 구 파일은 대표님 정책 따라 처리
+- 개인 데이터(`local-server/haema/user/`): 전부 `.jj`로 일괄 변환.
+- 꼬리(Tail) 용어: 선(Seon)으로 변경 — 점이 이어지면 선
+- 마이풉 문서: Haema 다 바꾸고 나서 나중에
+- 발표용 메시지: "생각점·기억점, 그래서 점이다!" README·SCHEMA 앞부분에 그대로
+
+### 하지 않은 것
+- 어댑터·회상·꼬리·테스트·데모·로컬 파일의 실제 .jj 전환 및 주석·메시지·함수명 전면 교체 (Step 2~7, 승인 후 진행)
+- 마이풉 문서 정리 (Haema 완료 후)
+- `src/types/cell.ts` 삭제 (점진적 전환 기간 중 유지 — 삭제 시점은 대표님 확인 후)
+
+### 현재 상태
+- Step 1(타입·스키마·검증기·SCHEMA·CLAUDE.md·HISTORY.md) 진행 중.
+- 커밋 전. 실행은 승인 후.
+
+### 파일
+- `src/types/jjum.ts` (신규)
+- `src/types/validateJJum.ts` (신규)
+- `src/types/cell.ts` (유지 — 점진적 전환)
+- `src/types/validateCell.ts` (유지 — 점진적 전환)
+- `src/index.ts`
+- `src/adapters/aiAdapter.ts`, `fileAdapter.ts`, `openaiAdapter.ts`, `storageAdapter.ts`
+- `src/concern.ts`, `createCell.ts`, `proactive.ts`, `recall.ts`, `tails.ts`, `valence.ts`
+- `tests/recall.test.ts`
+- `docs/SCHEMA.md`
+- `AI/agents/CLAUDE.md`
+- `HISTORY.md`
+
+### 작업자
+- **SherrySherry** (맥북, 백엔드·데이터 전문가)
 
 ### 목표
 - Haema 테스트용으로 사용자가 API 키를 직접 넣고 바꿀 수 있는 콘솔 설정 기능을 구조적으로 잡는다.
