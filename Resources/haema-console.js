@@ -52,16 +52,16 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
     }
     const accordionHtml = sortedJjums.map(jjum => {
         const isExpanded = this.selectedJjumId === jjum.jjumId;
-        let tailsHtml = "";
-        if (jjum.tails && jjum.tails.length > 0) {
-            tailsHtml = jjum.tails.map(t => {
+        let seonsHtml = "";
+        if (jjum.seons && jjum.seons.length > 0) {
+            seonsHtml = jjum.seons.map(t => {
                 const target = this.allJjums.find(j => j.jjumId === t.targetId);
                 const targetName = target ? target.canonicalName : "알 수 없음";
                 const weightPercent = (t.weight * 100).toFixed(0);
-                return "<div class=\"tail-item\"><div class=\"tail-weight-bar\"><div class=\"tail-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"tail-target\">" + this.escapeHtml(targetName) + "</span><span class=\"tail-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
+                return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
             }).join("");
         } else {
-            tailsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 선 없음</div>";
+            seonsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 선 없음</div>";
         }
         let factsHtml = "";
         if (jjum.facts && jjum.facts.length > 0) {
@@ -79,7 +79,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
                 "<div class=\"detail-section\"><div class=\"detail-label\">🏷️ 태그 (Tags)</div><div class=\"detail-tags\">" + tagsHtml + "</div></div>" +
                 "<div class=\"detail-section\"><div class=\"detail-label\">📝 한 줄 요약</div><div class=\"detail-text\">" + this.escapeHtml(jjum.summary || "요약 없음") + "</div></div>" +
                 "<div class=\"detail-section\"><div class=\"detail-label\">📚 사실 (Facts)</div>" + factsHtml + "</div>" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">🔗 꼬리 (Tails) - 연결된 점</div><div class=\"tails-list\">" + tailsHtml + "</div></div>" +
+                "<div class=\"detail-section\"><div class=\"detail-label\">🔗 선 (Seons) - 연결된 점</div><div class=\"seons-list\">" + seonsHtml + "</div></div>" +
                 "<div class=\"detail-section\" style=\"display: flex; gap: 8px; margin-top: 12px;\">" +
                     "<button class=\"btn btn-secondary\" style=\"flex: 1;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.openEditModal(\"" + jjum.jjumId + "\");\">✏️ 수정</button>" +
                     "<button class=\"btn btn-secondary\" style=\"flex: 1; color: #ff6b6b;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.confirmDelete(\"" + jjum.jjumId + "\");\">🗑️ 삭제</button>" +
@@ -237,7 +237,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const tagsStr = document.getElementById("modalTags")?.value.trim() || "";
     const summary = document.getElementById("modalSummary")?.value.trim() || "";
     const factsStr = document.getElementById("modalFacts")?.value.trim() || "";
-    const tailsStr = document.getElementById("modalTails")?.value.trim() || "";
+    const seonsStr = document.getElementById("modalSeons")?.value.trim() || "";
 
     if (!canonicalName) {
         alert("점 이름을 입력해주세요!");
@@ -251,7 +251,7 @@ HAEMA_CONSOLE.saveModal = function() {
         addedAt: new Date().toISOString().split("T")[0],
         source: "manual"
     }));
-    const tails = tailsStr.split("\n").map(line => {
+    const seons = seonsStr.split("\n").map(line => {
         const parts = line.split("|").map(p => p.trim());
         if (parts.length < 3) return null;
         const target = this.allJjums.find(j => j.canonicalName === parts[0] || j.aliases.includes(parts[0]));
@@ -270,7 +270,7 @@ HAEMA_CONSOLE.saveModal = function() {
             tags: tags,
             summary: summary,
             facts: facts,
-            seons: tails,
+            seons: seons,
             mentionCount: 0,
             firstSeen: new Date().toISOString(),
             lastMentioned: new Date().toISOString(),
@@ -293,7 +293,7 @@ HAEMA_CONSOLE.saveModal = function() {
                 tags: tags,
                 summary: summary,
                 facts: facts,
-                seons: tails,
+                seons: seons,
                 lastMentioned: new Date().toISOString()
             };
         }
@@ -493,7 +493,7 @@ HAEMA_CONSOLE.renderModalContent = function() {
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
-    const tailsStr = (data.tails || []).map(t => {
+    const seonsStr = (data.seons || []).map(t => {
         const target = this.allJjums.find(j => j.jjumId === t.targetId);
         const targetName = target ? target.canonicalName : '';
         return targetName + ' | ' + (t.label || '연결') + ' | ' + t.weight;
@@ -536,8 +536,8 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">점에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
-        '<label class="form-label" for="modalTails">꼬리 (Tails) - 연결된 점 (한 줄에 하나씩)</label>' +
-        '<textarea class="form-textarea" id="modalTails" rows="3" placeholder="예: 친구 | 친구 관계 | 0.8&#10;장소 | 만난 곳 | 0.6">' + this.escapeHtml(tailsStr) + '</textarea>' +
+        '<label class="form-label" for="modalSeons">선 (Seons) - 연결된 점 (한 줄에 하나씩)</label>' +
+        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 친구 | 친구 관계 | 0.8&#10;장소 | 만난 곳 | 0.6">' + this.escapeHtml(tailsStr) + '</textarea>' +
         '<div class="form-hint">다른 점과 연결하는 선입니다. 형식: 대상점이름 | 라벨 | 가중치(0~1)</div>' +
         '</div>';
 };
