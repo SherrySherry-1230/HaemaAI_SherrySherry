@@ -1,186 +1,525 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Haema 로컬 콘솔 (임시)</title>
-  <style>
-    /* 임시 콘솔 스타일 — 대표님이 나중에 YAONG1230과 맞춰 다듬는다 */
-    :root {
-      --bg: #f6f7f9;
-      --card: #ffffff;
-      --border: #d0d5dd;
-      --text: #1f2937;
-      --muted: #6b7280;
-      --accent: #2563eb;
-      --danger: #dc2626;
-      --ok: #16a34a;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    }
-    .wrap {
-      max-width: 720px;
-      margin: 40px auto;
-      padding: 0 20px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 24px;
-      margin-bottom: 20px;
-    }
-    h1 { font-size: 20px; margin: 0 0 6px; }
-    h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); }
-    .muted { color: var(--muted); }
-    label { display: block; font-size: 13px; margin-bottom: 6px; }
-    input, select, textarea {
-      width: 100%;
-      padding: 8px 10px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 14px;
-      background: #fff;
-      color: var(--text);
-    }
-    input[type="password"] { letter-spacing: 0.1em; }
-    .row { display: flex; gap: 12px; }
-    .row > * { flex: 1; }
-    .btn {
-      display: inline-block;
-      padding: 8px 14px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #fff;
-      color: var(--text);
-      cursor: pointer;
-      font-size: 14px;
-    }
-    .btn.primary {
-      background: var(--accent);
-      color: #fff;
-      border-color: var(--accent);
-    }
-    .btn.danger {
-      background: #fff;
-      color: var(--danger);
-      border-color: var(--danger);
-    }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .status {
-      margin-top: 12px;
-      padding: 10px 12px;
-      border-radius: 8px;
-      background: #f3f4f6;
-      font-size: 13px;
-    }
-    .status.ok { background: #e6f7e6; color: var(--ok); }
-    .status.err { background: #fde8e8; color: var(--danger); }
-    .key-row { display: flex; gap: 8px; align-items: center; }
-    .key-row input { flex: 1; }
-    .note {
-      font-size: 12px;
-      color: var(--muted);
-      margin-top: 8px;
-    }
-    .section { margin-bottom: 24px; }
-    .chip {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #e5e7eb;
-      font-size: 12px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HAEMA.AI 콘솔</title>
+    <style>
+        :root {
+            --brand-pink: #ffade;
+            --brand-peach: #ebstbo;
+            --bg-light: #fff8f5;
+            --bg-card: #ffffff;
+            --text-primary: #2d2a26;
+            --text-secondary: #6b6560;
+            --border-light: #f0e8e3;
+            --gold: #ffd700;
+            --silver: #c0c0c0;
+            --bronze: #cd7f32;
+            --accent-pink: #ffb6c1;
+            --accent-peach: #ffdab9;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-light);
+            color: var(--text-primary);
+            min-height: 100vh;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--brand-pink) 0%, var(--brand-peach) 100%);
+            box-shadow: 0 2px 8px rgba(255, 173, 222, 0.3);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .logo-icon img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .header-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2d2a26;
+            letter-spacing: -0.5px;
+        }
+
+        .header-subtitle {
+            font-size: 11px;
+            color: #6b6560;
+            font-weight: 500;
+        }
+
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            background: rgba(255,255,255,0.7);
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-emojis {
+            font-size: 14px;
+            letter-spacing: 2px;
+        }
+
+        .status-text {
+            color: #2d2a26;
+        }
+
+        .main-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            min-height: calc(100vh - 70px);
+        }
+
+        .panel {
+            background: var(--bg-card);
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .panel-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .panel-content {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .chat-panel { min-height: 400px; }
+
+        .jjum-panel { min-height: 400px; }
+
+        .empty-jjum {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-jjum-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .empty-jjum-text {
+            font-size: 14px;
+            line-height: 1.6;
+        }
+
+        .api-key-btn {
+            padding: 8px 16px;
+            background: var(--brand-pink);
+            color: #2d2a26;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .api-key-btn:hover { opacity: 0.9; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal {
+            background: var(--bg-card);
+            border-radius: 16px;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            transform: translateY(-20px);
+            transition: transform 0.2s;
+        }
+
+        .modal-overlay.active .modal {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            padding: 4px;
+            line-height: 1;
+        }
+
+        .modal-close:hover { color: var(--text-primary); }
+
+        .modal-body { padding: 20px; }
+
+        .form-group { margin-bottom: 16px; }
+
+        .form-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: 6px;
+        }
+
+        .form-input, .form-textarea, .form-select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 2px solid var(--border-light);
+            border-radius: 8px;
+            font-size: 13px;
+            font-family: inherit;
+            transition: border-color 0.2s;
+            background: var(--bg-light);
+        }
+
+        .form-input:focus, .form-textarea:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--brand-pink);
+        }
+
+        .form-textarea { min-height: 80px; resize: vertical; }
+
+        .form-hint {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .tag-input-wrapper {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px;
+            border: 2px solid var(--border-light);
+            border-radius: 8px;
+            background: var(--bg-light);
+            min-height: 42px;
+        }
+
+        .tag-input-wrapper:focus-within { border-color: var(--brand-pink); }
+
+        .tag-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: var(--brand-pink);
+            color: #2d2a26;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .tag-chip .remove {
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            opacity: 0.7;
+        }
+
+        .tag-chip .remove:hover { opacity: 1; }
+
+        .tag-input {
+            border: none;
+            outline: none;
+            flex: 1;
+            min-width: 80px;
+            font-size: 13px;
+            background: transparent;
+        }
+
+        .modal-footer {
+            padding: 16px 20px;
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .btn-secondary {
+            background: var(--border-light);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover { opacity: 0.8; }
+
+        .btn-primary {
+            background: var(--brand-pink);
+            color: #2d2a26;
+        }
+
+        .btn-primary:hover { opacity: 0.9; }
+
+        .status-working .status-emojis { color: #ffd700; }
+        .status-resting .status-emojis { color: #98d8c8; }
+        .status-error .status-emojis { color: #ff6b6b; }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-light); }
+        ::-webkit-scrollbar-thumb { background: #d5ccc5; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b8ada5; }
+
+        @media (max-width: 1024px) {
+            .main-container { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Haema 로컬 콘솔 (임시)</h1>
-      <h2>API 키 설정 · 로컬 전용 테스트 콘솔</h2>
-      <p class="muted">
-        이 콘솔은 Haema 테스트용 임시 화면입니다. 마이풉과 별개이며, 화면·스타일은 아직 다듬지 않았습니다.
-      </p>
+    <div class="header">
+        <div class="header-left">
+            <div class="logo-icon">
+                <img src="Resources/h_LOGO.png" alt="HAEMA 로고">
+            </div>
+            <div>
+                <div class="header-title">HAEMA.AI</div>
+                <div class="header-subtitle">콘솔</div>
+            </div>
+        </div>
+        <div class="status-bar status-resting">
+            <span class="status-emojis">🐳💤</span>
+            <span class="status-text">해마 쉬는 중</span>
+        </div>
     </div>
 
-    <div class="card">
-      <h2>1) API 키 설정</h2>
-      <p class="muted">
-        현재 활성화된 제공자·모델·키를 넣습니다. 저장하면 브라우저 로컬 저장소에 암호화해 보관합니다.
-        실제 암호화 방식은 아직 구현하지 않았고, 구조만 잡아 둔 상태입니다.
-      </p>
-
-      <form id="keyForm">
-        <div class="row">
-          <div>
-            <label for="provider">제공자</label>
-            <select id="provider">
-              <option value="openai-compatible">OpenAI 호환 (Upstage Solar 등)</option>
-              <option value="anthropic">Anthropic</option>
-              <option value="google">Google</option>
-              <option value="custom">커스텀</option>
-            </select>
-          </div>
-          <div>
-            <label for="model">모델</label>
-            <input id="model" type="text" placeholder="예: solar-pro, claude-sonnet, gpt-4o" />
-          </div>
+    <div class="main-container">
+        <div class="panel chat-panel">
+            <div class="panel-header">
+                <span class="panel-title">💬 채팅</span>
+                <button class="api-key-btn" onclick="openApiKeyModal()">🗝️ 입력</button>
+            </div>
+            <div class="panel-content" id="chatContent">
+                <!-- 채팅 내용 -->
+            </div>
         </div>
 
-        <div style="margin-top: 12px;">
-          <label for="apiKey">API 키</label>
-          <input id="apiKey" type="password" placeholder="여기에 API 키를 넣습니다" autocomplete="off" />
+        <div class="panel jjum-panel">
+            <div class="panel-header">
+                <span class="panel-title">🗺️ 쩜 지도</span>
+                <button class="api-key-btn" onclick="openApiKeyModal()">🗝️ 입력</button>
+            </div>
+            <div class="panel-content" id="jjumContent">
+                <div class="empty-jjum">
+                    <div class="empty-jjum-icon">🐳</div>
+                    <div class="empty-jjum-text">아직 물어올 쩜이 없어요,..🐳💦</div>
+                </div>
+            </div>
         </div>
+    </div>
 
-        <div style="margin-top: 12px;">
-          <label for="baseURL">Base URL (OpenAI 호환 제공자용, 선택)</label>
-          <input id="baseURL" type="text" placeholder="예: https://api.upstage.ai/v1/solar" />
-          <div class="note">
-            비워 두면 기존 기본값을 사용합니다. 지금은 환경변수(SOLAR_BASE_URL) fallback 구조를 유지합니다.
-          </div>
+    <!-- API 키 모달 -->
+    <div class="modal-overlay" id="apiKeyModal">
+        <div class="modal">
+            <div class="modal-header">
+                <span class="modal-title">🗝️ API 키 설정</span>
+                <button class="modal-close" onclick="closeApiKeyModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">API 키</label>
+                    <input type="password" class="form-input" id="apiKeyInput" placeholder="sk-...">
+                    <div class="form-hint">OpenAI 또는 호환 API 키를 입력하세요</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">모델</label>
+                    <select class="form-select" id="modelSelect">
+                        <option value="gpt-4o">GPT-4o</option>
+                        <option value="gpt-4o-mini">GPT-4o-mini</option>
+                        <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">태그 (선택)</label>
+                    <div class="tag-input-wrapper" id="tagWrapper">
+                        <div class="tag-chips" id="tagChips"></div>
+                        <input type="text" class="tag-input" id="tagInput" placeholder="태그 추가...">
+                    </div>
+                    <div class="form-hint">콤마(,) 또는 엔터로 추가</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeApiKeyModal()">취소</button>
+                <button class="btn btn-primary" onclick="saveApiKey()">저장</button>
+            </div>
         </div>
-
-        <div style="margin-top: 16px;">
-          <button type="submit" class="btn primary" id="saveBtn">저장</button>
-          <button type="button" class="btn danger" id="clearBtn">키 초기화</button>
-        </div>
-
-        <div id="status" class="status" style="display:none;"></div>
-      </form>
     </div>
 
-    <div class="card">
-      <h2>2) 현재 저장된 설정</h2>
-      <div id="currentConfig">
-        <p class="muted">저장된 설정이 없습니다. 위 입력칸에 키를 넣고 저장하세요.</p>
-      </div>
-    </div>
+    <script>
+        // API 키 모달 제어
+        function openApiKeyModal() {
+            document.getElementById("apiKeyModal").classList.add("active");
+        }
 
-    <div class="card">
-      <h2>3) 연결 지점 (구조 확인용)</h2>
-      <p class="muted">
-        아래는 콘솔에서 저장한 키를 AI 어댑터 설정으로 넘기는 예시 구조입니다.
-        실제 호출부는 호스트(마이풉 등)가 조립합니다.
-      </p>
-      <pre id="connectionExample" style="background:#f3f4f6;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12px;white-space:pre;overflow:auto;max-height:260px;"></pre>
-    </div>
+        function closeApiKeyModal() {
+            document.getElementById("apiKeyModal").classList.remove("active");
+        }
 
-    <div class="card">
-      <h2>4) 저장소 정보</h2>
-      <ul class="muted" style="padding-left:18px;line-height:1.7;">
-        <li>현재 저장 위치: 브라우저 localStorage (임시)</li>
-        <li>저장 키: <code id="storageKeyName"></code></li>
-        <li>저장 형식: 암호화 설정(구조만). 실제 암호화 구현은 미완료.</li>
-        <li>로컬 서버/CLI 연동 시: 설정 파일(local-server/haema/.config.json 등)로 옮길 수 있음 — 구조만 표시</li>
-      </ul>
-    </div>
-  </div>
+        // 태그 입력 처리
+        const tagInput = document.getElementById("tagInput");
+        const tagChips = document.getElementById("tagChips");
+        let tags = [];
 
-  <script type="module" src="console.js"></script>
+        tagInput.addEventListener("keydown", function(e) {
+            if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                const value = this.value.trim().replace(/,?$/, "");
+                if (value) addTag(value);
+            }
+        });
+
+        function addTag(tag) {
+            if (!tags.includes(tag)) {
+                tags.push(tag);
+                renderTags();
+            }
+            tagInput.value = "";
+        }
+
+        function removeTag(tag) {
+            tags = tags.filter(t => t !== tag);
+            renderTags();
+        }
+
+        function renderTags() {
+            tagChips.innerHTML = tags.map(t => `<span class="tag-chip">${t} <span class="remove" onclick="removeTag(\'${t}\')">&times;</span></span>`).join("");
+        }
+
+        // API 키 저장
+        function saveApiKey() {
+            const apiKey = document.getElementById("apiKeyInput").value;
+            const model = document.getElementById("modelSelect").value;
+            if (apiKey) {
+                localStorage.setItem("haema_api_key", apiKey);
+                localStorage.setItem("haema_model", model);
+                localStorage.setItem("haema_tags", JSON.stringify(tags));
+                closeApiKeyModal();
+                alert("API 키가 저장되었습니다!");
+            } else {
+                alert("API 키를 입력해주세요!");
+            }
+        }
+
+        // 모달 외부 클릭 시 닫기
+        document.getElementById("apiKeyModal").addEventListener("click", function(e) {
+            if (e.target === this) closeApiKeyModal();
+        });
+
+        // 저장된 API 키 로드
+        window.addEventListener("DOMContentLoaded", function() {
+            const savedKey = localStorage.getItem("haema_api_key");
+            if (savedKey) {
+                document.getElementById("apiKeyInput").value = savedKey;
+                const savedModel = localStorage.getItem("haema_model");
+                if (savedModel) {
+                    document.getElementById("modelSelect").value = savedModel;
+                }
+                const savedTags = localStorage.getItem("haema_tags");
+                if (savedTags) {
+                    tags = JSON.parse(savedTags);
+                    renderTags();
+                }
+            }
+        });
+    </script>
 </body>
 </html>

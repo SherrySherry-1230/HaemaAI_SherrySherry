@@ -10,7 +10,7 @@ HAEMA_CONSOLE = {
     modalData: null,
     throttleTimer: null,  // 실시간 타이핑 쓰로틀 타이머 (0.5초 간격)
     
-    // 점 데이터는 외부에서 주입하거나 모달로 추가한다.
+    // 쩜 데이터는 외부에서 주입하거나 모달로 추가한다.
     // 초기 샘플 데이터는 넣지 않는다.
     
 };
@@ -40,7 +40,7 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 
 HAEMA_CONSOLE.renderRightPanel = function() {
     return "<div class=\"panel\">" +
-        "<div class=\"panel-header\"><div class=\"panel-title\"><span class=\"icon\">📌</span> 점(JJum) 매니저 & 실시간 회상</div></div>" +
+        "<div class=\"panel-header\"><div class=\"panel-title\"><span class=\"icon\">📌</span> 쩜(JJum) 매니저 & 실시간 회상</div></div>" +
         "<div class=\"panel-content\">" + this.renderRecallSection() + this.renderJjumListSection() + "</div>" +
     "</div>";
 };
@@ -48,7 +48,7 @@ HAEMA_CONSOLE.renderRightPanel = function() {
 HAEMA_CONSOLE.renderJjumListSection = function() {
     const sortedJjums = this.allJjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
     if (sortedJjums.length === 0) {
-        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 점(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 점이 없습니다.<br>[+ 새 점 만들기] 버튼으로 점을 추가해보세요.</div></div></div>";
+        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
     }
     const accordionHtml = sortedJjums.map(jjum => {
         const isExpanded = this.selectedJjumId === jjum.jjumId;
@@ -61,7 +61,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
                 return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
             }).join("");
         } else {
-            seonsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 선 없음</div>";
+            seonsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 쩜선 없음</div>";
         }
         let factsHtml = "";
         if (jjum.facts && jjum.facts.length > 0) {
@@ -79,7 +79,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
                 "<div class=\"detail-section\"><div class=\"detail-label\">🏷️ 태그 (Tags)</div><div class=\"detail-tags\">" + tagsHtml + "</div></div>" +
                 "<div class=\"detail-section\"><div class=\"detail-label\">📝 한 줄 요약</div><div class=\"detail-text\">" + this.escapeHtml(jjum.summary || "요약 없음") + "</div></div>" +
                 "<div class=\"detail-section\"><div class=\"detail-label\">📚 사실 (Facts)</div>" + factsHtml + "</div>" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">🔗 선 (Seons) - 연결된 점</div><div class=\"seons-list\">" + seonsHtml + "</div></div>" +
+                "<div class=\"detail-section\"><div class=\"detail-label\">🔗 쩜선 (Seons) - 연결된 쩜</div><div class=\"seons-list\">" + seonsHtml + "</div></div>" +
                 "<div class=\"detail-section\" style=\"display: flex; gap: 8px; margin-top: 12px;\">" +
                     "<button class=\"btn btn-secondary\" style=\"flex: 1;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.openEditModal(\"" + jjum.jjumId + "\");\">✏️ 수정</button>" +
                     "<button class=\"btn btn-secondary\" style=\"flex: 1; color: #ff6b6b;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.confirmDelete(\"" + jjum.jjumId + "\");\">🗑️ 삭제</button>" +
@@ -88,8 +88,8 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         "</div>";
     }).join("");
     return "<div class=\"jjum-list-section\">" +
-        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 점(JJum) 만들기</button></div>" +
-        "<div class=\"section-label\"><span>📂</span> 전체 점(JJum) 목록 (" + sortedJjums.length + "개, 생성순)</div>" +
+        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div>" +
+        "<div class=\"section-label\"><span>📂</span> 전체 쩜(JJum) 목록 (" + sortedJjums.length + "개, 생성순)</div>" +
         "<div class=\"jjum-accordion\">" + accordionHtml + "</div>" +
     "</div>";
 };
@@ -154,7 +154,7 @@ HAEMA_CONSOLE.handleClear = function() {
 
 // ===== 실시간 타이핑 쓰로틀 (Throttle 500ms) =====
 // 타이핑 중에도 0.5초마다 백엔드 MCTS 시뮬레이션을 계속 호출하여
-// 최적의 점(JJum) TOP 1~3을 실시간으로 갱신
+// 최적의 쩜(JJum) TOP 1~3을 실시간으로 갱신
 HAEMA_CONSOLE.handleInput = function(inputValue) {
     // 쓰로틀 체크: 이미 0.5초 이내에 호출되었으면 무시
     if (this.throttleTimer) {
@@ -240,7 +240,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const seonsStr = document.getElementById("modalSeons")?.value.trim() || "";
 
     if (!canonicalName) {
-        alert("점 이름을 입력해주세요!");
+        alert("쩜 이름을 입력해주세요!");
         return;
     }
 
@@ -349,7 +349,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
     this.recallResults = scoredJjums.filter(j => j.simulationScore > 0).slice(0, 13);
 
     this.status = "working";
-    this.statusText = "✅ 회상 완료! " + this.recallResults.length + "개 점 발견";
+    this.statusText = "✅ 회상 완료! " + this.recallResults.length + "개 쩜 발견";
     this.answerGuide = {
         input: inputText,
         timestamp: new Date().toISOString(),
@@ -465,13 +465,13 @@ HAEMA_CONSOLE.renderRecallSection = function() {
         '<div class="recall-count">' + this.recallResults.length + '개 발견' + (remaining > 0 ? ' (' + remaining + '개 더)' : '') + '</div>' +
         '</div>' +
         '<div class="top3-cards">' + cardsHtml + '</div>' +
-        (remaining > 0 ? '<div style="text-align: center; font-size: 12px; color: var(--text-secondary); padding: 8px;">↓ 아래 점 목록에서 전체 ' + this.recallResults.length + '개 확인</div>' : '') +
+        (remaining > 0 ? '<div style="text-align: center; font-size: 12px; color: var(--text-secondary); padding: 8px;">↓ 아래 쩜 목록에서 전체 ' + this.recallResults.length + '개 확인</div>' : '') +
         '</div>';
 };
 
 HAEMA_CONSOLE.renderModal = function() {
     const modalContent = this.modalMode && this.modalData ? this.renderModalContent() : '';
-    const modeText = this.modalMode === 'create' ? '새 점(JJum) 만들기' : '점(JJum) 수정';
+    const modeText = this.modalMode === 'create' ? '새 쩜(JJum) 만들기' : '쩜(JJum) 수정';
     
     return '<div class="modal-overlay" id="modalOverlay">' +
         '<div class="modal">' +
@@ -500,14 +500,14 @@ HAEMA_CONSOLE.renderModalContent = function() {
     }).join('\n');
     
     return '<div class="form-group">' +
-        '<label class="form-label" for="modalCanonicalName">점 이름 *</label>' +
+        '<label class="form-label" for="modalCanonicalName">쩜 이름 *</label>' +
         '<input class="form-input" id="modalCanonicalName" type="text" value="' + this.escapeHtml(data.canonicalName || '') + '" placeholder="예: 홍길동">' +
-        '<div class="form-hint">점의 대표 이름입니다. 어떤 이름으로 불러도 이 점을 찾을 수 있습니다.</div>' +
+        '<div class="form-hint">쩜의 대표 이름입니다. 어떤 이름으로 불러도 이 쩜을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalAliases">별칭 (쉼표로 구분)</label>' +
         '<input class="form-input" id="modalAliases" type="text" value="' + this.escapeHtml(aliasesStr) + '" placeholder="예: 지수, 지슈, 그 친구">' +
-        '<div class="form-hint">별칭을 입력하면 그 이름으로도 점을 찾을 수 있습니다.</div>' +
+        '<div class="form-hint">별칭을 입력하면 그 이름으로도 쩜을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalType">유형</label>' +
@@ -524,7 +524,7 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-group">' +
         '<label class="form-label" for="modalTags">태그 (Tags) (쉼표로 구분)</label>' +
         '<input class="form-input" id="modalTags" type="text" value="' + this.escapeHtml(tagsStr) + '" placeholder="예: 친구, 동료, 맛집">' +
-        '<div class="form-hint">점을 분류하는 태그입니다. 여러 개 입력 가능.</div>' +
+        '<div class="form-hint">쩜을 분류하는 태그입니다. 여러 개 입력 가능.</div>' +
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalSummary">한 줄 요약</label>' +
@@ -533,12 +533,12 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-group">' +
         '<label class="form-label" for="modalFacts">사실 (Facts) - 한 줄에 하나씩</label>' +
         '<textarea class="form-textarea" id="modalFacts" rows="3" placeholder="예: 대학교 동창이다&#10;커피를 좋아한다">' + this.escapeHtml(factsStr) + '</textarea>' +
-        '<div class="form-hint">점에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
+        '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
-        '<label class="form-label" for="modalSeons">선 (Seons) - 연결된 점 (한 줄에 하나씩)</label>' +
+        '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩)</label>' +
         '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 친구 | 친구 관계 | 0.8&#10;장소 | 만난 곳 | 0.6">' + this.escapeHtml(tailsStr) + '</textarea>' +
-        '<div class="form-hint">다른 점과 연결하는 선입니다. 형식: 대상점이름 | 라벨 | 가중치(0~1)</div>' +
+        '<div class="form-hint">다른 쩜과 연결하는 쩜선입니다. 형식: 대상쩜이름 | 라벨 | 가중치(0~1)</div>' +
         '</div>';
 };
 
@@ -562,7 +562,7 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     return templates[idx];
 };
 
-// ===== 점 토글 =====
+// ===== 쩜 토글 =====
 HAEMA_CONSOLE.toggleJjum = function(jjumId) {
     if (this.selectedJjumId === jjumId) {
         this.selectedJjumId = null;
@@ -572,12 +572,12 @@ HAEMA_CONSOLE.toggleJjum = function(jjumId) {
     this.render();
 };
 
-// ===== 점 삭제 확인 =====
+// ===== 쩜 삭제 확인 =====
 HAEMA_CONSOLE.confirmDelete = function(jjumId) {
     const jjum = this.allJjums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
     
-    if (confirm('정말 "' + jjum.canonicalName + '" 점을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+    if (confirm('정말 "' + jjum.canonicalName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
         this.allJjums = this.allJjums.filter(j => j.jjumId !== jjumId);
         if (this.selectedJjumId === jjumId) {
             this.selectedJjumId = null;
