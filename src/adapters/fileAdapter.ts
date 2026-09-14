@@ -16,9 +16,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { JJum, JJumId, JjumStatus } from '../types/jjum.ts';
+import type { JJum, JJumId, JJumStatus } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
-import type { JjumQuery, JjumSortKey, StorageAdapter } from './storageAdapter.ts';
+import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
 
 export interface FileAdapterOptions {
   /** 저장 루트. 기본값: <cwd>/local-server/haema */
@@ -54,7 +54,7 @@ function atomicWrite(filePath: string, content: string): void {
   fs.renameSync(tmp, filePath);
 }
 
-const SORT_KEYS: JjumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 'recallCount'];
+const SORT_KEYS: JJumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 'recallCount'];
 
 export class FileAdapter implements StorageAdapter {
   readonly baseDir: string;
@@ -150,10 +150,10 @@ export class FileAdapter implements StorageAdapter {
       return { error: `JSON 파싱 실패: ${(e as Error).message}` };
     }
     const result = validateJJum(data);
-    if (!result.ok || !result.cell) {
+    if (!result.ok || !result.jjum) {
       return { error: `스키마 검증 실패: ${result.errors.join(' / ')}` };
     }
-    return { jjum: result.cell };
+    return { jjum: result.jjum };
   }
 
   /** jjumName 기반 파일명 결정 — 다른 점과 충돌하면 jjumId 앞 8자리를 붙인다 */
@@ -254,7 +254,7 @@ export class FileAdapter implements StorageAdapter {
     this.saveIndex(index);
   }
 
-  async putJjums(ownerId: string, jjums: JJum[]): Promise<void> {
+  async putJJums(ownerId: string, jjums: JJum[]): Promise<void> {
     // 파일 단위 원자 쓰기(tmp→rename)의 순차 적용 — 단일 프로세스 전제의 최선
     for (const jjum of jjums) {
       await this.putJJum(ownerId, jjum);
@@ -295,11 +295,11 @@ export class FileAdapter implements StorageAdapter {
     this.saveIndex(index);
   }
 
-  async listJJums(ownerId: string, query?: JjumQuery): Promise<JJum[]> {
+  async listJJums(ownerId: string, query?: JJumQuery): Promise<JJum[]> {
     let { jjums } = this.scanOwner(ownerId);
 
     if (query?.status !== undefined) {
-      const statuses: JjumStatus[] = Array.isArray(query.status) ? query.status : [query.status];
+      const statuses: JJumStatus[] = Array.isArray(query.status) ? query.status : [query.status];
       jjums = jjums.filter((n) => statuses.includes(n.status));
     }
     if (query?.type !== undefined) jjums = jjums.filter((n) => n.type === query.type);
@@ -339,7 +339,7 @@ export class FileAdapter implements StorageAdapter {
     return found;
   }
 
-  async countJJums(ownerId: string, status?: JjumStatus): Promise<number> {
+  async countJJums(ownerId: string, status?: JJumStatus): Promise<number> {
     const { jjums } = this.scanOwner(ownerId);
     if (status === undefined) return jjums.length;
     return jjums.filter((n) => n.status === status).length;

@@ -4,7 +4,7 @@
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
-export type { CellQuery, CellSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
+export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
 export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
   AIAdapter,
@@ -65,7 +65,7 @@ export {
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
-export type { JjumQuery, JjumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
+export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
 export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
   AIAdapter,
