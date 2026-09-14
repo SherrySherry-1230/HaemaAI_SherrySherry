@@ -12,7 +12,7 @@
  * 넘기며, Haema는 hint를 해석하지 않는다 — 프롬프트에 그대로 전달할 뿐 (도메인 무지).
  */
 
-import type { JJum, HaemaTimestamp, JJumId } from '../types/jjum.ts';
+import type { JJum, JJumTimestamp, JJumId } from '../types/jjum.ts';
 
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'custom';
 
@@ -43,7 +43,7 @@ export interface AIAdapterConfig {
 export interface ConversationTurn {
   role: 'user' | 'assistant';
   text: string;
-  at?: HaemaTimestamp;
+  at?: JJumTimestamp;
 }
 
 /** 대화에서 추출된 쩜(JJum) 초안 — 저장 전 단계 (병합·저장은 코어/호스트가 결정) */
@@ -67,7 +67,7 @@ export interface ExtractRequest {
   knownNames?: string[];
   /** 호스트의 서비스 특화 지시 — 해석 없이 프롬프트에 그대로 전달 */
   hint?: string;
-  now?: HaemaTimestamp;
+  now?: JJumTimestamp;
 }
 
 /** 병합 후보 판정 결과 — 자동 병합/되묻기의 연출은 호스트 몫 */

@@ -15,7 +15,7 @@
  *   판단·발동·쿨다운은 호스트. Haema는 숫자만 낸다.
  */
 
-import type { JjumEvent, JJumId, JJum, HaemaTimestamp } from './types/jjum.ts';
+import type { JJumEvent, JJumId, JJum, JJumTimestamp } from './types/jjum.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { CAREFUL_INSTRUCTION, isUnresolvedConcern } from './concern.ts';
@@ -28,7 +28,7 @@ export const num = (v: number | undefined, d: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : d;
 
 /** 창 안에서 가장 이른 다가오는 사건 — 회상 이야깃거리와 먼저 말 걸 거리가 같은 판정을 쓴다 */
-export function earliestUpcomingEvent(cell: JJum, now: HaemaTimestamp, withinDays: number): JjumEvent | undefined {
+export function earliestUpcomingEvent(cell: JJum, now: JJumTimestamp, withinDays: number): JJumEvent | undefined {
   return cell.events
     .filter((e) => e.date > now && e.date <= now + withinDays * DAY)
     .sort((a, b) => a.date - b.date)[0];
@@ -75,7 +75,7 @@ export interface ProactiveOptions {
 export async function getProactiveCues(
   adapter: StorageAdapter,
   ownerId: string,
-  now: HaemaTimestamp,
+  now: JJumTimestamp,
   options: ProactiveOptions = {},
 ): Promise<ProactiveCue[]> {
   const limit = Math.max(0, Math.floor(num(options.limit, 5)));
@@ -135,7 +135,7 @@ export async function getProactiveCues(
 }
 
 export interface MoodSignals {
-  now: HaemaTimestamp;
+  now: JJumTimestamp;
   windowDays: number;
   /** 최근 창에서 활동이 있었던 점의 valence 분포 */
   valence: Record<Valence, number>;
@@ -154,7 +154,7 @@ export interface MoodSignals {
 }
 
 /** 쩜 안의 시각 기록 전부 — 창별 활동 집계의 재료 (now 이후는 제외) */
-function activityTimes(cell: JJum, now: HaemaTimestamp): number[] {
+function activityTimes(cell: JJum, now: JJumTimestamp): number[] {
   const times = new Set<number>([cell.firstSeen, cell.lastMentioned]);
   for (const f of cell.facts) times.add(f.addedAt);
   for (const e of cell.events) times.add(e.date);
@@ -163,7 +163,7 @@ function activityTimes(cell: JJum, now: HaemaTimestamp): number[] {
 }
 
 export interface MoodOptions {
-  now?: HaemaTimestamp;
+  now?: JJumTimestamp;
   /** 집계 창 일수. 기본 7 */
   windowDays?: number;
 }

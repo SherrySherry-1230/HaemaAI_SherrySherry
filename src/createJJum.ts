@@ -2,7 +2,7 @@
 /** 점(JJum) 생성 헬퍼 — 스키마 v3 기본값을 채워 새 점을 만든다. */
 
 import { randomUUID } from 'node:crypto';
-import type { JJum, JJumFact, JjumEvent, Seon, JjumEditEntry, HaemaTimestamp } from './types/jjum.ts';
+import type { JJum, JJumFact, JJumEvent, Seon, JJumEditEntry, JJumTimestamp } from './types/jjum.ts';
 import { SCHEMA_VERSION } from './types/jjum.ts';
 
 export interface CreateJJumInput {
@@ -15,7 +15,7 @@ export interface CreateJJumInput {
   sourceService?: string;
   /** 서비스별 자유 확장 — Haema는 내용을 해석하지 않는다 */
   meta?: Record<string, unknown>;
-  now?: HaemaTimestamp;
+  now?: JJumTimestamp;
 }
 
 export function createJJum(input: CreateJJumInput): JJum {
@@ -28,7 +28,7 @@ export function createJJum(input: CreateJJumInput): JJum {
     tags: input.tags ?? [],
     summary: input.summary ?? '',
     facts: [] as JJumFact[],
-    events: [] as JjumEvent[],
+    events: [] as JJumEvent[],
     seons: [] as Seon[],
     mentionCount: 1,
     firstSeen: now,
@@ -37,7 +37,7 @@ export function createJJum(input: CreateJJumInput): JJum {
     pinned: false,
     status: 'active',
     mergedFrom: [] as string[],
-    editHistory: [] as JjumEditEntry[],
+    editHistory: [] as JJumEditEntry[],
     meta: input.meta ?? {},
     ownerId: input.ownerId,
     sourceService: input.sourceService ?? 'unknown',

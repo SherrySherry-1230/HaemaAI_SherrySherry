@@ -12,7 +12,7 @@
  * 점수는 규칙 기반이며 AI 점수화(2-b)가 이를 정교화한다.
  */
 
-import type { JJumId, JJum, HaemaTimestamp, Seon } from './types/jjum.ts';
+import type { JJumId, JJum, JJumTimestamp, Seon } from './types/jjum.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { earliestUpcomingEvent, num } from './proactive.ts';
@@ -34,7 +34,7 @@ export interface RecallOptions {
   topicUpcomingDays?: number;
   /** 이야깃거리 '오래 언급 없음' 기준(일). 기본 14 */
   topicStaleDays?: number;
-  now?: HaemaTimestamp;
+  now?: JJumTimestamp;
   /** recallCount · 쩜선 lastActivated 갱신 여부. 기본 true */
   touch?: boolean;
 }
@@ -184,18 +184,18 @@ function buildGuide(
 
 /** ③ 이야깃거리 — 긍정·중립만, 이번 턴 후보에 이미 들어간 점은 제외 */
 export function buildTopics(
-  cells: JJum[],
+  jjums: JJum[],
   exclude: Set<JJumId>,
-  now: HaemaTimestamp,
+  now: JJumTimestamp,
   limit: number,
   opts: { upcomingDays?: number; staleDays?: number } = {},
 ): Topic[] {
   const upcomingDays = num(opts.upcomingDays, 14);
   const staleLimit = num(opts.staleDays, 14);
   const topics: Topic[] = [];
-  for (const cell of cells) {
-    if (exclude.has(cell.jjumId) || !canBringUpFirst(cell)) continue;
-    const upcoming = earliestUpcomingEvent(cell, now, upcomingDays);
+  for (const jjum of jjums) {
+    if (exclude.has(jjum.jjumId) || !canBringUpFirst(jjum)) continue;
+    const upcoming = earliestUpcomingEvent(jjum, now, upcomingDays);
     if (upcoming) {
       const days = Math.ceil((upcoming.date - now) / DAY);
       topics.push({ jjum, kind: 'upcoming', score: 0.9, reason: `${days}일 뒤: ${upcoming.summary}` });
