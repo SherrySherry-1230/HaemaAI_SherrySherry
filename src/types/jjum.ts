@@ -16,7 +16,7 @@ export type JJumId = string;
  * 타임스탬프 — Unix epoch 밀리초.
  * 백엔드 네이티브 타입(Firestore Timestamp 등)과의 상호 변환은 저장 어댑터의 책임이다.
  */
-export type HaemaTimestamp = number;
+export type JJumTimestamp = number;
 
 /** 기억 조각의 출처 */
 export type FactSource = 'conversation' | 'user_edit' | 'batch';
@@ -35,13 +35,13 @@ export type JJumStatus = 'active' | 'archived' | 'merged';
 /** 사실 조각 — 어디서 온 기억인지 출처를 함께 보관 */
 export interface JJumFact {
   text: string;
-  addedAt: HaemaTimestamp;
+  addedAt: JJumTimestamp;
   source: FactSource;
 }
 
 /** 시간축 사건 — 함께 등장한 점을 refJJumIds로 연결 */
 export interface JJumEvent {
-  date: HaemaTimestamp;
+  date: JJumTimestamp;
   summary: string;
   refJJumIds: JJumId[];
 }
@@ -56,12 +56,12 @@ export interface Seon {
   targetId: JJumId;
   weight: number;
   label?: string;
-  lastActivated: HaemaTimestamp;
+  lastActivated: JJumTimestamp;
 }
 
 /** 편집 이력 항목 */
 export interface JJumEditEntry {
-  date: HaemaTimestamp;
+  date: JJumTimestamp;
   action: string;
   field?: string;
   by: EditActor;
@@ -101,9 +101,9 @@ export interface JJum {
   // ═══ 통계 (정렬·선별·회상 우선순위의 재료) ═══
   /** 언급 횟수 — 인기순 정렬 키 */
   mentionCount: number;
-  firstSeen: HaemaTimestamp;
+  firstSeen: JJumTimestamp;
   /** 날짜순 정렬 키, 자동 정리 기준 */
-  lastMentioned: HaemaTimestamp;
+  lastMentioned: JJumTimestamp;
   /** AI가 회상에 실제 사용한 횟수 — "자주 떠올리는 기억" 지표 */
   recallCount: number;
 
