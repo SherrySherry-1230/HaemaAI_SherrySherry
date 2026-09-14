@@ -187,7 +187,7 @@ ${hintText}
 출력 형식(JSON):
 [
   {
-    "jjumId": "cell-123",
+    "jjumId": "jjum-123",
     "score": 0.0~1.0,
     "reason": "점수 이유"
   }

@@ -13,12 +13,13 @@
     "scenario": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/scenario.ts"
   },
   "dependencies": {
-    "openai": "^7.10.0",
     "@anthropic-ai/sdk": "^0.24.0",
     "@google/generative-ai": "^0.21.0",
-    "groq-sdk": "^0.20.0"
+    "groq-sdk": "^0.20.0",
+    "openai": "^7.10.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.2"
+    "@types/node": "^22.20.2",
+    "typescript": "^5.9.3"
   }
 }
