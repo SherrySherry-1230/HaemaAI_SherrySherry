@@ -18,7 +18,22 @@ HAEMA_CONSOLE = {
 // ===== 렌더링 함수 =====
 HAEMA_CONSOLE.render = function() {
     const app = document.getElementById("app");
+    // 입력창의 현재 값 보존 (렌더링 시 입력값 초기화 방지)
+    const userInput = document.getElementById("userInput");
+    const preservedValue = userInput ? userInput.value : "";
+    const preservedFocus = userInput ? document.activeElement === userInput : false;
+    
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
+    
+    // 입력창 값 복원
+    const restoredInput = document.getElementById("userInput");
+    if (restoredInput && preservedValue !== undefined) {
+        restoredInput.value = preservedValue;
+        if (preservedFocus) {
+            restoredInput.focus();
+        }
+    }
+    
     this.attachEventListeners();
 };
 
@@ -56,7 +71,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
                 const target = this.allJjums.find(j => j.jjumId === t.targetId);
-                const targetName = target ? target.canonicalName : "알 수 없음";
+                const targetName = target ? target.jjumName : "알 수 없음";
                 const weightPercent = (t.weight * 100).toFixed(0);
                 return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
             }).join("");
@@ -72,7 +87,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         const tagsHtml = jjum.tags.map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
         return "<div class=\"jjum-item " + (isExpanded ? "expanded" : "") + "\" data-jjum-id=\"" + jjum.jjumId + "\">" +
             "<div class=\"jjum-header\" onclick=\"HAEMA_CONSOLE.toggleJjum(\"" + jjum.jjumId + "\");\">" +
-                "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.canonicalName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
+                "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.jjumName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
                 "<span class=\"expand-icon\">▼</span>" +
             "</div>" +
             "<div class=\"jjum-details\"><div class=\"jjum-details-content\">" +
@@ -115,9 +130,21 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (modalCancel) modalCancel.addEventListener("click", () => this.closeModal());
     if (modalSave) modalSave.addEventListener("click", () => this.saveModal());
     
-    // 실시간 타이핑 쓰로틀 (Throttle 500ms - 타이핑 중에도 0.5초마다 계속 호출)
+    // 백그라운드 공감 스트림 (Background Empathy Stream)
+    // 타이핑 중에도 0.5초마다 해마 백엔드로 텍스트 스냅샷을 조용히 흘려보냄
+    // 사용자 입력은 절대 막지 않음 (논블로킹)
     if (userInput) {
-        userInput.addEventListener("input", (e) => this.handleInput(e.target.value));
+        userInput.addEventListener("input", (e) => {
+            this.handleInput(e.target.value);
+            this.trackTypingPause();
+        });
+        // 엔터키를 치면 최종 확정 처리 (Shift+엔터는 줄바꿈 허용)
+        userInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                this.handleSend();
+            }
+        });
     }
 };
 
@@ -152,15 +179,12 @@ HAEMA_CONSOLE.handleClear = function() {
     this.render();
 };
 
-// ===== 실시간 타이핑 쓰로틀 (Throttle 500ms) =====
-// 타이핑 중에도 0.5초마다 백엔드 MCTS 시뮬레이션을 계속 호출하여
-// 최적의 점(JJum) TOP 1~3을 실시간으로 갱신
+// ===== 백그라운드 공감 스트림 (Background Empathy Stream) =====
+// 타이핑 중 0.5초(throttle) 간격으로 현재까지 입력된 텍스트 스냅샷을
+// 해마 백엔드로 조용히 흘려보내 실시간 인지/점 생성/감정 상태 감지
+// 사용자 입력은 절대 막지 않음 (논블로킹)
+
 HAEMA_CONSOLE.handleInput = function(inputValue) {
-    // 쓰로틀 체크: 이미 0.5초 이내에 호출되었으면 무시
-    if (this.throttleTimer) {
-        return;
-    }
-    
     // 빈 입력값은 무시
     if (!inputValue || !inputValue.trim()) {
         this.recallResults = [];
@@ -170,26 +194,58 @@ HAEMA_CONSOLE.handleInput = function(inputValue) {
         this.render();
         return;
     }
-    
-    // 상태 업데이트: MCTS 시뮬레이션 중
+
+    // 상태 업데이트: 백그라운드 인지 중 (입력은 방해받지 않음)
     this.status = "working";
-    this.statusText = "🧠 MCTS 시뮬레이션 중... (0.5초마다 실시간 갱신)";
+    this.statusText = "🧠 해마 실시간 인지 중... (타이핑 중)";
     this.render();
-    
-    // 백엔드 MCTS 시뮬레이션 API 호출 (현재 로컬 시뮬레이션)
-    this.simulateRecall(inputValue);
-    
-    // 0.5초(500ms) 동안 쓰로틀 잠금
+
+    // 백그라운드 MCTS 시뮬레이션은 비동기로 처리 (입력 블로킹 방지)
+    // 0.5초(throttle) 간격으로 텍스트 스냅샷을 해마 백엔드로 조용히 흘려보냄
+    if (!this._bgSimTimer) {
+        this._bgSimTimer = setTimeout(() => {
+            this._bgSimTimer = null;
+            this.simulateRecall(inputValue);
+        }, 500);
+    }
+
+    // 0.5초(500ms) 동안 쓰로틀 잠금 — 다음 백그라운드 체크까지 대기
+    // 입력 자체를 막는 게 아니라, 백엔드 호출 빈도만 조절
     this.throttleTimer = true;
     setTimeout(() => {
         this.throttleTimer = null;
     }, 500);
 };
 
+// ===== 타이핑 간격 감지 (망설임/불안 상태 감지) =====
+// 사용자가 입력을 멈추고 가만히 있으면 '망설이는 감정 상태'로 읽어냄
+// 쓰로틀로 입력을 막는 게 아니라, 타이핑 패턴을 관찰만 함
+HAEMA_CONSOLE.lastInputTime = Date.now();
+HAEMA_CONSOLE.typingPaused = false;
+
+HAEMA_CONSOLE.trackTypingPause = function() {
+    const now = Date.now();
+    const gap = now - this.lastInputTime;
+
+    // 2초 이상 입력이 없으면 망설임 상태로 간주
+    if (gap > 2000 && !this.typingPaused) {
+        this.typingPaused = true;
+        this.statusText = "🤔 유저가 망설이는 중... (입력 간격 감지)";
+        this.render();
+    }
+
+    // 다시 입력이 시작되면 망설임 상태 해제
+    if (gap <= 2000) {
+        this.typingPaused = false;
+    }
+
+    this.lastInputTime = now;
+};
+
 HAEMA_CONSOLE.openCreateModal = function() {
     this.modalMode = "create";
     this.modalData = {
-        canonicalName: "",
+        jjumName: "",
         aliases: [],
         type: "인물",
         tags: [],
@@ -231,7 +287,7 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = function() {
-    const canonicalName = document.getElementById("modalCanonicalName")?.value.trim();
+    const jjumName = document.getElementById("modalJjumName")?.value.trim();
     const aliasesStr = document.getElementById("modalAliases")?.value.trim() || "";
     const type = document.getElementById("modalType")?.value || "인물";
     const tagsStr = document.getElementById("modalTags")?.value.trim() || "";
@@ -239,7 +295,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const factsStr = document.getElementById("modalFacts")?.value.trim() || "";
     const seonsStr = document.getElementById("modalSeons")?.value.trim() || "";
 
-    if (!canonicalName) {
+    if (!jjumName) {
         alert("점 이름을 입력해주세요!");
         return;
     }
@@ -254,7 +310,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const seons = seonsStr.split("\n").map(line => {
         const parts = line.split("|").map(p => p.trim());
         if (parts.length < 3) return null;
-        const target = this.allJjums.find(j => j.canonicalName === parts[0] || j.aliases.includes(parts[0]));
+        const target = this.allJjums.find(j => j.jjumName === parts[0] || j.aliases.includes(parts[0]));
         if (!target) return null;
         const weight = parseFloat(parts[2]);
         if (isNaN(weight) || weight < 0 || weight > 1) return null;
@@ -264,7 +320,7 @@ HAEMA_CONSOLE.saveModal = function() {
     if (this.modalMode === "create") {
         const newJjum = {
             jjumId: "jjum_" + Date.now(),
-            canonicalName: canonicalName,
+            jjumName: jjumName,
             aliases: aliases,
             type: type,
             tags: tags,
@@ -287,7 +343,7 @@ HAEMA_CONSOLE.saveModal = function() {
         if (idx !== -1) {
             this.allJjums[idx] = {
                 ...this.allJjums[idx],
-                canonicalName: canonicalName,
+                jjumName: jjumName,
                 aliases: aliases,
                 type: type,
                 tags: tags,
@@ -309,7 +365,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
     const scoredJjums = this.allJjums.map(jjum => {
         let score = 0;
         const lowerInput = inputText.toLowerCase();
-        const lowerName = jjum.canonicalName.toLowerCase();
+        const lowerName = jjum.jjumName.toLowerCase();
         const lowerAliases = (jjum.aliases || []).map(a => a.toLowerCase());
 
         if (lowerInput.includes(lowerName)) score += 0.5;
@@ -354,7 +410,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         input: inputText,
         timestamp: new Date().toISOString(),
         recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.canonicalName),
+        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName),
         hostPreview: this.generateHostPreview(inputText)
     };
     this.render();
@@ -447,7 +503,7 @@ HAEMA_CONSOLE.renderRecallSection = function() {
         return '<div class="rank-card ' + rankClass + '">' +
             '<div class="rank-badge">' + (idx + 1) + '</div>' +
             '<div class="rank-title">' + rankLabels[idx] + '</div>' +
-            '<div class="rank-name">' + this.escapeHtml(jjum.canonicalName) + '</div>' +
+            '<div class="rank-name">' + this.escapeHtml(jjum.jjumName) + '</div>' +
             '<div class="rank-stats">' +
             '<div class="stat-item"><span class="stat-value">' + jjum.simulationScore.toFixed(2) + '</span><span class="stat-label">스코어</span></div>' +
             '<div class="stat-item"><span class="stat-value">' + jjum.mentionCount + '</span><span class="stat-label">언급</span></div>' +
@@ -495,13 +551,13 @@ HAEMA_CONSOLE.renderModalContent = function() {
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
     const seonsStr = (data.seons || []).map(t => {
         const target = this.allJjums.find(j => j.jjumId === t.targetId);
-        const targetName = target ? target.canonicalName : '';
+        const targetName = target ? target.jjumName : '';
         return targetName + ' | ' + (t.label || '연결') + ' | ' + t.weight;
     }).join('\n');
     
     return '<div class="form-group">' +
-        '<label class="form-label" for="modalCanonicalName">점 이름 *</label>' +
-        '<input class="form-input" id="modalCanonicalName" type="text" value="' + this.escapeHtml(data.canonicalName || '') + '" placeholder="예: 홍길동">' +
+        '<label class="form-label" for="modalJjumName">점 이름 *</label>' +
+        '<input class="form-input" id="modalJjumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
         '<div class="form-hint">점의 대표 이름입니다. 어떤 이름으로 불러도 이 점을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
@@ -548,7 +604,7 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
         return '음... 그 이야기는 잘 기억나지 않네요. 좀 더 자세히 말해줄 수 있나요?';
     }
     
-    const names = topRecall.map(j => j.canonicalName);
+    const names = topRecall.map(j => j.jjumName);
     const primary = names[0];
     const secondary = names.length > 1 ? names[1] : null;
     
@@ -577,7 +633,7 @@ HAEMA_CONSOLE.confirmDelete = function(jjumId) {
     const jjum = this.allJjums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
     
-    if (confirm('정말 "' + jjum.canonicalName + '" 점을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+    if (confirm('정말 "' + jjum.jjumName + '" 점을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
         this.allJjums = this.allJjums.filter(j => j.jjumId !== jjumId);
         if (this.selectedJjumId === jjumId) {
             this.selectedJjumId = null;

@@ -49,7 +49,8 @@ export class AnthropicAdapter implements AIAdapter {
         ],
       });
 
-      const content = response.content[0]?.text;
+      const firstBlock = response.content[0];
+      const content = firstBlock instanceof Anthropic.TextBlock ? firstBlock.text : null;
       if (!content) {
         throw new Error('AI returned empty response');
       }
