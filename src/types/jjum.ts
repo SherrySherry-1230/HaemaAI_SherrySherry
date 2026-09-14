@@ -30,17 +30,17 @@ export type EditActor = 'user' | 'ai' | 'batch';
  * - `archived` : 상한 초과로 잠든 기억 (삭제 아님 — 재언급 시 부활)
  * - `merged`   : 다른 점에 흡수됨 (껍데기만 남김)
  */
-export type JjumStatus = 'active' | 'archived' | 'merged';
+export type JJumStatus = 'active' | 'archived' | 'merged';
 
 /** 사실 조각 — 어디서 온 기억인지 출처를 함께 보관 */
-export interface JjumFact {
+export interface JJumFact {
   text: string;
   addedAt: HaemaTimestamp;
   source: FactSource;
 }
 
 /** 시간축 사건 — 함께 등장한 점을 refJJumIds로 연결 */
-export interface JjumEvent {
+export interface JJumEvent {
   date: HaemaTimestamp;
   summary: string;
   refJJumIds: JJumId[];
@@ -60,7 +60,7 @@ export interface Seon {
 }
 
 /** 편집 이력 항목 */
-export interface JjumEditEntry {
+export interface JJumEditEntry {
   date: HaemaTimestamp;
   action: string;
   field?: string;
@@ -91,9 +91,9 @@ export interface JJum {
   /** 쩜 한 줄 요약 — "월 1~2회 만나는 친한 친구" (배치가 생성·갱신) */
   summary: string;
   /** 사실 조각들 */
-  facts: JjumFact[];
+  facts: JJumFact[];
   /** 시간축 사건 */
-  events: JjumEvent[];
+  events: JJumEvent[];
 
   // ═══ 연상 네트워크 (핵심) ═══
   seons: Seon[];
@@ -110,12 +110,12 @@ export interface JJum {
   // ═══ 관리 ═══
   /** 핀 = 자동 정리 영구 면제 ("절대 잊지 마") */
   pinned: boolean;
-  status: JjumStatus;
+  status: JJumStatus;
   /** 흡수한 구 쩜 ID들 — 오병합 분리 복원용 */
   mergedFrom: JJumId[];
   /** (status=merged일 때) 어디로 흡수됐는지 역참조 */
   mergedInto?: JJumId;
-  editHistory: JjumEditEntry[];
+  editHistory: JJumEditEntry[];
 
   // ═══ 확장 소켓 ═══
   /** 서비스별 자유 확장 — Haema는 내용을 해석하지 않는다 (도메인 무지) */

@@ -135,9 +135,9 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 ## 3단계 — 통합 (쩜 통합): 별칭 병합·복원
 
 **범위:**
-- `mergeCells(winnerId, loserId)`: events 병합 + mentionCount 합산 + aliases 추가 +
-  `mergedFrom`/`mergedInto` 기록, 패자 `status='merged'` 껍데기화 (putCells로 원자적 처리)
-- `unmergeCell(...)`: `mergedFrom` 이력 기반 분리 복원 (오병합 롤백)
+- `mergeJJums(winnerId, loserId)`: events 병합 + mentionCount 합산 + aliases 추가 +
+  `mergedFrom`/`mergedInto` 기록, 패자 `status='merged'` 껍데기화 (putJjums로 원자적 처리)
+- `unmergeJJum(...)`: `mergedFrom` 이력 기반 분리 복원 (오병합 롤백)
 - `findDuplicateCandidates(ownerId)`: 이름/별칭 겹침 후보 리포트
 - 병합 확신도는 **AI 어댑터(judgeMergeCandidate)가 점수화** — 자동 병합할지·되물을지의
   연출("잠깐, 핑크가 [박**]야?!")은 호스트 챗봇 몫
@@ -145,7 +145,7 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 **완료 기준:**
 - [ ] 병합 후 구 이름·별칭 어느 것으로도 단일 쩜 히트
 - [ ] 병합→복원 라운드트립 테스트: 원래 두 점으로 원상 복구
-- [ ] 병합 중 부분 실패 없음 (putCells 원자성)
+- [ ] 병합 중 부분 실패 없음 (putJjums 원자성)
 - [ ] **`docs/SCENARIOS.md` 시나리오 01의 통합 파트(핑크 ⇄ [박**] 병합 · 별칭 승계 · 기존 기억 승계)가 재현되는가** (테스트 정답지)
 
 **마이풉에서 테스트할 수 있는 것:**

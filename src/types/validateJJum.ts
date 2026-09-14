@@ -26,7 +26,7 @@ export interface ValidationResult {
   /** 하드 실패 사유 + 살리면서 고친 항목 리포트 */
   errors: string[];
   /** ok=true일 때 정규화된 점 */
-  cell?: JJum;
+  jjum?: JJum;
 }
 
 const STATUSES: JjumStatus[] = ['active', 'archived', 'merged'];
@@ -133,7 +133,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
     errors.push(`status 값 오류("${String(d.status)}") → active로 복구`);
   }
 
-  const cell: JJum = {
+  const jjum: JJum = {
     jjumId: (d.jjumId as string).trim(),
     jjumName: (d.jjumName as string).trim(),
     aliases: toStringArray(d.aliases),
@@ -161,5 +161,5 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
     schemaVersion: toNumber(d.schemaVersion, SCHEMA_VERSION),
   };
 
-  return { ok: true, errors, cell };
+  return { ok: true, errors, jjum };
 }
