@@ -12,12 +12,12 @@ import type {
   EditActor,
   FactSource,
   JJum,
-  HaemaTimestamp,
-  JjumEditEntry,
-  JjumEvent,
-  JjumFact,
+  JJumTimestamp,
+  JJumEditEntry,
+  JJumEvent,
+  JJumFact,
   Seon,
-  JjumStatus,
+  JJumStatus,
 } from './jjum.ts';
 import { SCHEMA_VERSION } from './jjum.ts';
 
@@ -29,7 +29,7 @@ export interface ValidationResult {
   jjum?: JJum;
 }
 
-const STATUSES: JjumStatus[] = ['active', 'archived', 'merged'];
+const STATUSES: JJumStatus[] = ['active', 'archived', 'merged'];
 const FACT_SOURCES: FactSource[] = ['conversation', 'user_edit', 'batch'];
 const EDIT_ACTORS: EditActor[] = ['user', 'ai', 'batch'];
 
@@ -48,7 +48,7 @@ function toStringArray(v: unknown): string[] {
   return v.filter(str);
 }
 
-export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): ValidationResult {
+export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): ValidationResult {
   const errors: string[] = [];
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     return { ok: false, errors: ['점이 JSON 객체가 아님'] };
@@ -62,7 +62,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
   }
   if (errors.length > 0) return { ok: false, errors };
 
-  const facts: JjumFact[] = [];
+  const facts: JJumFact[] = [];
   if (Array.isArray(d.facts)) {
     for (const f of d.facts) {
       if (typeof f === 'object' && f !== null && str((f as Record<string, unknown>).text)) {
@@ -78,7 +78,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
     }
   }
 
-  const events: JjumEvent[] = [];
+  const events: JJumEvent[] = [];
   if (Array.isArray(d.events)) {
     for (const e of d.events) {
       if (typeof e === 'object' && e !== null && str((e as Record<string, unknown>).summary)) {
@@ -111,7 +111,7 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
     }
   }
 
-  const editHistory: JjumEditEntry[] = [];
+  const editHistory: JJumEditEntry[] = [];
   if (Array.isArray(d.editHistory)) {
     for (const h of d.editHistory) {
       if (typeof h === 'object' && h !== null && str((h as Record<string, unknown>).action)) {
@@ -126,9 +126,9 @@ export function validateJJum(data: unknown, now: HaemaTimestamp = Date.now()): V
     }
   }
 
-  let status: JjumStatus = 'active';
-  if (STATUSES.includes(d.status as JjumStatus)) {
-    status = d.status as JjumStatus;
+  let status: JJumStatus = 'active';
+  if (STATUSES.includes(d.status as JJumStatus)) {
+    status = d.status as JJumStatus;
   } else if (d.status !== undefined) {
     errors.push(`status 값 오류("${String(d.status)}") → active로 복구`);
   }

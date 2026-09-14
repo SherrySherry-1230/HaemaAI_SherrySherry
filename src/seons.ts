@@ -7,24 +7,24 @@
  * - 회상 점수는 같은 상대로 가는 선 중 가장 굵은 것 기준 (2-a "강한 경로 우선"과 같은 원칙).
  */
 
-import type { JJumId, JJum, HaemaTimestamp, Seon } from './types/jjum.ts';
+import type { JJumId, JJum, JJumTimestamp, Seon } from './types/jjum.ts';
 
 const sameLabel = (a: string | undefined, b: string | undefined): boolean => (a ?? '') === (b ?? '');
 
 /** 같은 상대로 가는 선 전부 */
-export function seonsTo(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon[] {
-  return cell.seons.filter((t) => t.targetId === targetId);
+export function seonsTo(jjum: Pick<JJum, 'seons'>, targetId: JJumId): Seon[] {
+  return jjum.seons.filter((t) => t.targetId === targetId);
 }
 
 /** 같은 상대로 가는 선 중 가장 굵은 것 — 회상 점수의 기준 */
-export function strongestSeon(cell: Pick<JJum, 'seons'>, targetId: JJumId): Seon | undefined {
-  return seonsTo(cell, targetId).reduce<Seon | undefined>((best, t) => (!best || t.weight > best.weight ? t : best), undefined);
+export function strongestSeon(jjum: Pick<JJum, 'seons'>, targetId: JJumId): Seon | undefined {
+  return seonsTo(jjum, targetId).reduce<Seon | undefined>((best, t) => (!best || t.weight > best.weight ? t : best), undefined);
 }
 
 /** 상대별로 가장 굵은 선만 남긴 목록 — 확산 시 상대 하나당 한 번만 따라간다 */
-export function strongestSeons(cell: Pick<JJum, 'seons'>): Seon[] {
+export function strongestSeons(jjum: Pick<JJum, 'seons'>): Seon[] {
   const best = new Map<JJumId, Seon>();
-  for (const t of cell.seons) {
+  for (const t of jjum.seons) {
     const prev = best.get(t.targetId);
     if (!prev || t.weight > prev.weight) best.set(t.targetId, t);
   }
@@ -36,19 +36,19 @@ export function strongestSeons(cell: Pick<JJum, 'seons'>): Seon[] {
  * 점을 제자리에서 고치고 해당 선을 돌려준다 (저장은 호출자가).
  */
 export function upsertSeon(
-  cell: JJum,
+  jjum: JJum,
   targetId: JJumId,
   weight: number,
   label: string | undefined,
-  now: HaemaTimestamp,
+  now: JJumTimestamp,
 ): Seon {
-  const existing = cell.seons.find((t) => t.targetId === targetId && sameLabel(t.label, label));
+  const existing = jjum.seons.find((t) => t.targetId === targetId && sameLabel(t.label, label));
   if (existing) {
     existing.weight += weight;
     existing.lastActivated = now;
     return existing;
   }
   const seon: Seon = { targetId, weight, ...(label ? { label } : {}), lastActivated: now };
-  cell.seons.push(seon);
+  jjum.seons.push(seon);
   return seon;
 }

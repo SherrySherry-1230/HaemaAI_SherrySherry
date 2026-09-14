@@ -9,7 +9,7 @@
  * - 상처(부정인 사건·인물 등)는 기존대로 먼저 꺼내지 않는다.
  */
 
-import type { JJum, HaemaTimestamp } from './types/jjum.ts';
+import type { JJum, JJumTimestamp } from './types/jjum.ts';
 
 export const CONCERN_TYPE = '고민';
 export const TAG_UNRESOLVED = '미해결';
@@ -32,7 +32,7 @@ export function isUnresolvedConcern(cell: Pick<JJum, 'type' | 'tags'>): boolean 
  * 고민을 해결 상태로 바꾼다 — 미해결 태그를 떼고 해결 태그를 달며, 해결 시점을 사건으로 남긴다.
  * 세포를 제자리에서 고치고 같은 객체를 돌려준다 (저장은 호출자가).
  */
-export function resolveConcern(cell: JJum, now: HaemaTimestamp, note?: string): JJum {
+export function resolveConcern(cell: JJum, now: JJumTimestamp, note?: string): JJum {
   cell.tags = cell.tags.filter((t) => norm(t) !== TAG_UNRESOLVED);
   if (!cell.tags.some((t) => norm(t) === TAG_RESOLVED)) cell.tags.push(TAG_RESOLVED);
   cell.events.push({ date: now, summary: note ? `해결: ${note}` : '해결됨', refJJumIds: [] });

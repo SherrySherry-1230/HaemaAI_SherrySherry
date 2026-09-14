@@ -13,22 +13,22 @@
  *   상호 변환은 어댑터 내부에서 처리한다.
  */
 
-import type { JJum, JJumId, JjumStatus } from '../types/jjum.ts';
+import type { JJum, JJumId, JJumStatus } from '../types/jjum.ts';
 
 /** 목록 조회 정렬 키 — 스키마 v3의 통계 필드 */
-export type JjumSortKey = 'mentionCount' | 'lastMentioned' | 'firstSeen' | 'recallCount';
+export type JJumSortKey = 'mentionCount' | 'lastMentioned' | 'firstSeen' | 'recallCount';
 
 /** 목록 조회 조건 (선별·정리·관리 화면의 공통 재료) */
-export interface JjumQuery {
+export interface JJumQuery {
   /** 미지정 시 전체. 배열이면 OR 매칭 */
-  status?: JjumStatus | JjumStatus[];
+  status?: JJumStatus | JJumStatus[];
   /** type 필드 완전 일치 (값 해석 없음 — 단순 문자열 비교) */
   type?: string;
   /** tags 배열에 포함 여부 */
   tag?: string;
   /** pinned 여부 필터 */
   pinned?: boolean;
-  sortBy?: JjumSortKey;
+  sortBy?: JJumSortKey;
   direction?: 'asc' | 'desc';
   limit?: number;
 }
@@ -49,7 +49,7 @@ export interface StorageAdapter {
    * 통합(merge)처럼 쩜 여러 개가 함께 바뀌는 작업의 원자성 확보용 —
    * 어댑터는 가능한 범위에서 원자적으로 처리한다 (Firestore batch 등).
    */
-  putJjums(ownerId: string, jjums: JJum[]): Promise<void>;
+  putJJums(ownerId: string, jjums: JJum[]): Promise<void>;
 
   /** 부분 갱신 (얕은 병합). 존재하지 않는 점이면 에러 */
   patchJJum(ownerId: string, jjumId: JJumId, partial: Partial<JJum>): Promise<void>;
@@ -62,7 +62,7 @@ export interface StorageAdapter {
   deleteJJum(ownerId: string, jjumId: JJumId): Promise<void>;
 
   /** 조건 목록 조회 */
-  listJJums(ownerId: string, query?: JjumQuery): Promise<JJum[]>;
+  listJJums(ownerId: string, query?: JJumQuery): Promise<JJum[]>;
 
   /**
    * 이름 조회 — jjumName 또는 aliases 중 어느 것에 히트해도 반환.
@@ -71,5 +71,5 @@ export interface StorageAdapter {
   findByName(ownerId: string, name: string): Promise<JJum[]>;
 
   /** ownerId의 활성(active) 쩜 수 — 상한·자동 정리 판단 재료 */
-  countJJums(ownerId: string, status?: JjumStatus): Promise<number>;
+  countJJums(ownerId: string, status?: JJumStatus): Promise<number>;
 }
