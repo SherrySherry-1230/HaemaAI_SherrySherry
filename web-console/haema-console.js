@@ -9,6 +9,12 @@ HAEMA_CONSOLE = {
     modalMode: null,
     modalData: null,
     throttleTimer: null,  // 실시간 타이핑 쓰로틀 타이머 (0.5초 간격)
+    backgroundStreamTimer: null,  // 백그라운드 스트리밍 타이머
+    lastInputValue: '',
+    typingStartTime: 0,
+    lastKeystrokeTime: 0,
+    hesitationDetected: false,
+    emotionContext: null,  // 감지된 감정 컨텍스트
     
     // 쩜 데이터는 외부에서 주입하거나 모달로 추가한다.
     // 초기 샘플 데이터는 넣지 않는다.
@@ -74,7 +80,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
                 const target = this.allJJums.find(j => j.jjumId === t.targetId);
-                const targetName = target ? target.canonicalName : "알 수 없음";
+                const targetName = target ? target.jjumName : "알 수 없음";
                 const weightPercent = (t.weight * 100).toFixed(0);
                 return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
             }).join("");
@@ -90,7 +96,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         const tagsHtml = jjum.tags.map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
         return "<div class=\"jjum-item " + (isExpanded ? "expanded" : "") + "\" data-jjum-id=\"" + jjum.jjumId + "\">" +
             "<div class=\"jjum-header\" onclick=\"HAEMA_CONSOLE.toggleJjum(\"" + jjum.jjumId + "\");\">" +
-                "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.canonicalName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
+                "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.jjumName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
                 "<span class=\"expand-icon\">▼</span>" +
             "</div>" +
             "<div class=\"jjum-details\"><div class=\"jjum-details-content\">" +
@@ -241,41 +247,97 @@ HAEMA_CONSOLE.handleClear = function() {
 // ===== 실시간 타이핑 쓰로틀 (Throttle 500ms) =====
 // 타이핑 중에도 0.5초마다 백엔드 MCTS 시뮬레이션을 계속 호출하여
 // 최적의 쩜(JJum) TOP 1~3을 실시간으로 갱신
+// 해마 실시간 인지 쓰로틀: 논블로킹 백그라운드 스트리밍 + 실시간 쩜 생성 + 감정선 감지
 HAEMA_CONSOLE.handleInput = function(inputValue) {
-    // 쓰로틀 체크: 이미 0.5초 이내에 호출되었으면 무시
-    if (this.throttleTimer) {
-        return;
-    }
-    
     // 빈 입력값은 무시
     if (!inputValue || !inputValue.trim()) {
         this.recallResults = [];
         this.answerGuide = null;
         this.status = "resting";
         this.statusText = "해마 쉬는 중...";
+        this.emotionContext = null;
+        this.stopBackgroundStream();
         this.render();
         return;
     }
     
-    // 상태 업데이트: MCTS 시뮬레이션 중
-    this.status = "working";
-    this.statusText = "🧠 MCTS 시뮬레이션 중... (0.5초마다 실시간 갱신)";
-    this.render();
+    // 타이핑 시작 시간 기록
+    if (!this.typingStartTime) {
+        this.typingStartTime = Date.now();
+    }
+    this.lastKeystrokeTime = Date.now();
+    this.lastInputValue = inputValue;
     
-    // 백엔드 MCTS 시뮬레이션 API 호출 (현재 로컬 시뮬레이션)
-    this.simulateRecall(inputValue);
+    // 상태 업데이트: 백그라운드 스트리밍 중
+    if (this.status !== "working") {
+        this.status = "working";
+        this.statusText = "🧠 해마 실시간 인지 중... (타이핑 호흡에 맞춰 배경 작업)";
+        this.render();
+    }
     
-    // 0.5초(500ms) 동안 쓰로틀 잠금
-    this.throttleTimer = true;
-    setTimeout(() => {
+    // 1. 논블로킹 백그라운드 스트리밍: 0.5초 간격으로 스냅샷 전달
+    this.startBackgroundStream(inputValue);
+    
+    // 2. 실시간 키워드 감지 및 쩜 자동 생성 (입력 도중 키워드 포착)
+    this.detectAndCreateKeywords(inputValue);
+    
+    // 3. 망설임 및 감정선 감지 (입력 호흡 변화 캐치)
+    this.detectHesitationAndEmotion(inputValue);
+    
+    // 4. 연쇄적 쩜선 확장 (문장 완성 시 파생 정보 연결)
+    this.extendSeonsFromContext(inputValue);
+    
+    // 5. 다정한 대화 가이드 제공 (감정/맥락 기반 호스트 챗봇 가이드)
+    this.generateCompassionateGuide(inputValue);
+    
+    // 쓰로틀 타이머 설정 (0.5초)
+    if (this.throttleTimer) {
+        clearTimeout(this.throttleTimer);
+    }
+    this.throttleTimer = setTimeout(() => {
         this.throttleTimer = null;
     }, 500);
+};
+
+// ===== 백그라운드 스트리밍 (논블로킹 0.5초 간격 스냅샷) =====
+HAEMA_CONSOLE.startBackgroundStream = function(inputValue) {
+    // 이미 타이머가 실행 중이면 무시
+    if (this.backgroundStreamTimer) {
+        return;
+    }
+    
+    // 백그라운드 작업: 현재 입력값으로 회상 시뮬레이션 (논블로킹)
+    const streamSnapshot = () => {
+        if (!inputValue || !inputValue.trim()) {
+            this.stopBackgroundStream();
+            return;
+        }
+        
+        // 가벼운 회상 시뮬레이션 (메인 스레드 블로킹 방지)
+        setTimeout(() => {
+            this.simulateRecall(inputValue);
+        }, 0);
+    };
+    
+    // 즉시 첫 스냅샷
+    streamSnapshot();
+    
+    // 0.5초 간격으로 백그라운드 스트리밍
+    this.backgroundStreamTimer = setInterval(streamSnapshot, 500);
+};
+
+// ===== 백그라운드 스트리밍 중지 =====
+HAEMA_CONSOLE.stopBackgroundStream = function() {
+    if (this.backgroundStreamTimer) {
+        clearInterval(this.backgroundStreamTimer);
+        this.backgroundStreamTimer = null;
+    }
 };
 
 HAEMA_CONSOLE.openCreateModal = function() {
     this.modalMode = "create";
     this.modalData = {
-        canonicalName: "",
+        jjumName: "",
         aliases: [],
         type: "인물",
         tags: [],
@@ -772,9 +834,153 @@ HAEMA_CONSOLE.loadLocalServerData = function() {
         });
 };
 
-// DOM 로드 후 초기화
-if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => HAEMA_CONSOLE.init());
-} else {
-    HAEMA_CONSOLE.init();
-}
+// ===== 연쇄적 쩜선 확장 =====
+// 문장이 완성됨에 따라 파생 정보(예: 뇸뇸이_건강상태.jj)를 추가 점으로 연결하고
+// 쩜선으로 엮어 입체적인 기억 구조를 구축
+HAEMA_CONSOLE.extendSeonsFromContext = function(inputValue) {
+    if (!inputValue || !inputValue.trim()) return;
+    
+    const mentionedJjums = this.findMentionedJjums(inputValue);
+    
+    if (mentionedJjums.length >= 2) {
+        const sourceJjum = mentionedJjums[0];
+        for (let i = 1; i < mentionedJjums.length; i++) {
+            const targetJjum = mentionedJjums[i];
+            this.createSeonConnection(sourceJjum, targetJjum, inputValue);
+        }
+    }
+    
+    this.createDerivativeJjums(inputValue, mentionedJjums);
+};
+
+HAEMA_CONSOLE.findMentionedJjums = function(inputValue) {
+    const lowerInput = inputValue.toLowerCase();
+    const mentioned = [];
+    
+    this.allJJums.forEach(jjum => {
+        const name = (jjum.jjumName || jjum.canonicalName || '').toLowerCase();
+        const aliases = (jjum.aliases || []).map(a => a.toLowerCase());
+        
+        if (lowerInput.includes(name) || aliases.some(a => lowerInput.includes(a))) {
+            mentioned.push(jjum);
+        }
+    });
+    
+    return mentioned;
+};
+
+HAEMA_CONSOLE.createSeonConnection = function(sourceJjum, targetJjum, context) {
+    const existingSeon = sourceJjum.seons?.find(s => s.targetId === targetJjum.jjumId);
+    if (existingSeon) {
+        existingSeon.weight = Math.min(1, (existingSeon.weight || 0.5) + 0.1);
+        existingSeon.lastActivated = new Date().toISOString();
+        return;
+    }
+    
+    if (!sourceJjum.seons) {
+        sourceJjum.seons = [];
+    }
+    sourceJjum.seons.push({
+        targetId: targetJjum.jjumId,
+        weight: 0.5,
+        label: this.inferSeonLabel(sourceJjum, targetJjum, context),
+        lastActivated: new Date().toISOString(),
+    });
+    
+    this.statusText = `🔗 쩜선 연결: ${sourceJjum.jjumName || sourceJjum.canonicalName} ↔ ${targetJjum.jjumName || targetJjum.canonicalName}`;
+    this.render();
+};
+
+HAEMA_CONSOLE.inferSeonLabel = function(sourceJjum, targetJjum, context) {
+    const lowerContext = context.toLowerCase();
+    if (lowerContext.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태')) return '건강상태';
+    if (lowerContext.includes('키우') || lowerContext.includes('내') || lowerContext.includes('나의')) return '소유/관계';
+    return '연결';
+};
+
+HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
+    const lowerInput = inputValue.toLowerCase();
+    
+    if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
+        mentionedJjums.forEach(jjum => {
+            const baseName = jjum.jjumName || jjum.canonicalName || '';
+            const derivativeName = `${baseName}_건강상태`;
+            
+            const existing = this.allJJums.find(j => 
+                j.jjumName === derivativeName || 
+                j.canonicalName === derivativeName
+            );
+            
+            if (!existing) {
+                this.createKeywordJjum(derivativeName, `${baseName}의 건강 상태 관련 정보`);
+                
+                if (!jjum.seons) {
+                    jjum.seons = [];
+                }
+                const existingSeon = jjum.seons.find(s => s.label === '건강상태');
+                if (!existingSeon) {
+                    jjum.seons.push({
+                        targetId: derivativeName,
+                        weight: 0.7,
+                        label: '건강상태',
+                        lastActivated: new Date().toISOString(),
+                    });
+                }
+            }
+        });
+    }
+};
+
+// ===== 다정한 대화 가이드 제공 =====
+// 해마가 분석한 실시간 감정과 기억 맥락을 바탕으로,
+// 호스트 챗봇이 건넬 수 있는 최적의 위로와 다정한 대화 가이드를 도출
+HAEMA_CONSOLE.generateCompassionateGuide = function(inputValue) {
+    if (!inputValue || !inputValue.trim()) {
+        this.answerGuide = null;
+        return;
+    }
+    
+    const guide = {
+        input: inputValue,
+        timestamp: new Date().toISOString(),
+        recallCount: this.recallResults.length,
+        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName || j.canonicalName),
+        emotionContext: this.emotionContext,
+        hostPreview: this.generateHostPreview(inputValue),
+    };
+    
+    this.answerGuide = guide;
+};
+
+HAEMA_CONSOLE.generateHostPreview = function(inputText) {
+    const lowerInput = inputText.toLowerCase();
+    const guideParts = [];
+    
+    if (lowerInput.includes('걱정') || lowerInput.includes('불안') || lowerInput.includes('무서')) {
+        guideParts.push('💛 걱정되는 마음이 느껴져요. 천천히 이야기해 주세요.');
+    }
+    if (lowerInput.includes('병원') || lowerInput.includes('진료') || lowerInput.includes('건강')) {
+        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
+            guideParts.push('🐱 반려동물 건강 걱정이시군요. 병원 다녀오신 후 어떠셨나요?');
+            guideParts.push('💡 너무 가슴 아파할 수 있으니, 일단 위로나 건네보는 건 어떨까요?');
+        } else {
+            guideParts.push('🏥 병원/건강 관련 이야기시군요. 어떤 점이 가장 걱정되시나요?');
+        }
+    }
+    if (lowerInput.includes('슬픔') || lowerInput.includes('힘들') || lowerInput.includes('괴롭')) {
+        guideParts.push('💚 힘든 마음이 느껴져요. 제가 여기 있어요.');
+    }
+    if (lowerInput.includes('놀람') || lowerInput.includes('깜짝') || lowerInput.includes('갑자기')) {
+        guideParts.push('✨ 갑작스러운 일이 있었군요. 놀라고 당황스러우셨겠어요.');
+    }
+    
+    if (guideParts.length === 0) {
+        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
+            guideParts.push('🐾 반려동물 이야기시군요! 어떤 아이인가요?');
+        } else {
+            guideParts.push('💛 말씀해 주신 내용 잘 들었어요. 더 나누고 싶은 이야기가 있으신가요?');
+        }
+    }
+    
+    return guideParts.join(' ');
+};
