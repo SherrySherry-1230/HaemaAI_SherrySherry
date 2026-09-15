@@ -779,7 +779,40 @@
             .main-container { grid-template-columns: 1fr; }
             .top3-cards { grid-template-columns: 1fr; }
         }
-    </style>
+    
+        /* ===== 실시간 JJum 스트리밍 애니메이션 ===== */
+        .jjum-item.streaming {
+            animation: jjumStreamIn 0.6s ease-out;
+            border-color: var(--brand-pink);
+            box-shadow: 0 0 0 2px var(--brand-pink);
+        }
+
+        @keyframes jjumStreamIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.95) translateY(-10px);
+                background: var(--brand-pink);
+            }
+            50% {
+                transform: scale(1.02) translateY(0);
+                background: rgba(255, 107, 107, 0.1);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+                background: transparent;
+            }
+        }
+
+        .jjum-item.streaming .jjum-header {
+            color: var(--brand-pink);
+        }
+
+        .jjum-item.streaming .expand-icon {
+            color: var(--brand-pink);
+        }
+
+</style>
 </head>
 <body>
     <div id="app"></div>
