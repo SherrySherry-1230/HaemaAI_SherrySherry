@@ -42,7 +42,7 @@ HAEMA_CONSOLE.renderHeader = function() {
     const emojis = this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" : "💛💚💛";
     return "<header class=\"header " + statusClass + "\">" +
         "<div class=\"header-left\">" +
-            "<div class=\"logo-icon\"><img src=\"h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
+            "<div class=\"logo-icon\"><img src=\"/resources/h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
             "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
         "</div>" +
         "<div class=\"header-right\">" +
