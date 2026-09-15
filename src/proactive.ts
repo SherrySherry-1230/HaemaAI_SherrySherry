@@ -16,10 +16,10 @@
  */
 
 import type { JJumEvent, JJumId, JJum, JJumTimestamp } from './types/jjum.ts';
-import type { StorageAdapter } from './adapters/storageAdapter.ts';
+import type { StorageAdapter } from './adapters/storageAdapter';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { CAREFUL_INSTRUCTION, isUnresolvedConcern } from './concern.ts';
-import type { GuideMode } from './guideModes.ts';
+import type { GuideMode } from './guideModes';
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -28,15 +28,15 @@ export const num = (v: number | undefined, d: number): number =>
   typeof v === 'number' && Number.isFinite(v) ? v : d;
 
 /** 창 안에서 가장 이른 다가오는 사건 — 회상 이야깃거리와 먼저 말 걸 거리가 같은 판정을 쓴다 */
-export function earliestUpcomingEvent(cell: JJum, now: JJumTimestamp, withinDays: number): JJumEvent | undefined {
-  return cell.events
+export function earliestUpcomingEvent(jjum: JJum, now: JJumTimestamp, withinDays: number): JJumEvent | undefined {
+  return jjum.events
     .filter((e) => e.date > now && e.date <= now + withinDays * DAY)
     .sort((a, b) => a.date - b.date)[0];
 }
 
 /** 열린 고민 선별 — 순수 함수 (뷰와 먼저 말 걸 거리가 같은 기준을 쓴다). 최근순 */
-export function selectOpenConcerns(cells: JJum[]): JJum[] {
-  return cells
+export function selectOpenConcerns(jjums: JJum[]): JJum[] {
+  return jjums
     .filter((c) => c.status === 'active' && isUnresolvedConcern(c))
     .sort((a, b) => b.lastMentioned - a.lastMentioned || b.mentionCount - a.mentionCount);
 }
@@ -49,7 +49,7 @@ export async function getOpenConcerns(adapter: StorageAdapter, ownerId: string):
 export type ProactiveKind = 'followup' | 'upcoming' | 'stale-positive' | 'pattern';
 
 export interface ProactiveCue {
-  cell: JJum;
+  jjum: JJum;
   kind: ProactiveKind;
   /** 0~1 */
   score: number;
@@ -86,52 +86,52 @@ export async function getProactiveCues(
   const active = await adapter.listJJums(ownerId, { status: 'active' });
   const best = new Map<JJumId, ProactiveCue>();
   const offer = (cue: ProactiveCue) => {
-    const prev = best.get(cue.cell.jjumId);
-    if (!prev || cue.score > prev.score) best.set(cue.cell.jjumId, cue);
+    const prev = best.get(cue.jjum.jjumId);
+    if (!prev || cue.score > prev.score) best.set(cue.jjum.jjumId, cue);
   };
 
-  for (const cell of active) {
-    if (!canBringUpFirst(cell)) continue; // 부정 점은 먼저 꺼내지 않는다 (미해결 고민은 아래 뷰로 따로)
+  for (const jjum of active) {
+    if (!canBringUpFirst(jjum)) continue; // 부정 점은 먼저 꺼내지 않는다 (미해결 고민은 아래 뷰로 따로)
 
     // 다가오는 것
-    const upcoming = earliestUpcomingEvent(cell, now, upcomingDays);
+    const upcoming = earliestUpcomingEvent(jjum, now, upcomingDays);
     if (upcoming) {
       const days = Math.max(1, Math.ceil((upcoming.date - now) / DAY));
-      offer({ cell, kind: 'upcoming', score: Math.min(1, 0.95 - days * 0.02), reason: `${days}일 뒤 예정: ${upcoming.summary}`, careful: false });
+      offer({ jjum, kind: 'upcoming', score: Math.min(1, 0.95 - days * 0.02), reason: `${days}일 뒤 예정: ${upcoming.summary}`, careful: false });
     }
 
     // 팔로업 — 답이 비어 있는 쩜
-    if (!cell.summary || cell.facts.length === 0) {
-      offer({ cell, kind: 'followup', score: 0.5, reason: `답이 비어 있음 (${!cell.summary ? 'summary' : 'facts'}) — 물어볼 거리`, careful: false });
+    if (!jjum.summary || jjum.facts.length === 0) {
+      offer({ jjum, kind: 'followup', score: 0.5, reason: `답이 비어 있음 (${!jjum.summary ? 'summary' : 'facts'}) — 물어볼 거리`, careful: false });
     }
 
     // 오래된 긍정 쩜
-    const silentDays = Math.floor((now - cell.lastMentioned) / DAY);
-    if (valenceOf(cell) === 'positive' && silentDays >= staleDays) {
-      offer({ cell, kind: 'stale-positive', score: Math.min(0.8, 0.3 + silentDays / 90), reason: `좋은 기억인데 ${silentDays}일째 언급 없음`, careful: false });
+    const silentDays = Math.floor((now - jjum.lastMentioned) / DAY);
+    if (valenceOf(jjum) === 'positive' && silentDays >= staleDays) {
+      offer({ jjum, kind: 'stale-positive', score: Math.min(0.8, 0.3 + silentDays / 90), reason: `좋은 기억인데 ${silentDays}일째 언급 없음`, careful: false });
     }
 
     // 패턴 — 반복 주기 도래
-    const dates = cell.events.map((e) => e.date).filter((d) => d <= now).sort((a, b) => a - b);
+    const dates = jjum.events.map((e) => e.date).filter((d) => d <= now).sort((a, b) => a - b);
     if (dates.length >= minEvents) {
       const gaps = dates.slice(1).map((d, i) => d - dates[i]);
       const avg = gaps.reduce((s, g) => s + g, 0) / gaps.length;
       const sinceLast = now - dates[dates.length - 1];
       if (avg > 0 && sinceLast >= avg) {
-        offer({ cell, kind: 'pattern', score: 0.7, reason: `평균 ${Math.round(avg / DAY)}일 주기인데 ${Math.floor(sinceLast / DAY)}일 지남 — 주기 도래`, careful: false });
+        offer({ jjum, kind: 'pattern', score: 0.7, reason: `평균 ${Math.round(avg / DAY)}일 주기인데 ${Math.floor(sinceLast / DAY)}일 지남 — 주기 도래`, careful: false });
       }
     }
   }
 
   // 열린 고민 뷰 — 부정이어도 careful 표시로 팔로업 허용 (상처는 여기 오지 않는다)
-  for (const cell of selectOpenConcerns(active)) {
+  for (const jjum of selectOpenConcerns(active)) {
     offer({
-      cell, kind: 'followup', score: 0.45, careful: true, guideMode: '조심 안부', instruction: CAREFUL_INSTRUCTION,
+      jjum, kind: 'followup', score: 0.45, careful: true, guideMode: '조심 안부', instruction: CAREFUL_INSTRUCTION,
       reason: '아직 답이 없는 고민 — 내용은 먼저 말하지 말고 "고민 있어?" 수준으로만',
     });
   }
 
-  return [...best.values()].sort((a, b) => b.score - a.score || b.cell.mentionCount - a.cell.mentionCount).slice(0, limit);
+  return [...best.values()].sort((a, b) => b.score - a.score || b.jjum.mentionCount - a.jjum.mentionCount).slice(0, limit);
 }
 
 export interface MoodSignals {
@@ -154,11 +154,11 @@ export interface MoodSignals {
 }
 
 /** 쩜 안의 시각 기록 전부 — 창별 활동 집계의 재료 (now 이후는 제외) */
-function activityTimes(cell: JJum, now: JJumTimestamp): number[] {
-  const times = new Set<number>([cell.firstSeen, cell.lastMentioned]);
-  for (const f of cell.facts) times.add(f.addedAt);
-  for (const e of cell.events) times.add(e.date);
-  for (const h of cell.editHistory) times.add(h.date);
+function activityTimes(jjum: JJum, now: JJumTimestamp): number[] {
+  const times = new Set<number>([jjum.firstSeen, jjum.lastMentioned]);
+  for (const f of jjum.facts) times.add(f.addedAt);
+  for (const e of jjum.events) times.add(e.date);
+  for (const h of jjum.editHistory) times.add(h.date);
   return [...times].filter((t) => Number.isFinite(t) && t <= now);
 }
 
@@ -184,15 +184,15 @@ export async function getRecentMoodSignals(
   let touchedPrevious = 0;
   let activity = 0;
   let activityPrevious = 0;
-  for (const cell of active) {
-    const times = activityTimes(cell, now);
+  for (const jjum of active) {
+    const times = activityTimes(jjum, now);
     const cur = times.filter((t) => t > from).length;
     const prev = times.filter((t) => t > prevFrom && t <= from).length;
     activity += cur;
     activityPrevious += prev;
     if (cur > 0) {
       touched++;
-      valence[valenceOf(cell)]++;
+      valence[valenceOf(jjum)]++;
     }
     if (prev > 0) touchedPrevious++;
   }
