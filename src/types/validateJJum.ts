@@ -159,6 +159,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     ownerId: (d.ownerId as string).trim(),
     sourceService: str(d.sourceService) && d.sourceService.trim() !== '' ? d.sourceService : 'unknown',
     schemaVersion: toNumber(d.schemaVersion, SCHEMA_VERSION),
+    weight: toNumber(d.weight, 1),
   };
 
   return { ok: true, errors, jjum };
