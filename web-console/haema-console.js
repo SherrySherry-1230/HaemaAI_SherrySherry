@@ -4,7 +4,7 @@ HAEMA_CONSOLE = {
     statusText: '해마 쉬는 중...',
     recallResults: [],
     answerGuide: null,
-    allJjums: [],
+    allJJums: [],
     selectedJjumId: null,
     modalMode: null,
     modalData: null,
@@ -18,7 +18,22 @@ HAEMA_CONSOLE = {
 // ===== 렌더링 함수 =====
 HAEMA_CONSOLE.render = function() {
     const app = document.getElementById("app");
+    // 입력창의 현재 값 보존 (렌더링 시 입력값 초기화 방지)
+    const userInput = document.getElementById("userInput");
+    const preservedValue = userInput ? userInput.value : "";
+    const preservedFocus = userInput ? document.activeElement === userInput : false;
+    
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
+    
+    // 입력창 값 복원
+    const restoredInput = document.getElementById("userInput");
+    if (restoredInput && preservedValue !== undefined) {
+        restoredInput.value = preservedValue;
+        if (preservedFocus) {
+            restoredInput.focus();
+        }
+    }
+    
     this.attachEventListeners();
 };
 
@@ -29,6 +44,9 @@ HAEMA_CONSOLE.renderHeader = function() {
         "<div class=\"header-left\">" +
             "<div class=\"logo-icon\"><img src=\"h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
             "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
+        "</div>" +
+        "<div class=\"header-right\">" +
+            "<button class=\"btn btn-icon\" id=\"apiKeyBtn\" title=\"API 키 설정\">🔑</button>" +
         "</div>" +
         "<div class=\"status-bar\"><span class=\"status-emojis\">" + emojis + "</span><span class=\"status-text\">" + this.statusText + "</span></div>" +
     "</header>";
@@ -46,7 +64,7 @@ HAEMA_CONSOLE.renderRightPanel = function() {
 };
 
 HAEMA_CONSOLE.renderJjumListSection = function() {
-    const sortedJjums = this.allJjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
+    const sortedJjums = this.allJJums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
     if (sortedJjums.length === 0) {
         return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
     }
@@ -55,7 +73,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         let seonsHtml = "";
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
-                const target = this.allJjums.find(j => j.jjumId === t.targetId);
+                const target = this.allJJums.find(j => j.jjumId === t.targetId);
                 const targetName = target ? target.canonicalName : "알 수 없음";
                 const weightPercent = (t.weight * 100).toFixed(0);
                 return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
@@ -108,6 +126,8 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (sendBtn) sendBtn.addEventListener("click", () => this.handleSend());
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
+    const apiKeyBtn = document.getElementById("apiKeyBtn");
+    if (apiKeyBtn) apiKeyBtn.addEventListener("click", () => this.openApiKeyModal());
     if (modalOverlay) modalOverlay.addEventListener("click", (e) => {
         if (e.target === modalOverlay) this.closeModal();
     });
@@ -136,9 +156,75 @@ HAEMA_CONSOLE.handleSend = function() {
     this.statusText = "🔍 해마 자극 분석 중...";
     this.render();
 
+    // 1. 회상 시뮬레이션 (기존 기능)
     setTimeout(() => {
         this.simulateRecall(text);
     }, 500);
+
+    // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 점 후보 감지)
+    // 간단히 첫 문장/구절을 JJum 이름으로 사용하여 생성
+    setTimeout(() => {
+        this.createJjumFromInput(text);
+    }, 800);
+};
+
+// ===== 입력 텍스트에서 새 JJum 생성 =====
+// 사용자가 입력한 텍스트에서 새로운 점(JJum) 후보를 생성하여 로컬 서버에 저장
+HAEMA_CONSOLE.createJjumFromInput = function(text) {
+    // 간단한 heuristics: 입력 텍스트에서 첫 번째 명사구/이름 추출
+    // 예: "오늘 내가 키우던 고양이 뇸뇸이가" → "뇸뇸이"
+    // 예: "성수 카페 갔었는데" → "성수 카페"
+
+    // 공백/조사 기준으로 첫 의미 있는 구절 추출
+    const words = text.split(/\s+/);
+    let candidateName = '';
+
+    // 2~4단어 범위에서 후보 추출 (너무 짧거나 길면 제외)
+    if (words.length >= 2 && words.length <= 6) {
+        // 마지막 1~2단어를 후보로 (이름/장소일 가능성 높음)
+        const lastWords = words.slice(-2).join(' ');
+        // 조사가 붙어있으면 제거
+        candidateName = lastWords.replace(/(이|가|은|는|을|를|에|에서|하고|와|과)$/, '').trim();
+    } else if (words.length === 1) {
+        candidateName = words[0];
+    }
+
+    // 후보가 유효하면 JJum 생성
+    if (candidateName && candidateName.length >= 1 && candidateName.length <= 30) {
+        // 기존 JJum과 중복 체크
+        const existing = this.allJJums.find(j =>
+            j.jjumName === candidateName ||
+            j.aliases?.some(a => a === candidateName)
+        );
+
+        if (!existing) {
+            // 새 JJum 생성 API 호출
+            fetch('/api/owners/demo/jjums', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jjumName: candidateName,
+                    aliases: [candidateName],
+                    type: '인물',
+                    tags: [],
+                    summary: text.slice(0, 100),
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.jjum) {
+                    this.allJJums.push(data.jjum);
+                    this.render();
+                    console.log('새 JJum 생성 완료:', data.jjum.jjumName);
+                    this.statusText = `✅ 새 점 생성: ${data.jjum.jjumName}`;
+                    this.render();
+                }
+            })
+            .catch(err => {
+                console.error('JJum 생성 실패:', err);
+            });
+        }
+    }
 };
 
 HAEMA_CONSOLE.handleClear = function() {
@@ -205,8 +291,22 @@ HAEMA_CONSOLE.openCreateModal = function() {
     }
 };
 
+HAEMA_CONSOLE.openApiKeyModal = function() {
+    this.modalMode = "apiKey";
+    const savedKey = localStorage.getItem("haema_api_key") || "";
+    this.modalData = {
+        apiKey: savedKey,
+    };
+    this.render();
+    const overlay = document.getElementById("modalOverlay");
+    if (overlay) {
+        overlay.classList.add("active");
+        overlay.style.display = "flex";
+    }
+};
+
 HAEMA_CONSOLE.openEditModal = function(jjumId) {
-    const jjum = this.allJjums.find(j => j.jjumId === jjumId);
+    const jjum = this.allJJums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
     this.modalMode = "edit";
     this.modalData = JSON.parse(JSON.stringify(jjum));
@@ -231,6 +331,11 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = function() {
+    if (this.modalMode === "apiKey") {
+        this.saveApiKeyModal();
+        return;
+    }
+
     const canonicalName = document.getElementById("modalCanonicalName")?.value.trim();
     const aliasesStr = document.getElementById("modalAliases")?.value.trim() || "";
     const type = document.getElementById("modalType")?.value || "인물";
@@ -254,7 +359,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const seons = seonsStr.split("\n").map(line => {
         const parts = line.split("|").map(p => p.trim());
         if (parts.length < 3) return null;
-        const target = this.allJjums.find(j => j.canonicalName === parts[0] || j.aliases.includes(parts[0]));
+        const target = this.allJJums.find(j => j.canonicalName === parts[0] || j.aliases.includes(parts[0]));
         if (!target) return null;
         const weight = parseFloat(parts[2]);
         if (isNaN(weight) || weight < 0 || weight > 1) return null;
@@ -281,12 +386,12 @@ HAEMA_CONSOLE.saveModal = function() {
             sourceService: "haema_console",
             schemaVersion: 3
         };
-        this.allJjums.push(newJjum);
+        this.allJJums.push(newJjum);
     } else {
-        const idx = this.allJjums.findIndex(j => j.jjumId === this.modalData.jjumId);
+        const idx = this.allJJums.findIndex(j => j.jjumId === this.modalData.jjumId);
         if (idx !== -1) {
-            this.allJjums[idx] = {
-                ...this.allJjums[idx],
+            this.allJJums[idx] = {
+                ...this.allJJums[idx],
                 canonicalName: canonicalName,
                 aliases: aliases,
                 type: type,
@@ -305,11 +410,19 @@ HAEMA_CONSOLE.saveModal = function() {
 
 // ===== 시뮬레이션 로직 =====
 HAEMA_CONSOLE.simulateRecall = function(inputText) {
+    if (!inputText || !this.allJJums) {
+        this.recallResults = [];
+        this.render();
+        return;
+    }
+
     const words = inputText.split(/\s+/);
-    const scoredJjums = this.allJjums.map(jjum => {
+    const scoredJjums = this.allJJums
+        .filter((jjum): jjum is any => jjum && jjum.jjumId)
+        .map(jjum => {
         let score = 0;
         const lowerInput = inputText.toLowerCase();
-        const lowerName = jjum.canonicalName.toLowerCase();
+        const lowerName = (jjum.jjumName || jjum.canonicalName || '').toLowerCase();
         const lowerAliases = (jjum.aliases || []).map(a => a.toLowerCase());
 
         if (lowerInput.includes(lowerName)) score += 0.5;
@@ -471,18 +584,34 @@ HAEMA_CONSOLE.renderRecallSection = function() {
 
 HAEMA_CONSOLE.renderModal = function() {
     const modalContent = this.modalMode && this.modalData ? this.renderModalContent() : '';
-    const modeText = this.modalMode === 'create' ? '새 쩜(JJum) 만들기' : '쩜(JJum) 수정';
-    
+    let modeText = '';
+    let titlePrefix = '';
+    let saveText = '';
+
+    if (this.modalMode === 'create') {
+        modeText = '✨ 새 쩜(JJum) 만들기';
+        titlePrefix = '✨ ';
+        saveText = '✨ 만들기';
+    } else if (this.modalMode === 'edit') {
+        modeText = '✏️ 쩜(JJum) 수정';
+        titlePrefix = '✏️ ';
+        saveText = '💾 저장';
+    } else if (this.modalMode === 'apiKey') {
+        modeText = '🔑 API 키 설정';
+        titlePrefix = '🔑 ';
+        saveText = '💾 저장';
+    }
+
     return '<div class="modal-overlay" id="modalOverlay">' +
         '<div class="modal">' +
         '<div class="modal-header">' +
-        '<div class="modal-title">' + (this.modalMode === 'create' ? '✨ ' : '✏️ ') + modeText + '</div>' +
+        '<div class="modal-title">' + titlePrefix + modeText + '</div>' +
         '<div class="modal-close" id="modalClose">✕</div>' +
         '</div>' +
         '<div class="modal-body" id="modalBody">' + modalContent + '</div>' +
         '<div class="modal-footer">' +
         '<button class="btn btn-secondary" id="modalCancel">취소</button>' +
-        '<button class="btn btn-primary" id="modalSave">' + (this.modalMode === 'create' ? '✨ 만들기' : '💾 저장') + '</button>' +
+        '<button class="btn btn-primary" id="modalSave">' + saveText + '</button>' +
         '</div>' +
         '</div>' +
         '</div>';
@@ -494,7 +623,7 @@ HAEMA_CONSOLE.renderModalContent = function() {
     const tagsStr = (data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
     const seonsStr = (data.seons || []).map(t => {
-        const target = this.allJjums.find(j => j.jjumId === t.targetId);
+        const target = this.allJJums.find(j => j.jjumId === t.targetId);
         const targetName = target ? target.canonicalName : '';
         return targetName + ' | ' + (t.label || '연결') + ' | ' + t.weight;
     }).join('\n');
@@ -537,8 +666,33 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩)</label>' +
-        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 친구 | 친구 관계 | 0.8&#10;장소 | 만난 곳 | 0.6">' + this.escapeHtml(tailsStr) + '</textarea>' +
+        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 친구 | 친구 관계 | 0.8&#10;장소 | 만난 곳 | 0.6">' + this.escapeHtml(seonsStr) + '</textarea>' +
         '<div class="form-hint">다른 쩜과 연결하는 쩜선입니다. 형식: 대상쩜이름 | 라벨 | 가중치(0~1)</div>' +
+        '</div>';
+};
+
+HAEMA_CONSOLE.renderApiKeyModalContent = function() {
+    const data = this.modalData || {};
+    const apiKey = data.apiKey || "";
+
+    return '<div class="form-group">' +
+        '<label class="form-label" for="modalApiKey">API 키</label>' +
+        '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(apiKey) + '" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxx">' +
+        '<div class="form-hint">OpenAI 또는 Anthropic API 키를 입력하세요. 예: sk-proj-xxxx 또는 sk-ant-api03-xxxx</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalProvider">제공업체</label>' +
+        '<select class="form-select" id="modalProvider">' +
+        '<option value="openai">OpenAI</option>' +
+        '<option value="anthropic">Anthropic</option>' +
+        '</select>' +
+        '<div class="form-hint">사용할 AI 제공업체를 선택하세요.</div>' +
+        '</div>' +
+        '<div class="api-key-status">' +
+        '<div class="status-indicator">' +
+        (apiKey ? '<span class="status-dot connected"></span>' : '<span class="status-dot disconnected"></span>') +
+        (apiKey ? 'API 키가 저장되어 있습니다.' : 'API 키가 설정되지 않았습니다.') +
+        '</div>' +
         '</div>';
 };
 
@@ -574,11 +728,11 @@ HAEMA_CONSOLE.toggleJjum = function(jjumId) {
 
 // ===== 쩜 삭제 확인 =====
 HAEMA_CONSOLE.confirmDelete = function(jjumId) {
-    const jjum = this.allJjums.find(j => j.jjumId === jjumId);
+    const jjum = this.allJJums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
     
     if (confirm('정말 "' + jjum.canonicalName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
-        this.allJjums = this.allJjums.filter(j => j.jjumId !== jjumId);
+        this.allJJums = this.allJJums.filter(j => j.jjumId !== jjumId);
         if (this.selectedJjumId === jjumId) {
             this.selectedJjumId = null;
         }
@@ -589,7 +743,33 @@ HAEMA_CONSOLE.confirmDelete = function(jjumId) {
 // ===== 초기화 =====
 HAEMA_CONSOLE.init = function() {
     this.render();
+    // 로컬 서버에서 JJum 데이터 로딩 시도
+    this.loadLocalServerData();
     console.log("HAEMA_CONSOLE 초기화 완료");
+};
+
+// ===== 로컬 서버 데이터 로딩 =====
+// 로컬 서버(local-server/haema/)에 저장된 JJum 데이터를 불러옴
+// 브라우저에서 직접 파일 시스템 접근은 불가능하므로,
+// 로컬 서버 API를 통해 데이터를 받아오는 방식으로 구현 예정
+// 현재는 fetch()로 로컬 서버 API 호출하는 구조만 잡아둠
+HAEMA_CONSOLE.loadLocalServerData = function() {
+    // 로컬 서버 API에서 데이터 로딩
+    // 서버 실행 전에는 실패해도 무시
+    fetch('/api/owners/demo/jjums')
+        .then(response => {
+            if (!response.ok) throw new Error('API 응답 오류');
+            return response.json();
+        })
+        .then(data => {
+            this.allJJums = data.jjums || [];
+            this.render();
+            console.log('로컬 서버 데이터 로딩 완료:', this.allJJums.length, '개 쩜');
+        })
+        .catch(err => {
+            // 로컬 서버가 실행되지 않았으면 조용히 무시
+            console.log('로컬 서버 미실행 — 데이터 로딩 건너뜀:', err.message);
+        });
 };
 
 // DOM 로드 후 초기화
