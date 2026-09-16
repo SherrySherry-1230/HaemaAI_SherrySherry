@@ -13,7 +13,7 @@ import type {
   ExtractRequest,
   MergeJudgement,
   RecallScore,
-} from './aiAdapter.ts';
+} from './aiAdapter';
 import type { JJum, JJumId } from '../types/jjum.ts';
 
 export class GroqAdapter implements AIAdapter {
@@ -192,7 +192,7 @@ ${hintText}
 출력 형식(JSON):
 [
   {
-    "cellId": "cell-123",
+    "jjumId": "jjum-123",
     "score": 0.0~1.0,
     "reason": "점수 이유"
   }
@@ -212,8 +212,8 @@ ${hintText}
     try {
       const parsed = JSON.parse(response);
       return Array.isArray(parsed)
-        ? parsed.map((item: { cellId: string; score: number; reason?: string }) => ({
-            cellId: item.cellId as JJumId,
+        ? parsed.map((item: { jjumId: string; score: number; reason?: string }) => ({
+            jjumId: item.jjumId as JJumId,
             score: typeof item.score === 'number' ? item.score : 0,
             reason: item.reason || '',
           }))
