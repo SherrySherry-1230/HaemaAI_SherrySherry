@@ -383,16 +383,16 @@ HAEMA_CONSOLE.openCreateModal = function() {
             return { valid: false, reason: 'jjumId가 없거나 문자열이 아닙니다.' };
         }
 
-        if (!jjum.jjumName && !jjum.canonicalName) {
-            return { valid: false, reason: 'jjumName/canonicalName이 없습니다.' };
+        if (!jjum.jjumName && !jjum.jjumName) {
+            return { valid: false, reason: 'jjumName/jjumName이 없습니다.' };
         }
 
         // 선택적 필드 타입 검증 (있으면 검증)
         if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
             return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
         }
-        if (jjum.canonicalName && typeof jjum.canonicalName !== 'string') {
-            return { valid: false, reason: 'canonicalName이 문자열이 아닙니다.' };
+        if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
+            return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
         }
         if (jjum.type && typeof jjum.type !== 'string') {
             return { valid: false, reason: 'type이 문자열이 아닙니다.' };
@@ -437,9 +437,9 @@ HAEMA_CONSOLE.openCreateModal = function() {
                 return;
             }
 
-            // 3. ID 추출 (canonicalName 또는 jjumName 중 하나 사용)
+            // 3. ID 추출 (jjumName 또는 jjumName 중 하나 사용)
             const jjumId = newJjum.jjumId;
-            const displayName = newJjum.canonicalName || newJjum.jjumName || '알 수 없음';
+            const displayName = newJjum.jjumName || newJjum.jjumName || '알 수 없음';
 
             // 4. 중복 체크: 이미 존재하는 JJum이면 스킵
             const existing = this.allJjums.find(j => j.jjumId === jjumId);
@@ -452,7 +452,7 @@ HAEMA_CONSOLE.openCreateModal = function() {
             const jjum = {
                 jjumId: jjumId,
                 jjumName: newJjum.jjumName || displayName,
-                canonicalName: newJjum.canonicalName || displayName,
+                jjumName: newJjum.jjumName || displayName,
                 type: newJjum.type || 'unknown',
                 tags: Array.isArray(newJjum.tags) ? newJjum.tags : [],
                 summary: newJjum.summary || '',
