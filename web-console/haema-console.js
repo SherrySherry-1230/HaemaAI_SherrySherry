@@ -600,9 +600,11 @@ HAEMA_CONSOLE.openCreateModal = function() {
 
 HAEMA_CONSOLE.openApiKeyModal = function() {
     this.modalMode = "apiKey";
-    const savedKey = localStorage.getItem("haema_api_key") || "";
     this.modalData = {
-        apiKey: savedKey,
+        apiKey: localStorage.getItem("haema_api_key") || "",
+        provider: localStorage.getItem("haema_api_provider") || "",
+        model: localStorage.getItem("haema_api_model") || "",
+        baseURL: localStorage.getItem("haema_api_base_url") || "",
     };
     this.render();
     const overlay = document.getElementById("modalOverlay");
@@ -926,6 +928,12 @@ HAEMA_CONSOLE.renderModal = function() {
 
 HAEMA_CONSOLE.renderModalContent = function() {
     const data = this.modalData || {};
+    
+    // API 키 모달인 경우 provider select 렌더링
+    if (this.modalMode === 'apiKey') {
+        return this.renderApiKeyModalContent(data);
+    }
+    
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
@@ -972,6 +980,72 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
+        '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩, 형식: 대상이름 | 연결라벨 | 가중치(0~1))</label>' +
+        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 홍길동 | 친구 | 0.8&#10;김철수 | 동료 | 0.5">' + this.escapeHtml(seonsStr) + '</textarea>' +
+        '<div class="form-hint">쩜과 다른 쩜을 연결하는 선입니다. 한 줄에 하나씩, 파이프(|)로 구분하세요.</div>' +
+        '</div>' +
+    '</div>';
+};
+
+// ===== API 키 모달 콘텐츠 렌더링 =====
+HAEMA_CONSOLE.renderApiKeyModalContent = function(data) {
+    const providers = [
+        { value: 'openai', label: 'OpenAI ChatGPT Subscription' },
+        { value: 'deepseek', label: 'DeepSeek' },
+        { value: 'anthropic', label: 'Anthropic' },
+        { value: 'openrouter', label: 'OpenRouter' },
+        { value: 'grok', label: 'Grok' },
+        { value: 'ollama', label: 'Ollama' },
+        { value: 'aws-bedrock', label: 'AWS Bedrock' },
+        { value: 'openai-compatible', label: 'OpenAI Compatible' },
+        { value: 'litellm', label: 'LiteLLM' },
+        { value: 'google-gemini', label: 'Google Gemini' },
+        { value: '302ai', label: '302.AI' },
+        { value: 'abacus', label: 'Abacus' },
+        { value: 'abliteration', label: 'abliteration.ai' },
+        { value: 'abovedev', label: 'above.dev' },
+        { value: 'agenterouter', label: 'AgentRouter' },
+        { value: 'agnes-ai', label: 'Agnes AI' },
+        { value: 'aihub-mix', label: 'AI Hub Mix' },
+        { value: 'ai-router', label: 'AI-ROUTER' },
+        { value: 'ai-and', label: 'ai&' },
+        { value: 'aixy', label: 'Aixy' },
+        { value: 'aki-io', label: 'AKI.IO' },
+        { value: 'alibaba', label: 'Alibaba' },
+        { value: 'alibaba-china', label: 'Alibaba (China)' },
+        { value: 'alibaba-coding-plan', label: 'Alibaba Coding Plan' },
+        { value: 'alibaba-coding-plan-china', label: 'Alibaba Coding Plan (China)' },
+        { value: 'alibaba-qwen', label: 'Alibaba Qwen' },
+        { value: 'alibaba-qwen-code', label: 'Alibaba Qwen Code' },
+        { value: 'custom', label: 'Custom' }
+    ];
+    
+    const providerOptions = providers.map(p => 
+        '<option value="' + p.value + '"' + (data.provider === p.value ? ' selected' : '') + '>' + p.label + '</option>'
+    ).join('');
+    
+    return '<div class="form-group">' +
+        '<label class="form-label" for="modalProvider">API 제공자 (Provider) *</label>' +
+        '<select class="form-select" id="modalProvider">' +
+        providerOptions +
+        '</select>' +
+        '<div class="form-hint">사용할 AI API 제공자를 선택하세요.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalModel">모델 *</label>' +
+        '<input class="form-input" id="modalModel" type="text" value="' + this.escapeHtml(data.model || '') + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
+        '<div class="form-hint">사용할 모델 이름입니다.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalApiKey">API 키 *</label>' +
+        '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || '') + '" placeholder="sk-...">' +
+        '<div class="form-hint">API 키를 입력하세요.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalBaseURL">Base URL (선택)</label>' +
+        '<input class="form-input" id="modalBaseURL" type="url" value="' + this.escapeHtml(data.baseURL || '') + '" placeholder="https://api.example.com/v1">' +
+        '<div class="form-hint">OpenAI 호환 제공자의 경우 baseURL을 입력하세요.</div>' +
+        '</div>';
 };
 
 HAEMA_CONSOLE.generateHostPreview = function(inputText) {
@@ -1199,6 +1273,42 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     }
     
     return guideParts.join(' ');
+};
+
+// ===== API 키 저장 =====
+HAEMA_CONSOLE.saveApiKeyModal = function() {
+    const provider = document.getElementById("modalProvider")?.value;
+    const model = document.getElementById("modalModel")?.value.trim();
+    const apiKey = document.getElementById("modalApiKey")?.value;
+    const baseURL = document.getElementById("modalBaseURL")?.value.trim();
+
+    if (!provider) {
+        alert("API 제공자를 선택해주세요!");
+        return;
+    }
+    if (!model) {
+        alert("모델 이름을 입력해주세요!");
+        return;
+    }
+    if (!apiKey) {
+        alert("API 키를 입력해주세요!");
+        return;
+    }
+
+    const savedKey = localStorage.getItem("haema_api_key") || "";
+    const existingProvider = localStorage.getItem("haema_api_provider") || "";
+    const existingModel = localStorage.getItem("haema_api_model") || "";
+    const existingBaseURL = localStorage.getItem("haema_api_base_url") || "";
+
+    // 새 설정 저장
+    localStorage.setItem("haema_api_key", apiKey);
+    localStorage.setItem("haema_api_provider", provider);
+    localStorage.setItem("haema_api_model", model);
+    localStorage.setItem("haema_api_base_url", baseURL || "");
+
+    this.statusText = `✅ API 키 저장 완료: ${provider} / ${model}`;
+    this.render();
+    this.closeModal();
 };
 
 document.addEventListener("DOMContentLoaded", () => {
