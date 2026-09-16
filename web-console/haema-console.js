@@ -925,6 +925,11 @@ HAEMA_CONSOLE.renderModal = function() {
 };
 
 HAEMA_CONSOLE.renderModalContent = function() {
+    // API 키 모달인 경우 별도 렌더링
+    if (this.modalMode === 'apiKey') {
+        return this.renderApiKeyModalContent();
+    }
+
     const data = this.modalData || {};
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
@@ -1112,6 +1117,114 @@ HAEMA_CONSOLE.inferSeonLabel = function(sourceJjum, targetJjum, context) {
     if (lowerContext.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태')) return '건강상태';
     if (lowerContext.includes('키우') || lowerContext.includes('내') || lowerContext.includes('나의')) return '소유/관계';
     return '연결';
+};
+// ===== API 키 모달 저장 =====
+HAEMA_CONSOLE.saveApiKeyModal = function() {
+    const apiKey = document.getElementById("modalApiKey")?.value.trim() || "";
+    const apiProvider = document.getElementById("modalApiProvider")?.value || "";
+    const apiModel = document.getElementById("modalApiModel")?.value || "";
+    const apiBaseUrl = document.getElementById("modalApiBaseUrl")?.value.trim() || "";
+
+    if (!apiKey) {
+        alert("API 키를 입력해주세요!");
+        return;
+    }
+
+    localStorage.setItem("haema_api_key", apiKey);
+    localStorage.setItem("haema_api_provider", apiProvider);
+    localStorage.setItem("haema_api_model", apiModel);
+    localStorage.setItem("haema_api_base_url", apiBaseUrl);
+
+    this.closeModal();
+    // 30개 AI Provider 목록
+    const providers = [
+        { id: "openai", name: "OpenAI", baseUrl: "https://api.openai.com/v1", models: ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo"] },
+        { id: "anthropic", name: "Anthropic", baseUrl: "https://api.anthropic.com/v1", models: ["claude-3-5-sonnet-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240307"] },
+        { id: "google", name: "Google Gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta", models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro", "gemini-1.5-flash"] },
+        { id: "upstage", name: "Upstage Solar", baseUrl: "https://api.upstage.ai/v1/solar", models: ["solar-pro", "solar-mini"] },
+        { id: "groq", name: "Groq", baseUrl: "https://api.groq.com/openai/v1", models: ["llama-3.1-70b-versatile", "llama-3.1-8b-instant", "gemma-7b-it", "mixtral-8x7b-32768"] },
+        { id: "cohere", name: "Cohere", baseUrl: "https://api.cohere.com/v1", models: ["command-r-plus", "command-r", "command"] },
+        { id: "mistral", name: "Mistral AI", baseUrl: "https://api.mistral.ai/v1", models: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest", "open-mixtral-8x22b"] },
+        { id: "ai21", name: "AI21 Labs", baseUrl: "https://api.ai21.com/studio/v1", models: ["jurassic-2-grande-instruct", "jurassic-2-jumbo-instruct"] },
+        { id: "replicate", name: "Replicate", baseUrl: "https://api.replicate.com/v1", models: ["meta/llama-3.1-70b-instruct", "meta/llama-3.1-405b-instruct"] },
+        { id: "together", name: "Together AI", baseUrl: "https://api.together.ai/v1", models: ["meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", "meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"] },
+        { id: "perplexity", name: "Perplexity", baseUrl: "https://api.perplexity.ai", models: ["sonar-pro", "sonar", "sonar-reasoning-pro"] },
+        { id: "deepseek", name: "DeepSeek", baseUrl: "https://api.deepseek.com/v1", models: ["deepseek-chat", "deepseek-reasoner"] },
+        { id: "zhipu", name: "Zhipu AI", baseUrl: "https://open.bigmodel.cn/api/paas/v4", models: ["glm-4-plus", "glm-4-air", "glm-4"] },
+        { id: "minimax", name: "MiniMax", baseUrl: "https://api.minimax.chat/v1", models: ["abab6.5", "abab6.5s"] },
+        { id: "01ai", name: "01.AI", baseUrl: "https://api.01.ai/v1", models: ["yi-large", "yi-medium", "yi-spark"] },
+        { id: "qwen", name: "Alibaba Qwen", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", models: ["qwen-max", "qwen-plus", "qwen-turbo", "qwen2.5-coder-32b"] },
+        { id: "moonshot", name: "Moonshot AI", baseUrl: "https://api.moonshot.ai/v1", models: ["moonshot-v1-128k", "moonshot-v1-8k"] },
+        { id: "spark", name: "iFlytek Spark", baseUrl: "https://spark-api.xf-yun.com/v1", models: ["spark-max", "spark-pro", "spark-lite"] },
+        { id: "hunyuan", name: "Tencent Hunyuan", baseUrl: "https://api.hunyuan.cloud.tencent.com/v1", models: ["hunyuan-pro", "hunyuan-standard"] },
+        { id: "glm4", name: "Zhipu GLM-4", baseUrl: "https://open.bigmodel.cn/api/paas/v4", models: ["glm-4", "glm-4-air"] },
+        { id: "llama", name: "Meta Llama (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["llama-3.1-70b", "llama-3.1-405b"] },
+        { id: "falcon", name: "Falcon (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["falcon-180b", "falcon-40b"] },
+        { id: "mistral-local", name: "Mistral (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["mistral-large", "mistral-medium"] },
+        { id: "gemma", name: "Google Gemma (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["gemma-7b", "gemma-2-9b"] },
+        { id: "phi", name: "Microsoft Phi (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["phi-3-medium-128k", "phi-3.5-moe"] },
+        { id: "solar-local", name: "Upstage Solar (Self-hosted)", baseUrl: "http://localhost:8080/v1", models: ["solar-pro", "solar-mini"] },
+HAEMA_CONSOLE.renderApiKeyModalContent = function() {
+    const data = this.modalData || {};
+    const savedKey = data.apiKey || localStorage.getItem("haema_api_key") || "";
+    const savedProvider = localStorage.getItem("haema_api_provider") || "";
+    const savedModel = localStorage.getItem("haema_api_model") || "";
+    const savedBaseUrl = localStorage.getItem("haema_api_base_url") || "";
+
+    const providerOptions = providers.map(p =>
+        `<option value="${p.id}"` + (savedProvider === p.id ? " selected" : "") + `>${p.name}</option>`
+    ).join("");
+
+    const selectedProvider = providers.find(p => p.id === savedProvider);
+    const defaultBaseUrl = selectedProvider ? selectedProvider.baseUrl : "";
+
+    const availableModels = selectedProvider ? selectedProvider.models : [];
+    const modelOptions = availableModels.map(m =>
+        `<option value="${m}"` + (savedModel === m ? " selected" : "") + `>${m}</option>`
+    ).join("");
+
+    return `
+        <div class="form-group">
+            <label class="form-label" for="modalApiProvider">API Provider *</label>
+            <select class="form-select" id="modalApiProvider">
+                <option value="">선택하세요...</option>
+                ${providerOptions}
+            </select>
+            <div class="form-hint">사용할 AI Provider를 선택하세요.</div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="modalApiKey">API Key *</label>
+            <input class="form-input" id="modalApiKey" type="password" value="${this.escapeHtml(savedKey)}" placeholder="sk-... 또는 해당 Provider의 API 키">
+            <div class="form-hint">API 키를 입력하세요. (보안을 위해 비밀번호 필드로 표시)</div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="modalApiBaseUrl">Base URL</label>
+            <input class="form-input" id="modalApiBaseUrl" type="url" value="${this.escapeHtml(savedBaseUrl || defaultBaseUrl)}" placeholder="https://api.example.com/v1">
+            <div class="form-hint">Provider 선택 시 자동 설정됩니다. 사용자 정의 Provider는 직접 입력하세요.</div>
+        </div>
+        <div class="form-group">
+            <label class="form-label" for="modalApiModel">모델</label>
+            <select class="form-select" id="modalApiModel">
+                <option value="">Provider 선택 후 모델을 선택하세요...</option>
+                ${modelOptions || '<option value="">모델 없음</option>'}
+            </select>
+            <div class="form-hint">사용할 모델을 선택하세요.</div>
+        </div>
+        <div class="form-group" style="background: var(--bg-light); padding: 12px; border-radius: 8px; margin-top: 16px;">
+            <label class="form-label" style="margin-bottom: 8px;">💾 저장된 설정</label>
+            <div style="font-size: 12px; color: var(--text-secondary);">
+                Provider: ${savedProvider || '없음'}<br>
+                Model: ${savedModel || '없음'}<br>
+                Base URL: ${savedBaseUrl || defaultBaseUrl || '없음'}
+            </div>
+        </div>
+    `;
+};
+        { id: "custom", name: "사용자 정의", baseUrl: "", models: [] }
+    ];
+    this.statusText = "✅ API 키 저장 완료!";
+    this.render();
+    console.log("API 키 저장 완료:", { apiProvider, apiModel });
 };
 
 HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
