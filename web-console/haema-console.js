@@ -398,7 +398,7 @@ HAEMA_CONSOLE.saveModal = function() {
         return;
     }
 
-    const canonicalName = document.getElementById("modalCanonicalName")?.value.trim();
+    const jjumName = document.getElementById("modalJjumName")?.value.trim();
     const aliasesStr = document.getElementById("modalAliases")?.value.trim() || "";
     const type = document.getElementById("modalType")?.value || "인물";
     const tagsStr = document.getElementById("modalTags")?.value.trim() || "";
@@ -406,7 +406,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const factsStr = document.getElementById("modalFacts")?.value.trim() || "";
     const seonsStr = document.getElementById("modalSeons")?.value.trim() || "";
 
-    if (!canonicalName) {
+    if (!jjumName) {
         alert("쩜 이름을 입력해주세요!");
         return;
     }
@@ -421,7 +421,7 @@ HAEMA_CONSOLE.saveModal = function() {
     const seons = seonsStr.split("\n").map(line => {
         const parts = line.split("|").map(p => p.trim());
         if (parts.length < 3) return null;
-        const target = this.allJJums.find(j => j.canonicalName === parts[0] || j.aliases.includes(parts[0]));
+        const target = this.allJJums.find(j => j.jjumName === parts[0] || j.aliases.includes(parts[0]));
         if (!target) return null;
         const weight = parseFloat(parts[2]);
         if (isNaN(weight) || weight < 0 || weight > 1) return null;
@@ -431,7 +431,7 @@ HAEMA_CONSOLE.saveModal = function() {
     if (this.modalMode === "create") {
         const newJjum = {
             jjumId: "jjum_" + Date.now(),
-            canonicalName: canonicalName,
+            jjumName: jjumName,
             aliases: aliases,
             type: type,
             tags: tags,
@@ -454,7 +454,7 @@ HAEMA_CONSOLE.saveModal = function() {
         if (idx !== -1) {
             this.allJJums[idx] = {
                 ...this.allJJums[idx],
-                canonicalName: canonicalName,
+                jjumName: jjumName,
                 aliases: aliases,
                 type: type,
                 tags: tags,
@@ -480,11 +480,11 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
 
     const words = inputText.split(/\s+/);
     const scoredJjums = this.allJJums
-        .filter((jjum): jjum is any => jjum && jjum.jjumId)
+        .filter(jjum => jjum && jjum.jjumId)
         .map(jjum => {
         let score = 0;
         const lowerInput = inputText.toLowerCase();
-        const lowerName = (jjum.jjumName || jjum.canonicalName || '').toLowerCase();
+        const lowerName = (jjum.jjumName || '').toLowerCase();
         const lowerAliases = (jjum.aliases || []).map(a => a.toLowerCase());
 
         if (lowerInput.includes(lowerName)) score += 0.5;
@@ -529,7 +529,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         input: inputText,
         timestamp: new Date().toISOString(),
         recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.canonicalName),
+        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName),
         hostPreview: this.generateHostPreview(inputText)
     };
     this.render();
@@ -622,7 +622,7 @@ HAEMA_CONSOLE.renderRecallSection = function() {
         return '<div class="rank-card ' + rankClass + '">' +
             '<div class="rank-badge">' + (idx + 1) + '</div>' +
             '<div class="rank-title">' + rankLabels[idx] + '</div>' +
-            '<div class="rank-name">' + this.escapeHtml(jjum.canonicalName) + '</div>' +
+            '<div class="rank-name">' + this.escapeHtml(jjum.jjumName) + '</div>' +
             '<div class="rank-stats">' +
             '<div class="stat-item"><span class="stat-value">' + jjum.simulationScore.toFixed(2) + '</span><span class="stat-label">스코어</span></div>' +
             '<div class="stat-item"><span class="stat-value">' + jjum.mentionCount + '</span><span class="stat-label">언급</span></div>' +
@@ -686,13 +686,13 @@ HAEMA_CONSOLE.renderModalContent = function() {
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
     const seonsStr = (data.seons || []).map(t => {
         const target = this.allJJums.find(j => j.jjumId === t.targetId);
-        const targetName = target ? target.canonicalName : '';
+        const targetName = target ? target.jjumName : '';
         return targetName + ' | ' + (t.label || '연결') + ' | ' + t.weight;
     }).join('\n');
     
     return '<div class="form-group">' +
-        '<label class="form-label" for="modalCanonicalName">쩜 이름 *</label>' +
-        '<input class="form-input" id="modalCanonicalName" type="text" value="' + this.escapeHtml(data.canonicalName || '') + '" placeholder="예: 홍길동">' +
+        '<label class="form-label" for="modalJjumName">쩜 이름 *</label>' +
+        '<input class="form-input" id="modalJjumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
         '<div class="form-hint">쩜의 대표 이름입니다. 어떤 이름으로 불러도 이 쩜을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
@@ -764,7 +764,7 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
         return '음... 그 이야기는 잘 기억나지 않네요. 좀 더 자세히 말해줄 수 있나요?';
     }
     
-    const names = topRecall.map(j => j.canonicalName);
+    const names = topRecall.map(j => j.jjumName);
     const primary = names[0];
     const secondary = names.length > 1 ? names[1] : null;
     
@@ -793,7 +793,7 @@ HAEMA_CONSOLE.confirmDelete = function(jjumId) {
     const jjum = this.allJJums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
     
-    if (confirm('정말 "' + jjum.canonicalName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+    if (confirm('정말 "' + jjum.jjumName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
         this.allJJums = this.allJJums.filter(j => j.jjumId !== jjumId);
         if (this.selectedJjumId === jjumId) {
             this.selectedJjumId = null;
@@ -858,7 +858,7 @@ HAEMA_CONSOLE.findMentionedJjums = function(inputValue) {
     const mentioned = [];
     
     this.allJJums.forEach(jjum => {
-        const name = (jjum.jjumName || jjum.canonicalName || '').toLowerCase();
+        const name = (jjum.jjumName || '').toLowerCase();
         const aliases = (jjum.aliases || []).map(a => a.toLowerCase());
         
         if (lowerInput.includes(name) || aliases.some(a => lowerInput.includes(a))) {
@@ -887,7 +887,7 @@ HAEMA_CONSOLE.createSeonConnection = function(sourceJjum, targetJjum, context) {
         lastActivated: new Date().toISOString(),
     });
     
-    this.statusText = `🔗 쩜선 연결: ${sourceJjum.jjumName || sourceJjum.canonicalName} ↔ ${targetJjum.jjumName || targetJjum.canonicalName}`;
+    this.statusText = `🔗 쩜선 연결: ${sourceJjum.jjumName || sourceJjum.jjumName} ↔ ${targetJjum.jjumName || targetJjum.jjumName}`;
     this.render();
 };
 
@@ -903,12 +903,12 @@ HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
     
     if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
         mentionedJjums.forEach(jjum => {
-            const baseName = jjum.jjumName || jjum.canonicalName || '';
+            const baseName = jjum.jjumName || jjum.jjumName || '';
             const derivativeName = `${baseName}_건강상태`;
             
             const existing = this.allJJums.find(j => 
                 j.jjumName === derivativeName || 
-                j.canonicalName === derivativeName
+                j.jjumName === derivativeName
             );
             
             if (!existing) {
@@ -944,7 +944,7 @@ HAEMA_CONSOLE.generateCompassionateGuide = function(inputValue) {
         input: inputValue,
         timestamp: new Date().toISOString(),
         recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName || j.canonicalName),
+        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName || j.jjumName),
         emotionContext: this.emotionContext,
         hostPreview: this.generateHostPreview(inputValue),
     };
@@ -984,3 +984,7 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     
     return guideParts.join(' ');
 };
+
+document.addEventListener("DOMContentLoaded", () => {
+    HAEMA_CONSOLE.render();
+});
