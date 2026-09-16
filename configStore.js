@@ -8,7 +8,7 @@
  */
 
 /**
- * @typedef {('openai-compatible'|'anthropic'|'google'|'custom')} ProviderKind
+ * @typedef {('openai'|'anthropic'|'google'|'custom'|'openrouter'|'ollama'|'aws-bedrock'|'openai-compatible'|'litellm'|'google-gemini'|'302ai'|'abacus'|'abliteration'|'abovedev'|'agenterouter'|'agnes-ai'|'aihub-mix'|'ai-router'|'ai-and'|'aixy'|'aki-io'|'alibaba'|'alibaba-china'|'alibaba-coding-plan'|'alibaba-coding-plan-china'|'alibaba-qwen'|'alibaba-qwen-code'|'deepseek'|'grok'|'openai-chatgpt-subscription')} ProviderKind
  */
 
 /**
