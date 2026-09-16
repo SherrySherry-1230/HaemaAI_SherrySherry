@@ -335,251 +335,6 @@ HAEMA_CONSOLE.stopBackgroundStream = function() {
 };
 
 HAEMA_CONSOLE.openCreateModal = function() {
-
-
-    // ===== 백그라운드 공감 스트림 (Background Empathy Stream) =====
-    // 타이핑 스냅샷을 백엔드 비동기 파이프라인으로 Fire-and-Forget 전송한다.
-    // Event Loop를 점유하지 않으며, UI 렌더링을 최우선 처리한다.
-    // 백엔드 연동 시: WebSocket/SSE를 통해 실제 이벤트 수신 가능
-    HAEMA_CONSOLE.streamSnapshot = function(inputValue) {
-        // 입력 검증: null, undefined, 공백 문자열 방어
-        if (inputValue === null || inputValue === undefined) {
-            console.warn('[HAEMA] streamSnapshot: 입력값이 null/undefined입니다.');
-            return;
-        }
-        
-        const trimmed = typeof inputValue === 'string' ? inputValue.trim() : String(inputValue);
-        if (!trimmed) {
-            console.debug('[HAEMA] streamSnapshot: 빈 입력값 - 스냅샷 전송 생략');
-            return;
-        }
-
-        // 비동기 파이프라인: setTimeout 0으로 이벤트 루프에 양보
-        setTimeout(() => {
-            try {
-                // 백엔드 연동 지점: HAEMA_CONSOLE.streamSnapshot(inputValue)
-                // 현재는 simulateRecall을 비동기 컨텍스트에서 호출 (백엔드 연동 전)
-                if (typeof this.simulateRecall === 'function') {
-                    this.simulateRecall(trimmed);
-                }
-                
-                console.debug('[HAEMA] streamSnapshot: 스냅샷 전송 완료 -', trimmed.substring(0, 30) + (trimmed.length > 30 ? '...' : ''));
-            } catch (error) {
-                console.error('[HAEMA] streamSnapshot 오류:', error.message || error);
-                this.handleBackendError('snapshot', error);
-            }
-        }, 0);
-    };
-
-    // ===== JJum 데이터 스키마 검증 =====
-    // 백엔드에서 수신하는 JJum 데이터의 필수 필드 및 타입 검증
-    HAEMA_CONSOLE.validateJjumSchema = function(jjum) {
-        if (!jjum || typeof jjum !== 'object') {
-            return { valid: false, reason: 'JJum이 객체가 아닙니다.' };
-        }
-
-        // 필수 필드 검증
-        if (!jjum.jjumId || typeof jjum.jjumId !== 'string') {
-            return { valid: false, reason: 'jjumId가 없거나 문자열이 아닙니다.' };
-        }
-
-        if (!jjum.jjumName && !jjum.jjumName) {
-            return { valid: false, reason: 'jjumName/jjumName이 없습니다.' };
-        }
-
-        // 선택적 필드 타입 검증 (있으면 검증)
-        if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
-            return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
-        }
-        if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
-            return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
-        }
-        if (jjum.type && typeof jjum.type !== 'string') {
-            return { valid: false, reason: 'type이 문자열이 아닙니다.' };
-        }
-        if (jjum.aliases && !Array.isArray(jjum.aliases)) {
-            return { valid: false, reason: 'aliases가 배열이 아닙니다.' };
-        }
-        if (jjum.tags && !Array.isArray(jjum.tags)) {
-            return { valid: false, reason: 'tags가 배열이 아닙니다.' };
-        }
-        if (jjum.facts && !Array.isArray(jjum.facts)) {
-            return { valid: false, reason: 'facts가 배열이 아닙니다.' };
-        }
-        if (jjum.seons && !Array.isArray(jjum.seons)) {
-            return { valid: false, reason: 'seons가 배열이 아닙니다.' };
-        }
-        if (jjum.mentionCount !== undefined && typeof jjum.mentionCount !== 'number') {
-            return { valid: false, reason: 'mentionCount가 숫자가 아닙니다.' };
-        }
-        if (jjum.firstSeen !== undefined && isNaN(Date.parse(jjum.firstSeen))) {
-            return { valid: false, reason: 'firstSeen이 유효한 날짜가 아닙니다.' };
-        }
-
-        return { valid: true };
-    };
-
-    // ===== 실시간 JJum 스트리밍 업데이트 =====
-    // 백엔드에서 스트리밍되어 오는 신규 JJum을 오른쪽 MAP/쩜 지도 패널에 실시간 드로우한다.
-    // 네트워크 지연, 빈 데이터, 중복 데이터, 스키마 위반 등 예외 상황을 처리한다.
-    HAEMA_CONSOLE.streamJjumUpdate = function(newJjum) {
-        try {
-            // 1. 기본 존재 검증
-            if (!newJjum || typeof newJjum !== 'object') {
-                console.warn('[HAEMA] streamJjumUpdate: 유효하지 않은 JJum 데이터 -', newJjum);
-                return;
-            }
-
-            // 2. 스키마 검증
-            const validation = this.validateJjumSchema(newJjum);
-            if (!validation.valid) {
-                console.warn('[HAEMA] streamJjumUpdate: 스키마 검증 실패 -', validation.reason);
-                return;
-            }
-
-            // 3. ID 추출 (jjumName 또는 jjumName 중 하나 사용)
-            const jjumId = newJjum.jjumId;
-            const displayName = newJjum.jjumName || newJjum.jjumName || '알 수 없음';
-
-            // 4. 중복 체크: 이미 존재하는 JJum이면 스킵
-            const existing = this.allJjums.find(j => j.jjumId === jjumId);
-            if (existing) {
-                console.debug('[HAEMA] streamJjumUpdate: 중복 JJum 스킵 -', displayName);
-                return;
-            }
-
-            // 5. 신규 JJum 구성 (백엔드 필드명 차이 대응)
-            const jjum = {
-                jjumId: jjumId,
-                jjumName: newJjum.jjumName || displayName,
-                jjumName: newJjum.jjumName || displayName,
-                type: newJjum.type || 'unknown',
-                tags: Array.isArray(newJjum.tags) ? newJjum.tags : [],
-                summary: newJjum.summary || '',
-                facts: Array.isArray(newJjum.facts) ? newJjum.facts : [],
-                events: Array.isArray(newJjum.events) ? newJjum.events : [],
-                seons: Array.isArray(newJjum.seons) ? newJjum.seons : [],
-                mentionCount: typeof newJjum.mentionCount === 'number' ? newJjum.mentionCount : 0,
-                firstSeen: newJjum.firstSeen || new Date().toISOString(),
-                lastMentioned: newJjum.lastMentioned || newJjum.firstSeen || new Date().toISOString(),
-                pinned: !!newJjum.pinned,
-                status: newJjum.status || 'active',
-                mergedFrom: Array.isArray(newJjum.mergedFrom) ? newJjum.mergedFrom : [],
-                editHistory: Array.isArray(newJjum.editHistory) ? newJjum.editHistory : [],
-                meta: typeof newJjum.meta === 'object' && newJjum.meta ? newJjum.meta : {},
-                ownerId: newJjum.ownerId || 'demo',
-                sourceService: newJjum.sourceService || 'unknown',
-                schemaVersion: newJjum.schemaVersion || 3
-            };
-
-            // 6. JJum 추가 및 스트리밍 표시
-            this.allJjums.push(jjum);
-            this.streamingJjums.add(jjumId);
-
-            // 7. 애니메이션 클래스 적용을 위해 재렌더링
-            this.render();
-
-            console.debug('[HAEMA] streamJjumUpdate: 신규 JJum 스트리밍 -', displayName, '(ID:', jjumId + ')');
-
-            // 8. 스트리밍 완료 표시 제거 (1.2초 후)
-            setTimeout(() => {
-                try {
-                    this.streamingJjums.delete(jjumId);
-                    this.render();
-                } catch (cleanupError) {
-                    console.warn('[HAEMA] streamJjumUpdate cleanup 오류:', cleanupError.message);
-                }
-            }, 1200);
-
-        } catch (error) {
-            console.error('[HAEMA] streamJjumUpdate 처리 중 오류:', error.message || error);
-            this.handleBackendError('streamJjumUpdate', error);
-        }
-    };
-
-    // ===== 백엔드 오류 처리 =====
-    // 네트워크 오류, 데이터 파싱 실패 등 백엔드 관련 오류를 통합 처리한다.
-    HAEMA_CONSOLE.handleBackendError = function(context, error) {
-        console.error('[HAEMA] 백엔드 오류 [' + context + ']:', error.message || error);
-
-        // UI에 오류 상태 표시 (선택 사항)
-        if (this.status !== 'error') {
-            this.status = 'error';
-            this.statusText = '백엔드 연결 오류... 🔄';
-            // 오류 상태는 잠시만 표시 (3초 후 복원)
-            setTimeout(() => {
-                if (this.status === 'error') {
-                    this.status = 'resting';
-                    this.statusText = '해마 쉬는 중...';
-                    this.render();
-                }
-            }, 3000);
-        }
-    };
-
-    // ===== 백엔드 이벤트 핸들러 설정 =====
-    // WebSocket 또는 SSE 연결 시 호출할 이벤트 핸들러 등록
-    // 실제 백엔드 연동 시 이 함수를 호출하여 이벤트 리스너를 설정한다.
-    HAEMA_CONSOLE.setupBackendHandlers = function(backendClient) {
-        if (!backendClient) {
-            console.warn('[HAEMA] setupBackendHandlers: backendClient가 없습니다.');
-            return;
-        }
-
-        // 스트리밍 JJum 수신 핸들러
-        if (typeof backendClient.onJjumStream === 'function') {
-            backendClient.onJjumStream((newJjum) => {
-                console.debug('[HAEMA] 백엔드 JJum 스트림 수신:', newJjum);
-                this.streamJjumUpdate(newJjum);
-            });
-        }
-
-        // 스냅샷 응답 핸들러 (백엔드가 처리한 결과 수신)
-        if (typeof backendClient.onSnapshotResponse === 'function') {
-            backendClient.onSnapshotResponse((response) => {
-                console.debug('[HAEMA] 백엔드 스냅샷 응답:', response);
-                if (response && response.recallResults) {
-                    this.recallResults = response.recallResults;
-                    this.render();
-                }
-            });
-        }
-
-        // 연결 상태 변경 핸들러
-        if (typeof backendClient.onConnectionChange === 'function') {
-            backendClient.onConnectionChange((connected) => {
-                this.backendConnected = connected;
-                console.debug('[HAEMA] 백엔드 연결 상태:', connected ? '연결됨' : '연결 끊김');
-                if (!connected) {
-                    this.status = 'resting';
-                    this.statusText = '백엔드 연결 대기 중... ⏳';
-                    this.render();
-                }
-            });
-        }
-
-        console.debug('[HAEMA] 백엔드 이벤트 핸들러 설정 완료');
-    };
-
-    // ===== 타이핑 멈춤 감지 & 감정 상태 업데이트 =====
-    // 사용자가 입력을 멈추었을 때 백엔드가 감지한 '망설임/불안' 감정 상태를 해마 상태 바에 업데이트한다.
-    HAEMA_CONSOLE.detectTypingStop = function() {
-        this.clearTypingStopTimer();
-
-        // 타이핑 멈춤 감지: 망설임/불안 감정 상태 레이블 업데이트
-        this.status = "working";
-        this.statusText = "해마 생각 중... 💭";
-        this.render();
-    };
-
-    // ===== 타이핑 멈춤 타이머 해제 =====
-    HAEMA_CONSOLE.clearTypingStopTimer = function() {
-        if (this.typingStopTimer) {
-            clearTimeout(this.typingStopTimer);
-            this.typingStopTimer = null;
-        }
-    };
-
     this.modalMode = "create";
     this.modalData = {
         jjumName: "",
@@ -638,6 +393,28 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = function() {
+HAEMA_CONSOLE.saveApiKeyModal = function() {
+    const provider = document.getElementById("modalApiProvider")?.value || "";
+    const model = document.getElementById("modalApiModel")?.value.trim() || "";
+    const apiKey = document.getElementById("modalApiKey")?.value || "";
+    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim() || "";
+
+    if (!provider) {
+        alert("API 제공자를 선택해주세요!");
+        return;
+    }
+
+    // localStorage에 저장
+    localStorage.setItem("haema_api_provider", provider);
+    localStorage.setItem("haema_api_model", model);
+    localStorage.setItem("haema_api_key", apiKey);
+    localStorage.setItem("haema_api_base_url", baseURL);
+
+    console.log("API 키 설정 저장 완료:", { provider, model, apiKey: apiKey ? "(저장됨)" : "", baseURL });
+
+    this.closeModal();
+    this.render();
+};
     if (this.modalMode === "apiKey") {
         this.saveApiKeyModal();
         return;
@@ -925,6 +702,57 @@ HAEMA_CONSOLE.renderModal = function() {
 };
 
 HAEMA_CONSOLE.renderModalContent = function() {
+    // API 키 설정 모달인 경우 API 제공자 선택 UI 반환
+    if (this.modalMode === "apiKey") {
+        const data = this.modalData || {};
+        const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
+        const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
+        const savedBaseUrl = data.baseURL || localStorage.getItem("haema_api_base_url") || "";
+        
+        return '<div class="form-group">' +
+            '<label class="form-label" for="modalApiProvider">API 제공자 (Provider)</label>' +
+            '<select class="form-select" id="modalApiProvider">' +
+            '<option value="">선택하세요</option>' +
+            '<optgroup label="주요 제공자">' +
+            '<option value="openai" ' + (savedProvider === 'openai' ? 'selected' : '') + '>OpenAI</option>' +
+            '<option value="anthropic" ' + (savedProvider === 'anthropic' ? 'selected' : '') + '>Anthropic</option>' +
+            '<option value="google" ' + (savedProvider === 'google' ? 'selected' : '') + '>Google Gemini</option>' +
+            '<option value="grok" ' + (savedProvider === 'grok' ? 'selected' : '') + '>Grok</option>' +
+            '<option value="deepseek" ' + (savedProvider === 'deepseek' ? 'selected' : '') + '>DeepSeek</option>' +
+            '</optgroup>' +
+            '<optgroup label="프록시/호환">' +
+            '<option value="openrouter" ' + (savedProvider === 'openrouter' ? 'selected' : '') + '>OpenRouter</option>' +
+            '<option value="litellm" ' + (savedProvider === 'litellm' ? 'selected' : '') + '>LiteLLM</option>' +
+            '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
+            '<option value="aws-bedrock" ' + (savedProvider === 'aws-bedrock' ? 'selected' : '') + '>AWS Bedrock</option>' +
+            '<option value="openai-compatible" ' + (savedProvider === 'openai-compatible' ? 'selected' : '') + '>OpenAI Compatible</option>' +
+            '</optgroup>' +
+            '<optgroup label="기타">' +
+            '<option value="302ai" ' + (savedProvider === '302ai' ? 'selected' : '') + '>302.AI</option>' +
+            '<option value="abacus" ' + (savedProvider === 'abacus' ? 'selected' : '') + '>Abacus</option>' +
+            '<option value="custom" ' + (savedProvider === 'custom' ? 'selected' : '') + '>직접 입력 (Custom)</option>' +
+            '</optgroup>' +
+            '</select>' +
+            '<div class="form-hint">사용할 API 제공자를 선택하세요.</div>' +
+            '</div>' +
+            '<div class="form-group" id="modalModelGroup" style="' + (savedProvider && savedProvider !== 'custom' ? 'display: block;' : 'display: none;') + '">' +
+            '<label class="form-label" for="modalApiModel">모델</label>' +
+            '<input class="form-input" id="modalApiModel" type="text" value="' + this.escapeHtml(savedModel) + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
+            '<div class="form-hint">사용할 모델 이름을 입력하세요.</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+            '<label class="form-label" for="modalApiKey">API 키</label>' +
+            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(savedProvider && savedProvider !== 'custom' ? data.apiKey || localStorage.getItem("haema_api_key") || "" : "") + '" placeholder="sk-...">' +
+            '<div class="form-hint">API 키를 입력하세요.</div>' +
+            '</div>' +
+            '<div class="form-group" id="modalBaseUrlGroup" style="' + (savedProvider === 'openai-compatible' || savedProvider === 'custom' || savedProvider === 'ollama' ? 'display: block;' : 'display: none;') + '">' +
+            '<label class="form-label" for="modalApiBaseUrl">Base URL (선택사항)</label>' +
+            '<input class="form-input" id="modalApiBaseUrl" type="url" value="' + this.escapeHtml(savedBaseUrl) + '" placeholder="https://api.example.com/v1">' +
+            '<div class="form-hint">OpenAI 호환 API나 자체 서버의 Base URL입니다.</div>' +
+            '</div>';
+    }
+
+    // 쩜 생성/수정 모달인 경우 기존 폼 반환
     const data = this.modalData || {};
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
@@ -972,8 +800,12 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
+        '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜</label>' +
+        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 홍길동 | 친구 | 0.8&#10;김철수 | 동료 | 0.5">' + this.escapeHtml(seonsStr) + '</textarea>' +
+        '<div class="form-hint">연결할 쩜 이름 | 관계 라벨 | 가중치(0~1)를 한 줄에 하나씩 입력하세요.</div>' +
+        '</div>' +
+    '</div>';
 };
-
 HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     const topRecall = this.recallResults.slice(0, 3);
     if (topRecall.length === 0) {
