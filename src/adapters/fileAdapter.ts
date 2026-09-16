@@ -81,6 +81,21 @@ export class FileAdapter implements StorageAdapter {
     return path.join(this.baseDir, sanitize(ownerId));
   }
 
+  private jjumPath(ownerId: string, jjumId: JJumId): string {
+    const index = this.loadIndex();
+    const filename = index.owners[ownerId]?.files[jjumId];
+    if (filename) {
+      return path.join(this.ownerDir(ownerId), filename);
+    }
+    // 인덱스에 없으면 스캔으로 찾기 (fallback)
+    const { files } = this.scanOwner(ownerId);
+    const fileName = files[jjumId];
+    if (fileName) {
+      return path.join(this.ownerDir(ownerId), fileName);
+    }
+    throw new Error(`JJum not found: ${jjumId}`);
+  }
+
   private indexPath(): string {
     return path.join(this.baseDir, '_index.jj');
   }
@@ -343,5 +358,150 @@ export class FileAdapter implements StorageAdapter {
     const { jjums } = this.scanOwner(ownerId);
     if (status === undefined) return jjums.length;
     return jjums.filter((n) => n.status === status).length;
+  }
+
+  /**
+   * 쩜 언급(touch) — mentionCount 증가, lastMentioned 갱신, weight 상승.
+   * 쩜선도 함께 갱신: 관련 쩜선의 weight 상승 + lastActivated 갱신.
+   * M2: 파일 어댑터에서 쩜/쩜선 무게 실시간 감쇠/상승 확인을 위한 핵심 함수.
+   */
+  async touchJJum(
+    ownerId: string,
+    jjumId: JJumId,
+    options?: { seons?: { targetId: JJumId; weight?: number; label?: string }[]; weightDelta?: number },
+  ): Promise<JJum | null> {
+    const filePath = this.jjumPath(ownerId, jjumId);
+    if (!fs.existsSync(filePath)) return null;
+
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    const result = validateJJum(JSON.parse(raw), Date.now());
+    if (!result?.jjum) return null;
+
+    const jjum = result.jjum;
+    const now = Date.now();
+    const weightDelta = options?.weightDelta ?? 0.1;
+
+    // 쩜 자체 weight 상승 + 언급 카운트/시각 갱신
+    const updated: JJum = {
+      ...jjum,
+      mentionCount: (jjum.mentionCount ?? 0) + 1,
+      lastMentioned: now,
+      weight: Math.min(1, (jjum.weight ?? 1) + weightDelta),
+    };
+
+    // 쩜선 갱신: 기존 선은 weight 상승 + lastActivated 갱신, 새 선은 추가
+    if (options?.seons && options.seons.length > 0) {
+      const seonMap = new Map<JJumId, typeof updated.seons[0]>();
+      for (const s of updated.seons ?? []) {
+        seonMap.set(s.targetId, s);
+      }
+      for (const input of options.seons) {
+        const existing = seonMap.get(input.targetId);
+        if (existing) {
+          // 같은 대상 쩜선 → weight 상승 + lastActivated 갱신
+          seonMap.set(input.targetId, {
+            ...existing,
+            weight: Math.min(1, existing.weight + (input.weight ?? 0.1)),
+            lastActivated: now,
+          });
+        } else {
+          // 새 쩜선 추가
+          seonMap.set(input.targetId, {
+            targetId: input.targetId,
+            weight: Math.min(1, input.weight ?? 0.1),
+            label: input.label,
+            lastActivated: now,
+          });
+        }
+      }
+      updated.seons = Array.from(seonMap.values());
+    }
+
+    atomicWrite(filePath, JSON.stringify(updated, null, 2));
+    return updated;
+  }
+
+  /**
+   * 시간 기반 weight 감쇠 적용.
+   * M2: 오래 언급되지 않은 쩜/쩜선의 weight를 서서히 감소.
+   * - 기본 감쇠율: 하루(86400000ms)당 0.01
+   * - 최소 weight: 0.1 (완전 소멸 방지)
+   * - lastMentioned가 없으면 감쇠하지 않음 (신규 쩜 보호)
+   */
+  async decayWeights(ownerId: string, options?: { decayRate?: number; minWeight?: number; since?: number }): Promise<{ decayed: number; errors: string[] }> {
+    const decayRate = options?.decayRate ?? 0.01; // 하루당 감쇠량
+    const minWeight = options?.minWeight ?? 0.1;
+    const since = options?.since ?? Date.now();
+    const msPerDay = 86400000;
+    const errors: string[] = [];
+
+    const { jjums } = this.scanOwner(ownerId);
+    let decayed = 0;
+
+    for (const jjum of jjums) {
+      try {
+        const filePath = this.jjumPath(ownerId, jjum.jjumId);
+        if (!fs.existsSync(filePath)) continue;
+
+        const raw = fs.readFileSync(filePath, 'utf-8');
+        const result = validateJJum(JSON.parse(raw), Date.now());
+        if (!result?.jjum) continue;
+
+        const current = result.jjum;
+        const lastMentioned = current.lastMentioned ?? current.firstSeen;
+        if (!lastMentioned) continue;
+
+        // 경과 일수 계산
+        const daysSince = (since - lastMentioned) / msPerDay;
+        if (daysSince <= 0.001) continue; // 0.001일(약 86초) 미만은 감쇠하지 않음
+
+        // weight 감쇠
+        const newWeight = Math.max(minWeight, (current.weight ?? 1) - decayRate * daysSince);
+        if (newWeight >= (current.weight ?? 1)) continue; // 변화 없음
+
+        // 쩜선 weight도 함께 감쇠
+        const newSeons = (current.seons ?? []).map((seon) => {
+          const seonLastActivated = seon.lastActivated ?? lastMentioned;
+          const seonDays = (since - seonLastActivated) / msPerDay;
+          if (seonDays <= 0) return seon;
+          const newSeonWeight = Math.max(minWeight, (seon.weight ?? 0.5) - decayRate * seonDays);
+          return { ...seon, weight: newSeonWeight };
+        });
+
+        const updated: JJum = {
+          ...current,
+          weight: newWeight,
+          seons: newSeons,
+        };
+
+        atomicWrite(filePath, JSON.stringify(updated, null, 2));
+
+        // 인덱스 업데이트 — 파일명은 그대로, jjumId 등록 확인
+        const index = this.loadIndex();
+        if (!index.owners[ownerId]) {
+          index.owners[ownerId] = { names: {}, files: {} };
+        }
+        const oi = index.owners[ownerId];
+        if (!oi.files[jjum.jjumId]) {
+          // 인덱스에 없는 jjumId 등록 (파일명 기준)
+          const fileName = path.basename(filePath);
+          oi.files[jjum.jjumId] = fileName;
+          // 이름 인덱스도 업데이트
+          const norm = normName(updated.jjumName);
+          if (norm && !oi.names[norm]) {
+            oi.names[norm] = [];
+          }
+          if (norm && !oi.names[norm].includes(jjum.jjumId)) {
+            oi.names[norm].push(jjum.jjumId);
+          }
+          this.saveIndex(index);
+        }
+        decayed++;
+      } catch (e) {
+        errors.push(`${jjum.jjumId}: ${String(e)}`);
+      }
+    }
+
+    return { decayed, errors };
   }
 }

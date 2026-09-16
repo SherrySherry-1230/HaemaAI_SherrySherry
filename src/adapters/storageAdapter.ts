@@ -72,4 +72,24 @@ export interface StorageAdapter {
 
   /** ownerId의 활성(active) 쩜 수 — 상한·자동 정리 판단 재료 */
   countJJums(ownerId: string, status?: JJumStatus): Promise<number>;
+
+  /**
+   * 쩜 언급(touch) — mentionCount 증가, lastMentioned 갱신, weight 상승.
+   * 쩜선도 함께 갱신: 관련 쩜선의 weight 상승 + lastActivated 갱신.
+   * M2: 파일 어댑터에서 쩜/쩜선 무게 실시간 감쇠/상승 확인을 위한 핵심 함수.
+   */
+  touchJJum(
+    ownerId: string,
+    jjumId: JJumId,
+    options?: { seons?: { targetId: JJumId; weight?: number; label?: string }[]; weightDelta?: number },
+  ): Promise<JJum | null>;
+
+  /**
+   * 시간 기반 weight 감쇠 적용.
+   * M2: 오래 언급되지 않은 쩜/쩜선의 weight를 서서히 감소.
+   * - 기본 감쇠율: 하루(86400000ms)당 0.01
+   * - 최소 weight: 0.1 (완전 소멸 방지)
+   * - lastMentioned가 없으면 감쇠하지 않음 (신규 쩜 보호)
+   */
+  decayWeights(ownerId: string, options?: { decayRate?: number; minWeight?: number; since?: number }): Promise<{ decayed: number; errors: string[] }>;
 }
