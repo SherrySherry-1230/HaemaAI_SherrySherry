@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.git
+.env
+.env.*
+.DS_Store
+src/.DS_Store
+src/types/jjum.ts
+src/types/validateJJum.ts
+local-server/
+local-server/seeds/
+local-server/seeds/private/
+local-server/haema/
+AI/
+tools/
+tests/
+Human_ONLY
