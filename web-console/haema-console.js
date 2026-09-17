@@ -5,7 +5,8 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     allJJums: [],
-    selectedJjumId: null,
+    streamingJJums: new Set(),
+    selectedJJumId: null,
     modalMode: null,
     modalData: null,
     throttleTimer: null,  // 실시간 타이핑 쓰로틀 타이머 (0.5초 간격)
@@ -24,6 +25,10 @@ HAEMA_CONSOLE = {
 // ===== 렌더링 함수 =====
 HAEMA_CONSOLE.render = function() {
     const app = document.getElementById("app");
+    // allJJums가 초기화되지 않았으면 빈 배열로 초기화
+    if (!this.allJJums) {
+        this.allJJums = [];
+    }
     // 입력창의 현재 값 보존 (렌더링 시 입력값 초기화 방지)
     const userInput = document.getElementById("userInput");
     const preservedValue = userInput ? userInput.value : "";
@@ -46,13 +51,37 @@ HAEMA_CONSOLE.render = function() {
 HAEMA_CONSOLE.renderHeader = function() {
     const statusClass = "status-" + this.status;
     const emojis = this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" : "💛💚💛";
+    
+    // API 키 설정 상태 확인
+    const apiProvider = localStorage.getItem("haema_api_provider") || "";
+    const apiModel = localStorage.getItem("haema_api_model") || "";
+    const hasApiKey = localStorage.getItem("haema_api_key") ? true : false;
+    
+    let apiBtnHtml = "";
+    if (hasApiKey && apiProvider) {
+        const providerEmoji = apiProvider === "openai" ? "🟢" : 
+                              apiProvider === "anthropic" ? "🟣" :
+                              apiProvider === "google" ? "🔵" :
+                              apiProvider === "grok" ? "⚡" :
+                              apiProvider === "deepseek" ? "🔶" : "🔑";
+        apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
+            providerEmoji + ' ' + this.escapeHtml(apiProvider) + 
+            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') + 
+            ' 🔑</button>';
+    } else if (apiProvider) {
+        apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
+            '🔑 ' + this.escapeHtml(apiProvider) + ' (키 미설정)</button>';
+    } else {
+        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑</button>';
+    }
+    
     return "<header class=\"header " + statusClass + "\">" +
         "<div class=\"header-left\">" +
             "<div class=\"logo-icon\"><img src=\"/resources/h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
             "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
         "</div>" +
         "<div class=\"header-right\">" +
-            "<button class=\"btn btn-icon\" id=\"apiKeyBtn\" title=\"API 키 설정\">🔑</button>" +
+            apiBtnHtml +
         "</div>" +
         "<div class=\"status-bar\"><span class=\"status-emojis\">" + emojis + "</span><span class=\"status-text\">" + this.statusText + "</span></div>" +
     "</header>";
@@ -65,17 +94,19 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 HAEMA_CONSOLE.renderRightPanel = function() {
     return "<div class=\"panel\">" +
         "<div class=\"panel-header\"><div class=\"panel-title\"><span class=\"icon\">📌</span> 쩜(JJum) 매니저 & 실시간 회상</div></div>" +
-        "<div class=\"panel-content\">" + this.renderRecallSection() + this.renderJjumListSection() + "</div>" +
+        "<div class=\"panel-content\">" + this.renderRecallSection() + this.renderJJumListSection() + "</div>" +
     "</div>";
 };
 
-HAEMA_CONSOLE.renderJjumListSection = function() {
-    const sortedJjums = this.allJJums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
-    if (sortedJjums.length === 0) {
-        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
+HAEMA_CONSOLE.renderJJumListSection = function() {
+    // allJJums가 초기화되지 않았으면 빈 배열로 처리
+    const jjums = this.allJJums || [];
+    const sortedJJums = jjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
+    if (sortedJJums.length === 0) {
+        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJJumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
     }
-    const accordionHtml = sortedJjums.map(jjum => {
-        const isExpanded = this.selectedJjumId === jjum.jjumId;
+    const accordionHtml = sortedJJums.map(jjum => {
+        const isExpanded = this.selectedJJumId === jjum.jjumId;
         let seonsHtml = "";
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
@@ -94,8 +125,8 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
             factsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">사실 정보 없음</div>";
         }
         const tagsHtml = jjum.tags.map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
-        return "<div class=\"jjum-item " + (isExpanded ? "expanded" : "") + (this.streamingJjums.has(jjum.jjumId) ? " streaming" : "") + "\" data-jjum-id=\"" + jjum.jjumId + "\">" +
-            "<div class=\"jjum-header\" onclick=\"HAEMA_CONSOLE.toggleJjum(\"" + jjum.jjumId + "\");\">" +
+        return "<div class=\"jjum-item " + (isExpanded ? "expanded" : "") + (this.streamingJJums.has(jjum.jjumId) ? " streaming" : "") + "\" data-jjum-id=\"" + jjum.jjumId + "\">" +
+            "<div class=\"jjum-header\" onclick=\"HAEMA_CONSOLE.toggleJJum(\"" + jjum.jjumId + "\");\">" +
                 "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.jjumName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
                 "<span class=\"expand-icon\">▼</span>" +
             "</div>" +
@@ -112,8 +143,8 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         "</div>";
     }).join("");
     return "<div class=\"jjum-list-section\">" +
-        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div>" +
-        "<div class=\"section-label\"><span>📂</span> 전체 쩜(JJum) 목록 (" + sortedJjums.length + "개, 생성순)</div>" +
+        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJJumBtn\">+ 새 쩜(JJum) 만들기</button></div>" +
+        "<div class=\"section-label\"><span>📂</span> 전체 쩜(JJum) 목록 (" + sortedJJums.length + "개, 생성순)</div>" +
         "<div class=\"jjum-accordion\">" + accordionHtml + "</div>" +
     "</div>";
 };
@@ -122,7 +153,7 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
 HAEMA_CONSOLE.attachEventListeners = function() {
     const sendBtn = document.getElementById("sendBtn");
     const clearBtn = document.getElementById("clearBtn");
-    const createBtn = document.getElementById("createJjumBtn");
+    const createBtn = document.getElementById("createJJumBtn");
     const modalOverlay = document.getElementById("modalOverlay");
     const modalClose = document.getElementById("modalClose");
     const modalCancel = document.getElementById("modalCancel");
@@ -170,13 +201,13 @@ HAEMA_CONSOLE.handleSend = function() {
     // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 점 후보 감지)
     // 간단히 첫 문장/구절을 JJum 이름으로 사용하여 생성
     setTimeout(() => {
-        this.createJjumFromInput(text);
+        this.createJJumFromInput(text);
     }, 800);
 };
 
 // ===== 입력 텍스트에서 새 JJum 생성 =====
 // 사용자가 입력한 텍스트에서 새로운 점(JJum) 후보를 생성하여 로컬 서버에 저장
-HAEMA_CONSOLE.createJjumFromInput = function(text) {
+HAEMA_CONSOLE.createJJumFromInput = function(text) {
     // 간단한 heuristics: 입력 텍스트에서 첫 번째 명사구/이름 추출
     // 예: "오늘 내가 키우던 고양이 뇸뇸이가" → "뇸뇸이"
     // 예: "성수 카페 갔었는데" → "성수 카페"
@@ -335,6 +366,7 @@ HAEMA_CONSOLE.stopBackgroundStream = function() {
 };
 
 HAEMA_CONSOLE.openCreateModal = function() {
+<<<<<<< HEAD
 
 
     // ===== 백그라운드 공감 스트림 (Background Empathy Stream) =====
@@ -373,7 +405,7 @@ HAEMA_CONSOLE.openCreateModal = function() {
 
     // ===== JJum 데이터 스키마 검증 =====
     // 백엔드에서 수신하는 JJum 데이터의 필수 필드 및 타입 검증
-    HAEMA_CONSOLE.validateJjumSchema = function(jjum) {
+    HAEMA_CONSOLE.validateJJumSchema = function(jjum) {
         if (!jjum || typeof jjum !== 'object') {
             return { valid: false, reason: 'JJum이 객체가 아닙니다.' };
         }
@@ -422,78 +454,78 @@ HAEMA_CONSOLE.openCreateModal = function() {
     // ===== 실시간 JJum 스트리밍 업데이트 =====
     // 백엔드에서 스트리밍되어 오는 신규 JJum을 오른쪽 MAP/쩜 지도 패널에 실시간 드로우한다.
     // 네트워크 지연, 빈 데이터, 중복 데이터, 스키마 위반 등 예외 상황을 처리한다.
-    HAEMA_CONSOLE.streamJjumUpdate = function(newJjum) {
+    HAEMA_CONSOLE.streamJJumUpdate = function(newJJum) {
         try {
             // 1. 기본 존재 검증
-            if (!newJjum || typeof newJjum !== 'object') {
-                console.warn('[HAEMA] streamJjumUpdate: 유효하지 않은 JJum 데이터 -', newJjum);
+            if (!newJJum || typeof newJJum !== 'object') {
+                console.warn('[HAEMA] streamJJumUpdate: 유효하지 않은 JJum 데이터 -', newJJum);
                 return;
             }
 
             // 2. 스키마 검증
-            const validation = this.validateJjumSchema(newJjum);
+            const validation = this.validateJJumSchema(newJJum);
             if (!validation.valid) {
-                console.warn('[HAEMA] streamJjumUpdate: 스키마 검증 실패 -', validation.reason);
+                console.warn('[HAEMA] streamJJumUpdate: 스키마 검증 실패 -', validation.reason);
                 return;
             }
 
             // 3. ID 추출 (jjumName 또는 jjumName 중 하나 사용)
-            const jjumId = newJjum.jjumId;
-            const displayName = newJjum.jjumName || newJjum.jjumName || '알 수 없음';
+            const jjumId = newJJum.jjumId;
+            const displayName = newJJum.jjumName || newJJum.jjumName || '알 수 없음';
 
             // 4. 중복 체크: 이미 존재하는 JJum이면 스킵
-            const existing = this.allJjums.find(j => j.jjumId === jjumId);
+            const existing = this.allJJums.find(j => j.jjumId === jjumId);
             if (existing) {
-                console.debug('[HAEMA] streamJjumUpdate: 중복 JJum 스킵 -', displayName);
+                console.debug('[HAEMA] streamJJumUpdate: 중복 JJum 스킵 -', displayName);
                 return;
             }
 
             // 5. 신규 JJum 구성 (백엔드 필드명 차이 대응)
             const jjum = {
                 jjumId: jjumId,
-                jjumName: newJjum.jjumName || displayName,
-                jjumName: newJjum.jjumName || displayName,
-                type: newJjum.type || 'unknown',
-                tags: Array.isArray(newJjum.tags) ? newJjum.tags : [],
-                summary: newJjum.summary || '',
-                facts: Array.isArray(newJjum.facts) ? newJjum.facts : [],
-                events: Array.isArray(newJjum.events) ? newJjum.events : [],
-                seons: Array.isArray(newJjum.seons) ? newJjum.seons : [],
-                mentionCount: typeof newJjum.mentionCount === 'number' ? newJjum.mentionCount : 0,
-                firstSeen: newJjum.firstSeen || new Date().toISOString(),
-                lastMentioned: newJjum.lastMentioned || newJjum.firstSeen || new Date().toISOString(),
-                pinned: !!newJjum.pinned,
-                status: newJjum.status || 'active',
-                mergedFrom: Array.isArray(newJjum.mergedFrom) ? newJjum.mergedFrom : [],
-                editHistory: Array.isArray(newJjum.editHistory) ? newJjum.editHistory : [],
-                meta: typeof newJjum.meta === 'object' && newJjum.meta ? newJjum.meta : {},
-                ownerId: newJjum.ownerId || 'demo',
-                sourceService: newJjum.sourceService || 'unknown',
-                schemaVersion: newJjum.schemaVersion || 3
+                jjumName: newJJum.jjumName || displayName,
+                jjumName: newJJum.jjumName || displayName,
+                type: newJJum.type || 'unknown',
+                tags: Array.isArray(newJJum.tags) ? newJJum.tags : [],
+                summary: newJJum.summary || '',
+                facts: Array.isArray(newJJum.facts) ? newJJum.facts : [],
+                events: Array.isArray(newJJum.events) ? newJJum.events : [],
+                seons: Array.isArray(newJJum.seons) ? newJJum.seons : [],
+                mentionCount: typeof newJJum.mentionCount === 'number' ? newJJum.mentionCount : 0,
+                firstSeen: newJJum.firstSeen || new Date().toISOString(),
+                lastMentioned: newJJum.lastMentioned || newJJum.firstSeen || new Date().toISOString(),
+                pinned: !!newJJum.pinned,
+                status: newJJum.status || 'active',
+                mergedFrom: Array.isArray(newJJum.mergedFrom) ? newJJum.mergedFrom : [],
+                editHistory: Array.isArray(newJJum.editHistory) ? newJJum.editHistory : [],
+                meta: typeof newJJum.meta === 'object' && newJJum.meta ? newJJum.meta : {},
+                ownerId: newJJum.ownerId || 'demo',
+                sourceService: newJJum.sourceService || 'unknown',
+                schemaVersion: newJJum.schemaVersion || 3
             };
 
             // 6. JJum 추가 및 스트리밍 표시
-            this.allJjums.push(jjum);
-            this.streamingJjums.add(jjumId);
+            this.allJJums.push(jjum);
+            this.streamingJJums.add(jjumId);
 
             // 7. 애니메이션 클래스 적용을 위해 재렌더링
             this.render();
 
-            console.debug('[HAEMA] streamJjumUpdate: 신규 JJum 스트리밍 -', displayName, '(ID:', jjumId + ')');
+            console.debug('[HAEMA] streamJJumUpdate: 신규 JJum 스트리밍 -', displayName, '(ID:', jjumId + ')');
 
             // 8. 스트리밍 완료 표시 제거 (1.2초 후)
             setTimeout(() => {
                 try {
-                    this.streamingJjums.delete(jjumId);
+                    this.streamingJJums.delete(jjumId);
                     this.render();
                 } catch (cleanupError) {
-                    console.warn('[HAEMA] streamJjumUpdate cleanup 오류:', cleanupError.message);
+                    console.warn('[HAEMA] streamJJumUpdate cleanup 오류:', cleanupError.message);
                 }
             }, 1200);
 
         } catch (error) {
-            console.error('[HAEMA] streamJjumUpdate 처리 중 오류:', error.message || error);
-            this.handleBackendError('streamJjumUpdate', error);
+            console.error('[HAEMA] streamJJumUpdate 처리 중 오류:', error.message || error);
+            this.handleBackendError('streamJJumUpdate', error);
         }
     };
 
@@ -527,10 +559,10 @@ HAEMA_CONSOLE.openCreateModal = function() {
         }
 
         // 스트리밍 JJum 수신 핸들러
-        if (typeof backendClient.onJjumStream === 'function') {
-            backendClient.onJjumStream((newJjum) => {
-                console.debug('[HAEMA] 백엔드 JJum 스트림 수신:', newJjum);
-                this.streamJjumUpdate(newJjum);
+        if (typeof backendClient.onJJumStream === 'function') {
+            backendClient.onJJumStream((newJJum) => {
+                console.debug('[HAEMA] 백엔드 JJum 스트림 수신:', newJJum);
+                this.streamJJumUpdate(newJJum);
             });
         }
 
@@ -580,6 +612,8 @@ HAEMA_CONSOLE.openCreateModal = function() {
         }
     };
 
+=======
+>>>>>>> c810f0425670612fc86988fde251cd05b7ad4436
     this.modalMode = "create";
     this.modalData = {
         jjumName: "",
@@ -600,9 +634,11 @@ HAEMA_CONSOLE.openCreateModal = function() {
 
 HAEMA_CONSOLE.openApiKeyModal = function() {
     this.modalMode = "apiKey";
-    const savedKey = localStorage.getItem("haema_api_key") || "";
     this.modalData = {
-        apiKey: savedKey,
+        apiKey: localStorage.getItem("haema_api_key") || "",
+        provider: localStorage.getItem("haema_api_provider") || "",
+        model: localStorage.getItem("haema_api_model") || "",
+        baseURL: localStorage.getItem("haema_api_base_url") || "",
     };
     this.render();
     const overlay = document.getElementById("modalOverlay");
@@ -638,12 +674,34 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = function() {
+HAEMA_CONSOLE.saveApiKeyModal = function() {
+    const provider = document.getElementById("modalApiProvider")?.value || "";
+    const model = document.getElementById("modalApiModel")?.value.trim() || "";
+    const apiKey = document.getElementById("modalApiKey")?.value || "";
+    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim() || "";
+
+    if (!provider) {
+        alert("API 제공자를 선택해주세요!");
+        return;
+    }
+
+    // localStorage에 저장
+    localStorage.setItem("haema_api_provider", provider);
+    localStorage.setItem("haema_api_model", model);
+    localStorage.setItem("haema_api_key", apiKey);
+    localStorage.setItem("haema_api_base_url", baseURL);
+
+    console.log("API 키 설정 저장 완료:", { provider, model, apiKey: apiKey ? "(저장됨)" : "", baseURL });
+
+    this.closeModal();
+    this.render();
+};
     if (this.modalMode === "apiKey") {
         this.saveApiKeyModal();
         return;
     }
 
-    const jjumName = document.getElementById("modalJjumName")?.value.trim();
+    const jjumName = document.getElementById("modalJJumName")?.value.trim();
     const aliasesStr = document.getElementById("modalAliases")?.value.trim() || "";
     const type = document.getElementById("modalType")?.value || "인물";
     const tagsStr = document.getElementById("modalTags")?.value.trim() || "";
@@ -674,7 +732,7 @@ HAEMA_CONSOLE.saveModal = function() {
     }).filter(t => t);
 
     if (this.modalMode === "create") {
-        const newJjum = {
+        const newJJum = {
             jjumId: "jjum_" + Date.now(),
             jjumName: jjumName,
             aliases: aliases,
@@ -693,7 +751,7 @@ HAEMA_CONSOLE.saveModal = function() {
             sourceService: "haema_console",
             schemaVersion: 3
         };
-        this.allJJums.push(newJjum);
+        this.allJJums.push(newJJum);
     } else {
         const idx = this.allJJums.findIndex(j => j.jjumId === this.modalData.jjumId);
         if (idx !== -1) {
@@ -724,7 +782,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
     }
 
     const words = inputText.split(/\s+/);
-    const scoredJjums = this.allJJums
+    const scoredJJums = this.allJJums
         .filter(jjum => jjum && jjum.jjumId)
         .map(jjum => {
         let score = 0;
@@ -765,8 +823,8 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         };
     });
 
-    scoredJjums.sort((a, b) => b.simulationScore - a.simulationScore);
-    this.recallResults = scoredJjums.filter(j => j.simulationScore > 0).slice(0, 13);
+    scoredJJums.sort((a, b) => b.simulationScore - a.simulationScore);
+    this.recallResults = scoredJJums.filter(j => j.simulationScore > 0).slice(0, 13);
 
     this.status = "working";
     this.statusText = "✅ 회상 완료! " + this.recallResults.length + "개 쩜 발견";
@@ -925,7 +983,64 @@ HAEMA_CONSOLE.renderModal = function() {
 };
 
 HAEMA_CONSOLE.renderModalContent = function() {
+    // API 키 설정 모달인 경우 API 제공자 선택 UI 반환
+    if (this.modalMode === "apiKey") {
+        const data = this.modalData || {};
+        const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
+        const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
+        const savedBaseUrl = data.baseURL || localStorage.getItem("haema_api_base_url") || "";
+        
+        return '<div class="form-group">' +
+            '<label class="form-label" for="modalApiProvider">API 제공자 (Provider)</label>' +
+            '<select class="form-select" id="modalApiProvider">' +
+            '<option value="">선택하세요</option>' +
+            '<optgroup label="주요 제공자">' +
+            '<option value="openai" ' + (savedProvider === 'openai' ? 'selected' : '') + '>OpenAI</option>' +
+            '<option value="anthropic" ' + (savedProvider === 'anthropic' ? 'selected' : '') + '>Anthropic</option>' +
+            '<option value="google" ' + (savedProvider === 'google' ? 'selected' : '') + '>Google Gemini</option>' +
+            '<option value="grok" ' + (savedProvider === 'grok' ? 'selected' : '') + '>Grok</option>' +
+            '<option value="deepseek" ' + (savedProvider === 'deepseek' ? 'selected' : '') + '>DeepSeek</option>' +
+            '</optgroup>' +
+            '<optgroup label="프록시/호환">' +
+            '<option value="openrouter" ' + (savedProvider === 'openrouter' ? 'selected' : '') + '>OpenRouter</option>' +
+            '<option value="litellm" ' + (savedProvider === 'litellm' ? 'selected' : '') + '>LiteLLM</option>' +
+           '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
+            '<option value="aws-bedrock" ' + (savedProvider === 'aws-bedrock' ? 'selected' : '') + '>AWS Bedrock</option>' +
+            '<option value="openai-compatible" ' + (savedProvider === 'openai-compatible' ? 'selected' : '') + '>OpenAI Compatible</option>' +
+            '</optgroup>' +
+            '<optgroup label="기타">' +
+            '<option value="302ai" ' + (savedProvider === '302ai' ? 'selected' : '') + '>302.AI</option>' +
+            '<option value="abacus" ' + (savedProvider === 'abacus' ? 'selected' : '') + '>Abacus</option>' +
+            '<option value="custom" ' + (savedProvider === 'custom' ? 'selected' : '') + '>직접 입력 (Custom)</option>' +
+            '</optgroup>' +
+            '</select>' +
+            '<div class="form-hint">사용할 API 제공자를 선택하세요.</div>' +
+            '</div>' +
+            '<div class="form-group" id="modalModelGroup">' +
+            '<label class="form-label" for="modalApiModel">모델</label>' +
+            '<input class="form-input" id="modalApiModel" type="text" value="' + this.escapeHtml(savedModel) + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
+            '<div class="form-hint">사용할 모델 이름을 입력하세요.</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+            '<label class="form-label" for="modalApiKey">API 키</label>' +
+            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || localStorage.getItem("haema_api_key") || "") + '" placeholder="sk-...">' +
+            '<div class="form-hint">API 키를 입력하세요.</div>' +
+            '</div>' +
+            '<div class="form-group" id="modalBaseUrlGroup">' +
+            '<label class="form-label" for="modalApiBaseUrl">Base URL (선택사항)</label>' +
+            '<input class="form-input" id="modalApiBaseUrl" type="url" value="' + this.escapeHtml(savedBaseUrl) + '" placeholder="https://api.example.com/v1">' +
+            '<div class="form-hint">OpenAI 호환 API나 자체 서버의 Base URL입니다.</div>' +
+            '</div>';
+    }
+
+    // 쩜 생성/수정 모달인 경우 기존 폼 반환
     const data = this.modalData || {};
+    
+    // API 키 모달인 경우 provider select 렌더링
+    if (this.modalMode === 'apiKey') {
+        return this.renderApiKeyModalContent(data);
+    }
+    
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
@@ -936,8 +1051,8 @@ HAEMA_CONSOLE.renderModalContent = function() {
     }).join('\n');
     
     return '<div class="form-group">' +
-        '<label class="form-label" for="modalJjumName">쩜 이름 *</label>' +
-        '<input class="form-input" id="modalJjumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
+        '<label class="form-label" for="modalJJumName">쩜 이름 *</label>' +
+        '<input class="form-input" id="modalJJumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
         '<div class="form-hint">쩜의 대표 이름입니다. 어떤 이름으로 불러도 이 쩜을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
@@ -972,8 +1087,78 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
+<<<<<<< HEAD
+=======
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩, 형식: 대상이름 | 연결라벨 | 가중치(0~1))</label>' +
+        '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 홍길동 | 친구 | 0.8&#10;김철수 | 동료 | 0.5">' + this.escapeHtml(seonsStr) + '</textarea>' +
+        '<div class="form-hint">쩜과 다른 쩜을 연결하는 선입니다. 한 줄에 하나씩, 파이프(|)로 구분하세요.</div>' +
+        '</div>' +
+    '</div>';
 };
 
+// ===== API 키 모달 콘텐츠 렌더링 =====
+HAEMA_CONSOLE.renderApiKeyModalContent = function(data) {
+    const providers = [
+        { value: 'openai', label: 'OpenAI ChatGPT Subscription' },
+        { value: 'deepseek', label: 'DeepSeek' },
+        { value: 'anthropic', label: 'Anthropic' },
+        { value: 'openrouter', label: 'OpenRouter' },
+        { value: 'grok', label: 'Grok' },
+        { value: 'ollama', label: 'Ollama' },
+        { value: 'aws-bedrock', label: 'AWS Bedrock' },
+        { value: 'openai-compatible', label: 'OpenAI Compatible' },
+        { value: 'litellm', label: 'LiteLLM' },
+        { value: 'google-gemini', label: 'Google Gemini' },
+        { value: '302ai', label: '302.AI' },
+        { value: 'abacus', label: 'Abacus' },
+        { value: 'abliteration', label: 'abliteration.ai' },
+        { value: 'abovedev', label: 'above.dev' },
+        { value: 'agenterouter', label: 'AgentRouter' },
+        { value: 'agnes-ai', label: 'Agnes AI' },
+        { value: 'aihub-mix', label: 'AI Hub Mix' },
+        { value: 'ai-router', label: 'AI-ROUTER' },
+        { value: 'ai-and', label: 'ai&' },
+        { value: 'aixy', label: 'Aixy' },
+        { value: 'aki-io', label: 'AKI.IO' },
+        { value: 'alibaba', label: 'Alibaba' },
+        { value: 'alibaba-china', label: 'Alibaba (China)' },
+        { value: 'alibaba-coding-plan', label: 'Alibaba Coding Plan' },
+        { value: 'alibaba-coding-plan-china', label: 'Alibaba Coding Plan (China)' },
+        { value: 'alibaba-qwen', label: 'Alibaba Qwen' },
+        { value: 'alibaba-qwen-code', label: 'Alibaba Qwen Code' },
+        { value: 'custom', label: 'Custom' }
+    ];
+    
+    const providerOptions = providers.map(p => 
+        '<option value="' + p.value + '"' + (data.provider === p.value ? ' selected' : '') + '>' + p.label + '</option>'
+    ).join('');
+    
+    return '<div class="form-group">' +
+        '<label class="form-label" for="modalProvider">API 제공자 (Provider) *</label>' +
+        '<select class="form-select" id="modalProvider">' +
+        providerOptions +
+        '</select>' +
+        '<div class="form-hint">사용할 AI API 제공자를 선택하세요.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalModel">모델 *</label>' +
+        '<input class="form-input" id="modalModel" type="text" value="' + this.escapeHtml(data.model || '') + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
+        '<div class="form-hint">사용할 모델 이름입니다.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalApiKey">API 키 *</label>' +
+        '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || '') + '" placeholder="sk-...">' +
+        '<div class="form-hint">API 키를 입력하세요.</div>' +
+        '</div>' +
+        '<div class="form-group">' +
+        '<label class="form-label" for="modalBaseURL">Base URL (선택)</label>' +
+        '<input class="form-input" id="modalBaseURL" type="url" value="' + this.escapeHtml(data.baseURL || '') + '" placeholder="https://api.example.com/v1">' +
+        '<div class="form-hint">OpenAI 호환 제공자의 경우 baseURL을 입력하세요.</div>' +
+        '</div>';
+>>>>>>> c810f0425670612fc86988fde251cd05b7ad4436
+};
+};
 HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     const topRecall = this.recallResults.slice(0, 3);
     if (topRecall.length === 0) {
@@ -995,11 +1180,11 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
 };
 
 // ===== 쩜 토글 =====
-HAEMA_CONSOLE.toggleJjum = function(jjumId) {
-    if (this.selectedJjumId === jjumId) {
-        this.selectedJjumId = null;
+HAEMA_CONSOLE.toggleJJum = function(jjumId) {
+    if (this.selectedJJumId === jjumId) {
+        this.selectedJJumId = null;
     } else {
-        this.selectedJjumId = jjumId;
+        this.selectedJJumId = jjumId;
     }
     this.render();
 };
@@ -1011,8 +1196,8 @@ HAEMA_CONSOLE.confirmDelete = function(jjumId) {
     
     if (confirm('정말 "' + jjum.jjumName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
         this.allJJums = this.allJJums.filter(j => j.jjumId !== jjumId);
-        if (this.selectedJjumId === jjumId) {
-            this.selectedJjumId = null;
+        if (this.selectedJJumId === jjumId) {
+            this.selectedJJumId = null;
         }
         this.render();
     }
@@ -1056,20 +1241,20 @@ HAEMA_CONSOLE.loadLocalServerData = function() {
 HAEMA_CONSOLE.extendSeonsFromContext = function(inputValue) {
     if (!inputValue || !inputValue.trim()) return;
     
-    const mentionedJjums = this.findMentionedJjums(inputValue);
+    const mentionedJJums = this.findMentionedJJums(inputValue);
     
-    if (mentionedJjums.length >= 2) {
-        const sourceJjum = mentionedJjums[0];
-        for (let i = 1; i < mentionedJjums.length; i++) {
-            const targetJjum = mentionedJjums[i];
-            this.createSeonConnection(sourceJjum, targetJjum, inputValue);
+    if (mentionedJJums.length >= 2) {
+        const sourceJJum = mentionedJJums[0];
+        for (let i = 1; i < mentionedJJums.length; i++) {
+            const targetJJum = mentionedJJums[i];
+            this.createSeonConnection(sourceJJum, targetJJum, inputValue);
         }
     }
     
-    this.createDerivativeJjums(inputValue, mentionedJjums);
+    this.createDerivativeJJums(inputValue, mentionedJJums);
 };
 
-HAEMA_CONSOLE.findMentionedJjums = function(inputValue) {
+HAEMA_CONSOLE.findMentionedJJums = function(inputValue) {
     const lowerInput = inputValue.toLowerCase();
     const mentioned = [];
     
@@ -1085,40 +1270,40 @@ HAEMA_CONSOLE.findMentionedJjums = function(inputValue) {
     return mentioned;
 };
 
-HAEMA_CONSOLE.createSeonConnection = function(sourceJjum, targetJjum, context) {
-    const existingSeon = sourceJjum.seons?.find(s => s.targetId === targetJjum.jjumId);
+HAEMA_CONSOLE.createSeonConnection = function(sourceJJum, targetJJum, context) {
+    const existingSeon = sourceJJum.seons?.find(s => s.targetId === targetJJum.jjumId);
     if (existingSeon) {
         existingSeon.weight = Math.min(1, (existingSeon.weight || 0.5) + 0.1);
         existingSeon.lastActivated = new Date().toISOString();
         return;
     }
     
-    if (!sourceJjum.seons) {
-        sourceJjum.seons = [];
+    if (!sourceJJum.seons) {
+        sourceJJum.seons = [];
     }
-    sourceJjum.seons.push({
-        targetId: targetJjum.jjumId,
+    sourceJJum.seons.push({
+        targetId: targetJJum.jjumId,
         weight: 0.5,
-        label: this.inferSeonLabel(sourceJjum, targetJjum, context),
+        label: this.inferSeonLabel(sourceJJum, targetJJum, context),
         lastActivated: new Date().toISOString(),
     });
     
-    this.statusText = `🔗 쩜선 연결: ${sourceJjum.jjumName || sourceJjum.jjumName} ↔ ${targetJjum.jjumName || targetJjum.jjumName}`;
+    this.statusText = `🔗 쩜선 연결: ${sourceJJum.jjumName || sourceJJum.jjumName} ↔ ${targetJJum.jjumName || targetJJum.jjumName}`;
     this.render();
 };
 
-HAEMA_CONSOLE.inferSeonLabel = function(sourceJjum, targetJjum, context) {
+HAEMA_CONSOLE.inferSeonLabel = function(sourceJJum, targetJJum, context) {
     const lowerContext = context.toLowerCase();
     if (lowerContext.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태')) return '건강상태';
     if (lowerContext.includes('키우') || lowerContext.includes('내') || lowerContext.includes('나의')) return '소유/관계';
     return '연결';
 };
 
-HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
+HAEMA_CONSOLE.createDerivativeJJums = function(inputValue, mentionedJJums) {
     const lowerInput = inputValue.toLowerCase();
     
     if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
-        mentionedJjums.forEach(jjum => {
+        mentionedJJums.forEach(jjum => {
             const baseName = jjum.jjumName || jjum.jjumName || '';
             const derivativeName = `${baseName}_건강상태`;
             
@@ -1128,7 +1313,7 @@ HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
             );
             
             if (!existing) {
-                this.createKeywordJjum(derivativeName, `${baseName}의 건강 상태 관련 정보`);
+                this.createKeywordJJum(derivativeName, `${baseName}의 건강 상태 관련 정보`);
                 
                 if (!jjum.seons) {
                     jjum.seons = [];
@@ -1201,6 +1386,42 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     return guideParts.join(' ');
 };
 
+// ===== API 키 저장 =====
+HAEMA_CONSOLE.saveApiKeyModal = function() {
+    const provider = document.getElementById("modalProvider")?.value;
+    const model = document.getElementById("modalModel")?.value.trim();
+    const apiKey = document.getElementById("modalApiKey")?.value;
+    const baseURL = document.getElementById("modalBaseURL")?.value.trim();
+
+    if (!provider) {
+        alert("API 제공자를 선택해주세요!");
+        return;
+    }
+    if (!model) {
+        alert("모델 이름을 입력해주세요!");
+        return;
+    }
+    if (!apiKey) {
+        alert("API 키를 입력해주세요!");
+        return;
+    }
+
+    const savedKey = localStorage.getItem("haema_api_key") || "";
+    const existingProvider = localStorage.getItem("haema_api_provider") || "";
+    const existingModel = localStorage.getItem("haema_api_model") || "";
+    const existingBaseURL = localStorage.getItem("haema_api_base_url") || "";
+
+    // 새 설정 저장
+    localStorage.setItem("haema_api_key", apiKey);
+    localStorage.setItem("haema_api_provider", provider);
+    localStorage.setItem("haema_api_model", model);
+    localStorage.setItem("haema_api_base_url", baseURL || "");
+
+    this.statusText = `✅ API 키 저장 완료: ${provider} / ${model}`;
+    this.render();
+    this.closeModal();
+};
+
 document.addEventListener("DOMContentLoaded", () => {
-    HAEMA_CONSOLE.render();
+    HAEMA_CONSOLE.init();
 });
