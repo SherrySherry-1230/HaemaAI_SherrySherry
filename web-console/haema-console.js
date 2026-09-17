@@ -5,6 +5,7 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     allJJums: [],
+    streamingJjums: new Set(),
     selectedJjumId: null,
     modalMode: null,
     modalData: null,
@@ -24,6 +25,10 @@ HAEMA_CONSOLE = {
 // ===== 렌더링 함수 =====
 HAEMA_CONSOLE.render = function() {
     const app = document.getElementById("app");
+    // allJJums가 초기화되지 않았으면 빈 배열로 초기화
+    if (!this.allJJums) {
+        this.allJJums = [];
+    }
     // 입력창의 현재 값 보존 (렌더링 시 입력값 초기화 방지)
     const userInput = document.getElementById("userInput");
     const preservedValue = userInput ? userInput.value : "";
@@ -46,13 +51,37 @@ HAEMA_CONSOLE.render = function() {
 HAEMA_CONSOLE.renderHeader = function() {
     const statusClass = "status-" + this.status;
     const emojis = this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" : "💛💚💛";
+    
+    // API 키 설정 상태 확인
+    const apiProvider = localStorage.getItem("haema_api_provider") || "";
+    const apiModel = localStorage.getItem("haema_api_model") || "";
+    const hasApiKey = localStorage.getItem("haema_api_key") ? true : false;
+    
+    let apiBtnHtml = "";
+    if (hasApiKey && apiProvider) {
+        const providerEmoji = apiProvider === "openai" ? "🟢" : 
+                              apiProvider === "anthropic" ? "🟣" :
+                              apiProvider === "google" ? "🔵" :
+                              apiProvider === "grok" ? "⚡" :
+                              apiProvider === "deepseek" ? "🔶" : "🔑";
+        apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
+            providerEmoji + ' ' + this.escapeHtml(apiProvider) + 
+            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') + 
+            ' 🔑</button>';
+    } else if (apiProvider) {
+        apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
+            '🔑 ' + this.escapeHtml(apiProvider) + ' (키 미설정)</button>';
+    } else {
+        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑</button>';
+    }
+    
     return "<header class=\"header " + statusClass + "\">" +
         "<div class=\"header-left\">" +
             "<div class=\"logo-icon\"><img src=\"/resources/h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
             "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
         "</div>" +
         "<div class=\"header-right\">" +
-            "<button class=\"btn btn-icon\" id=\"apiKeyBtn\" title=\"API 키 설정\">🔑</button>" +
+            apiBtnHtml +
         "</div>" +
         "<div class=\"status-bar\"><span class=\"status-emojis\">" + emojis + "</span><span class=\"status-text\">" + this.statusText + "</span></div>" +
     "</header>";
@@ -70,7 +99,9 @@ HAEMA_CONSOLE.renderRightPanel = function() {
 };
 
 HAEMA_CONSOLE.renderJjumListSection = function() {
-    const sortedJjums = this.allJJums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
+    // allJJums가 초기화되지 않았으면 빈 배열로 처리
+    const jjums = this.allJJums || [];
+    const sortedJjums = jjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
     if (sortedJjums.length === 0) {
         return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
     }
@@ -723,7 +754,7 @@ HAEMA_CONSOLE.renderModalContent = function() {
             '<optgroup label="프록시/호환">' +
             '<option value="openrouter" ' + (savedProvider === 'openrouter' ? 'selected' : '') + '>OpenRouter</option>' +
             '<option value="litellm" ' + (savedProvider === 'litellm' ? 'selected' : '') + '>LiteLLM</option>' +
-            '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
+           '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
             '<option value="aws-bedrock" ' + (savedProvider === 'aws-bedrock' ? 'selected' : '') + '>AWS Bedrock</option>' +
             '<option value="openai-compatible" ' + (savedProvider === 'openai-compatible' ? 'selected' : '') + '>OpenAI Compatible</option>' +
             '</optgroup>' +
@@ -735,17 +766,17 @@ HAEMA_CONSOLE.renderModalContent = function() {
             '</select>' +
             '<div class="form-hint">사용할 API 제공자를 선택하세요.</div>' +
             '</div>' +
-            '<div class="form-group" id="modalModelGroup" style="' + (savedProvider && savedProvider !== 'custom' ? 'display: block;' : 'display: none;') + '">' +
+            '<div class="form-group" id="modalModelGroup">' +
             '<label class="form-label" for="modalApiModel">모델</label>' +
             '<input class="form-input" id="modalApiModel" type="text" value="' + this.escapeHtml(savedModel) + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
             '<div class="form-hint">사용할 모델 이름을 입력하세요.</div>' +
             '</div>' +
             '<div class="form-group">' +
             '<label class="form-label" for="modalApiKey">API 키</label>' +
-            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(savedProvider && savedProvider !== 'custom' ? data.apiKey || localStorage.getItem("haema_api_key") || "" : "") + '" placeholder="sk-...">' +
+            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || localStorage.getItem("haema_api_key") || "") + '" placeholder="sk-...">' +
             '<div class="form-hint">API 키를 입력하세요.</div>' +
             '</div>' +
-            '<div class="form-group" id="modalBaseUrlGroup" style="' + (savedProvider === 'openai-compatible' || savedProvider === 'custom' || savedProvider === 'ollama' ? 'display: block;' : 'display: none;') + '">' +
+            '<div class="form-group" id="modalBaseUrlGroup">' +
             '<label class="form-label" for="modalApiBaseUrl">Base URL (선택사항)</label>' +
             '<input class="form-input" id="modalApiBaseUrl" type="url" value="' + this.escapeHtml(savedBaseUrl) + '" placeholder="https://api.example.com/v1">' +
             '<div class="form-hint">OpenAI 호환 API나 자체 서버의 Base URL입니다.</div>' +
@@ -1034,5 +1065,5 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
 };
 
 document.addEventListener("DOMContentLoaded", () => {
-    HAEMA_CONSOLE.render();
+    HAEMA_CONSOLE.init();
 });
