@@ -1007,11 +1007,6 @@ HAEMA_CONSOLE.renderModalContent = function() {
     // 쩜 생성/수정 모달인 경우 기존 폼 반환
     const data = this.modalData || {};
     
-    // API 키 모달인 경우 provider select 렌더링
-    if (this.modalMode === 'apiKey') {
-        return this.renderApiKeyModalContent(data);
-    }
-    
     const aliasesStr = (data.aliases || []).join(', ');
     const tagsStr = (data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
@@ -1065,68 +1060,6 @@ HAEMA_CONSOLE.renderModalContent = function() {
     '</div>';
 };
 
-// ===== API 키 모달 콘텐츠 렌더링 =====
-HAEMA_CONSOLE.renderApiKeyModalContent = function(data) {
-    const providers = [
-        { value: 'openai', label: 'OpenAI ChatGPT Subscription' },
-        { value: 'deepseek', label: 'DeepSeek' },
-        { value: 'anthropic', label: 'Anthropic' },
-        { value: 'openrouter', label: 'OpenRouter' },
-        { value: 'grok', label: 'Grok' },
-        { value: 'ollama', label: 'Ollama' },
-        { value: 'aws-bedrock', label: 'AWS Bedrock' },
-        { value: 'openai-compatible', label: 'OpenAI Compatible' },
-        { value: 'litellm', label: 'LiteLLM' },
-        { value: 'google-gemini', label: 'Google Gemini' },
-        { value: '302ai', label: '302.AI' },
-        { value: 'abacus', label: 'Abacus' },
-        { value: 'abliteration', label: 'abliteration.ai' },
-        { value: 'abovedev', label: 'above.dev' },
-        { value: 'agenterouter', label: 'AgentRouter' },
-        { value: 'agnes-ai', label: 'Agnes AI' },
-        { value: 'aihub-mix', label: 'AI Hub Mix' },
-        { value: 'ai-router', label: 'AI-ROUTER' },
-        { value: 'ai-and', label: 'ai&' },
-        { value: 'aixy', label: 'Aixy' },
-        { value: 'aki-io', label: 'AKI.IO' },
-        { value: 'alibaba', label: 'Alibaba' },
-        { value: 'alibaba-china', label: 'Alibaba (China)' },
-        { value: 'alibaba-coding-plan', label: 'Alibaba Coding Plan' },
-        { value: 'alibaba-coding-plan-china', label: 'Alibaba Coding Plan (China)' },
-        { value: 'alibaba-qwen', label: 'Alibaba Qwen' },
-        { value: 'alibaba-qwen-code', label: 'Alibaba Qwen Code' },
-        { value: 'custom', label: 'Custom' }
-    ];
-    
-    const providerOptions = providers.map(p => 
-        '<option value="' + p.value + '"' + (data.provider === p.value ? ' selected' : '') + '>' + p.label + '</option>'
-    ).join('');
-    
-    return '<div class="form-group">' +
-        '<label class="form-label" for="modalProvider">API 제공자 (Provider) *</label>' +
-        '<select class="form-select" id="modalProvider">' +
-        providerOptions +
-        '</select>' +
-        '<div class="form-hint">사용할 AI API 제공자를 선택하세요.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalModel">모델 *</label>' +
-        '<input class="form-input" id="modalModel" type="text" value="' + this.escapeHtml(data.model || '') + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
-        '<div class="form-hint">사용할 모델 이름입니다.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalApiKey">API 키 *</label>' +
-        '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || '') + '" placeholder="sk-...">' +
-        '<div class="form-hint">API 키를 입력하세요.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalBaseURL">Base URL (선택)</label>' +
-        '<input class="form-input" id="modalBaseURL" type="url" value="' + this.escapeHtml(data.baseURL || '') + '" placeholder="https://api.example.com/v1">' +
-        '<div class="form-hint">OpenAI 호환 제공자의 경우 baseURL을 입력하세요.</div>' +
-        '</div>';
->>>>>>> c810f0425670612fc86988fde251cd05b7ad4436
-};
-};
 HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     const topRecall = this.recallResults.slice(0, 3);
     if (topRecall.length === 0) {
