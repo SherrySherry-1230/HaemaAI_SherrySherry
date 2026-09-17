@@ -366,7 +366,6 @@ HAEMA_CONSOLE.stopBackgroundStream = function() {
 };
 
 HAEMA_CONSOLE.openCreateModal = function() {
-<<<<<<< HEAD
 
 
     // ===== 백그라운드 공감 스트림 (Background Empathy Stream) =====
@@ -415,14 +414,11 @@ HAEMA_CONSOLE.openCreateModal = function() {
             return { valid: false, reason: 'jjumId가 없거나 문자열이 아닙니다.' };
         }
 
-        if (!jjum.jjumName && !jjum.jjumName) {
-            return { valid: false, reason: 'jjumName/jjumName이 없습니다.' };
+        if (!jjum.jjumName) {
+            return { valid: false, reason: 'jjumName이 없습니다.' };
         }
 
         // 선택적 필드 타입 검증 (있으면 검증)
-        if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
-            return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
-        }
         if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
             return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
         }
@@ -471,7 +467,7 @@ HAEMA_CONSOLE.openCreateModal = function() {
 
             // 3. ID 추출 (jjumName 또는 jjumName 중 하나 사용)
             const jjumId = newJJum.jjumId;
-            const displayName = newJJum.jjumName || newJJum.jjumName || '알 수 없음';
+            const displayName = newJJum.jjumName || '알 수 없음';
 
             // 4. 중복 체크: 이미 존재하는 JJum이면 스킵
             const existing = this.allJJums.find(j => j.jjumId === jjumId);
@@ -483,7 +479,6 @@ HAEMA_CONSOLE.openCreateModal = function() {
             // 5. 신규 JJum 구성 (백엔드 필드명 차이 대응)
             const jjum = {
                 jjumId: jjumId,
-                jjumName: newJJum.jjumName || displayName,
                 jjumName: newJJum.jjumName || displayName,
                 type: newJJum.type || 'unknown',
                 tags: Array.isArray(newJJum.tags) ? newJJum.tags : [],
@@ -612,8 +607,6 @@ HAEMA_CONSOLE.openCreateModal = function() {
         }
     };
 
-=======
->>>>>>> c810f0425670612fc86988fde251cd05b7ad4436
     this.modalMode = "create";
     this.modalData = {
         jjumName: "",
@@ -674,28 +667,6 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = function() {
-HAEMA_CONSOLE.saveApiKeyModal = function() {
-    const provider = document.getElementById("modalApiProvider")?.value || "";
-    const model = document.getElementById("modalApiModel")?.value.trim() || "";
-    const apiKey = document.getElementById("modalApiKey")?.value || "";
-    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim() || "";
-
-    if (!provider) {
-        alert("API 제공자를 선택해주세요!");
-        return;
-    }
-
-    // localStorage에 저장
-    localStorage.setItem("haema_api_provider", provider);
-    localStorage.setItem("haema_api_model", model);
-    localStorage.setItem("haema_api_key", apiKey);
-    localStorage.setItem("haema_api_base_url", baseURL);
-
-    console.log("API 키 설정 저장 완료:", { provider, model, apiKey: apiKey ? "(저장됨)" : "", baseURL });
-
-    this.closeModal();
-    this.render();
-};
     if (this.modalMode === "apiKey") {
         this.saveApiKeyModal();
         return;
@@ -1087,9 +1058,6 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
-<<<<<<< HEAD
-=======
-        '<div class="form-group">' +
         '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩, 형식: 대상이름 | 연결라벨 | 가중치(0~1))</label>' +
         '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 홍길동 | 친구 | 0.8&#10;김철수 | 동료 | 0.5">' + this.escapeHtml(seonsStr) + '</textarea>' +
         '<div class="form-hint">쩜과 다른 쩜을 연결하는 선입니다. 한 줄에 하나씩, 파이프(|)로 구분하세요.</div>' +
@@ -1288,7 +1256,7 @@ HAEMA_CONSOLE.createSeonConnection = function(sourceJJum, targetJJum, context) {
         lastActivated: new Date().toISOString(),
     });
     
-    this.statusText = `🔗 쩜선 연결: ${sourceJJum.jjumName || sourceJJum.jjumName} ↔ ${targetJJum.jjumName || targetJJum.jjumName}`;
+    this.statusText = `🔗 쩜선 연결: ${sourceJJum.jjumName} ↔ ${targetJJum.jjumName}`;
     this.render();
 };
 
@@ -1304,12 +1272,11 @@ HAEMA_CONSOLE.createDerivativeJJums = function(inputValue, mentionedJJums) {
     
     if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
         mentionedJJums.forEach(jjum => {
-            const baseName = jjum.jjumName || jjum.jjumName || '';
+            const baseName = jjum.jjumName || '';
             const derivativeName = `${baseName}_건강상태`;
             
             const existing = this.allJJums.find(j => 
-                j.jjumName === derivativeName || 
-                j.jjumName === derivativeName
+                j.jjumName === derivativeName 
             );
             
             if (!existing) {
@@ -1345,7 +1312,7 @@ HAEMA_CONSOLE.generateCompassionateGuide = function(inputValue) {
         input: inputValue,
         timestamp: new Date().toISOString(),
         recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName || j.jjumName),
+        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName),
         emotionContext: this.emotionContext,
         hostPreview: this.generateHostPreview(inputValue),
     };
@@ -1388,10 +1355,10 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
 
 // ===== API 키 저장 =====
 HAEMA_CONSOLE.saveApiKeyModal = function() {
-    const provider = document.getElementById("modalProvider")?.value;
-    const model = document.getElementById("modalModel")?.value.trim();
+    const provider = document.getElementById("modalApiProvider")?.value;
+    const model = document.getElementById("modalApiModel")?.value.trim();
     const apiKey = document.getElementById("modalApiKey")?.value;
-    const baseURL = document.getElementById("modalBaseURL")?.value.trim();
+    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim();
 
     if (!provider) {
         alert("API 제공자를 선택해주세요!");
