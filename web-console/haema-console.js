@@ -678,9 +678,6 @@ HAEMA_CONSOLE.saveModal = function() {
         // API 키 저장은 이제 haema-api-key-modal.js에서 담당한다.
         if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
             HAEMA_API_KEY_MODAL.saveApiKeyModal();
-        } else {
-            // 분리 파일이 아직 로드되지 않은 경우 대비
-            this.saveApiKeyModal();
         }
         return;
     }
@@ -972,54 +969,6 @@ HAEMA_CONSOLE.renderModalContent = function() {
         if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
             return HAEMA_API_KEY_MODAL.renderApiKeyModalContent(this.modalData || {});
         }
-
-        // 분리 파일이 아직 로드되지 않은 경우 대비: 기존 렌더링 유지
-        const data = this.modalData || {};
-        const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
-        const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
-        const savedBaseUrl = data.baseURL || localStorage.getItem("haema_api_base_url") || "";
-        
-        return '<div class="form-group">' +
-            '<label class="form-label" for="modalApiProvider">API 제공자 (Provider)</label>' +
-            '<select class="form-select" id="modalApiProvider">' +
-            '<option value="">선택하세요</option>' +
-            '<optgroup label="주요 제공자">' +
-            '<option value="openai" ' + (savedProvider === 'openai' ? 'selected' : '') + '>OpenAI</option>' +
-            '<option value="anthropic" ' + (savedProvider === 'anthropic' ? 'selected' : '') + '>Anthropic</option>' +
-            '<option value="google" ' + (savedProvider === 'google' ? 'selected' : '') + '>Google Gemini</option>' +
-            '<option value="grok" ' + (savedProvider === 'grok' ? 'selected' : '') + '>Grok</option>' +
-            '<option value="deepseek" ' + (savedProvider === 'deepseek' ? 'selected' : '') + '>DeepSeek</option>' +
-            '</optgroup>' +
-            '<optgroup label="프록시/호환">' +
-            '<option value="openrouter" ' + (savedProvider === 'openrouter' ? 'selected' : '') + '>OpenRouter</option>' +
-            '<option value="litellm" ' + (savedProvider === 'litellm' ? 'selected' : '') + '>LiteLLM</option>' +
-           '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
-            '<option value="aws-bedrock" ' + (savedProvider === 'aws-bedrock' ? 'selected' : '') + '>AWS Bedrock</option>' +
-            '<option value="openai-compatible" ' + (savedProvider === 'openai-compatible' ? 'selected' : '') + '>OpenAI Compatible</option>' +
-            '</optgroup>' +
-            '<optgroup label="기타">' +
-            '<option value="302ai" ' + (savedProvider === '302ai' ? 'selected' : '') + '>302.AI</option>' +
-            '<option value="abacus" ' + (savedProvider === 'abacus' ? 'selected' : '') + '>Abacus</option>' +
-            '<option value="custom" ' + (savedProvider === 'custom' ? 'selected' : '') + '>직접 입력 (Custom)</option>' +
-            '</optgroup>' +
-            '</select>' +
-            '<div class="form-hint">사용할 API 제공자를 선택하세요.</div>' +
-            '</div>' +
-            '<div class="form-group" id="modalModelGroup">' +
-            '<label class="form-label" for="modalApiModel">모델</label>' +
-            '<input class="form-input" id="modalApiModel" type="text" value="' + this.escapeHtml(savedModel) + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
-            '<div class="form-hint">사용할 모델 이름을 입력하세요.</div>' +
-            '</div>' +
-            '<div class="form-group">' +
-            '<label class="form-label" for="modalApiKey">API 키</label>' +
-            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || localStorage.getItem("haema_api_key") || "") + '" placeholder="sk-...">' +
-            '<div class="form-hint">API 키를 입력하세요.</div>' +
-            '</div>' +
-            '<div class="form-group" id="modalBaseUrlGroup">' +
-            '<label class="form-label" for="modalApiBaseUrl">Base URL (선택사항)</label>' +
-            '<input class="form-input" id="modalApiBaseUrl" type="url" value="' + this.escapeHtml(savedBaseUrl) + '" placeholder="https://api.example.com/v1">' +
-            '<div class="form-hint">OpenAI 호환 API나 자체 서버의 Base URL입니다.</div>' +
-            '</div>';
     }
 
     // 쩜 생성/수정 모달인 경우 기존 폼 반환
@@ -1304,54 +1253,6 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     return guideParts.join(' ');
 };
 
-// ===== API 키 저장 =====
-// 이제 API 키 저장은 haema-api-key-modal.js에서 담당한다.
-// 여기서는 하위 호환성을 위해 분리 파일을 호출하고, 없으면 기존 함수를 사용한다.
-HAEMA_CONSOLE.saveApiKeyModal = function() {
-    if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
-        HAEMA_API_KEY_MODAL.saveApiKeyModal();
-        return;
-    }
-
-    const provider = document.getElementById("modalApiProvider")?.value;
-    const model = document.getElementById("modalApiModel")?.value.trim();
-    const apiKey = document.getElementById("modalApiKey")?.value;
-    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim();
-
-    if (!provider) {
-        alert("API 제공자를 선택해주세요!");
-        return;
-    }
-    if (!model) {
-        alert("모델 이름을 입력해주세요!");
-        return;
-    }
-    if (!apiKey) {
-        alert("API 키를 입력해주세요!");
-        return;
-    }
-
-    const savedKey = localStorage.getItem("haema_api_key") || "";
-    const existingProvider = localStorage.getItem("haema_api_provider") || "";
-    const existingModel = localStorage.getItem("haema_api_model") || "";
-    const existingBaseURL = localStorage.getItem("haema_api_base_url") || "";
-
-    // 새 설정 저장
-    // 이제 실제 저장/안내/모달 닫기는 haema-api-key-modal.js에서 처리한다.
-    if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
-        HAEMA_API_KEY_MODAL.saveApiKeyModal();
-        return;
-    }
-
-    localStorage.setItem("haema_api_key", apiKey);
-    localStorage.setItem("haema_api_provider", provider);
-    localStorage.setItem("haema_api_model", model);
-    localStorage.setItem("haema_api_base_url", baseURL || "");
-
-    this.statusText = `✅ API 키 저장 완료: ${provider} / ${model}`;
-    this.render();
-    this.closeModal();
-};
 
 document.addEventListener("DOMContentLoaded", () => {
     HAEMA_CONSOLE.init();
