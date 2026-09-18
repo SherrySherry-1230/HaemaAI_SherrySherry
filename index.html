@@ -841,6 +841,14 @@
 </head>
 <body>
     <div id="app"></div>
+
+    <!-- =========================================================
+         스크립트 로딩 순서
+         - haema-api-key-modal.js: API 키 모달 콘텐츠/저장/전환 담당
+         - haema-console.js: 콘솔 핵심 로직 담당
+         - API 키 모달은 분리 파일에서 렌더링하고, 콘솔은 모드 전환과 저장 호출만 위임한다.
+         ========================================================= -->
+    <script src="web-console/haema-api-key-modal.js"></script>
     <script src="web-console/haema-console.js"></script>
 </body>
 </html>
