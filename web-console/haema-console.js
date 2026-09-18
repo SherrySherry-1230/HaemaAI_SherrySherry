@@ -198,7 +198,7 @@ HAEMA_CONSOLE.handleSend = function() {
         this.simulateRecall(text);
     }, 500);
 
-    // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 점 후보 감지)
+    // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 쩜 후보 감지)
     // 간단히 첫 문장/구절을 JJum 이름으로 사용하여 생성
     setTimeout(() => {
         this.createJJumFromInput(text);
@@ -206,7 +206,7 @@ HAEMA_CONSOLE.handleSend = function() {
 };
 
 // ===== 입력 텍스트에서 새 JJum 생성 =====
-// 사용자가 입력한 텍스트에서 새로운 점(JJum) 후보를 생성하여 로컬 서버에 저장
+// 사용자가 입력한 텍스트에서 새로운 쩜(JJum) 후보를 생성하여 로컬 서버에 저장
 HAEMA_CONSOLE.createJJumFromInput = function(text) {
     // 간단한 heuristics: 입력 텍스트에서 첫 번째 명사구/이름 추출
     // 예: "오늘 내가 키우던 고양이 뇸뇸이가" → "뇸뇸이"
@@ -253,7 +253,7 @@ HAEMA_CONSOLE.createJJumFromInput = function(text) {
                     this.allJJums.push(data.jjum);
                     this.render();
                     console.log('새 JJum 생성 완료:', data.jjum.jjumName);
-                    this.statusText = `✅ 새 점 생성: ${data.jjum.jjumName}`;
+                    this.statusText = `✅ 새 쩜 생성: ${data.jjum.jjumName}`;
                     this.render();
                 }
             })
@@ -626,6 +626,8 @@ HAEMA_CONSOLE.openCreateModal = function() {
 };
 
 HAEMA_CONSOLE.openApiKeyModal = function() {
+    // API 키 모달은 이제 haema-api-key-modal.js에서 담당한다.
+    // 여기서는 모드만 설정하고, 실제 콘텐츠 렌더링과 저장은 분리 파일에 맡긴다.
     this.modalMode = "apiKey";
     this.modalData = {
         apiKey: localStorage.getItem("haema_api_key") || "",
@@ -638,6 +640,11 @@ HAEMA_CONSOLE.openApiKeyModal = function() {
     if (overlay) {
         overlay.classList.add("active");
         overlay.style.display = "flex";
+    }
+
+    // 모달이 열린 뒤 분리 파일의 이벤트를 바인딩한다.
+    if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+        HAEMA_API_KEY_MODAL.bindEvents();
     }
 };
 
@@ -668,7 +675,13 @@ HAEMA_CONSOLE.closeModal = function() {
 
 HAEMA_CONSOLE.saveModal = function() {
     if (this.modalMode === "apiKey") {
-        this.saveApiKeyModal();
+        // API 키 저장은 이제 haema-api-key-modal.js에서 담당한다.
+        if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+            HAEMA_API_KEY_MODAL.saveApiKeyModal();
+        } else {
+            // 분리 파일이 아직 로드되지 않은 경우 대비
+            this.saveApiKeyModal();
+        }
         return;
     }
 
@@ -954,8 +967,13 @@ HAEMA_CONSOLE.renderModal = function() {
 };
 
 HAEMA_CONSOLE.renderModalContent = function() {
-    // API 키 설정 모달인 경우 API 제공자 선택 UI 반환
+    // API 키 설정 모달인 경우, 이제 haema-api-key-modal.js에서 콘텐츠를 생성한다.
     if (this.modalMode === "apiKey") {
+        if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+            return HAEMA_API_KEY_MODAL.renderApiKeyModalContent(this.modalData || {});
+        }
+
+        // 분리 파일이 아직 로드되지 않은 경우 대비: 기존 렌더링 유지
         const data = this.modalData || {};
         const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
         const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
@@ -1137,7 +1155,7 @@ HAEMA_CONSOLE.loadLocalServerData = function() {
 };
 
 // ===== 연쇄적 쩜선 확장 =====
-// 문장이 완성됨에 따라 파생 정보(예: 뇸뇸이_건강상태.jj)를 추가 점으로 연결하고
+// 문장이 완성됨에 따라 파생 정보(예: 뇸뇸이_건강상태.jj)를 추가 쩜으로 연결하고
 // 쩜선으로 엮어 입체적인 기억 구조를 구축
 HAEMA_CONSOLE.extendSeonsFromContext = function(inputValue) {
     if (!inputValue || !inputValue.trim()) return;
@@ -1203,7 +1221,7 @@ HAEMA_CONSOLE.inferSeonLabel = function(sourceJJum, targetJJum, context) {
 HAEMA_CONSOLE.createDerivativeJJums = function(inputValue, mentionedJJums) {
     const lowerInput = inputValue.toLowerCase();
     
-    if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
+    if (lowerInput.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태') || lowerContext.includes('진료')) {
         mentionedJJums.forEach(jjum => {
             const baseName = jjum.jjumName || '';
             const derivativeName = `${baseName}_건강상태`;
@@ -1262,10 +1280,10 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
     }
     if (lowerInput.includes('병원') || lowerInput.includes('진료') || lowerInput.includes('건강')) {
         if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
-            guideParts.push('🐱 반려동물 건강 걱정이시군요. 병원 다녀오신 후 어떠셨나요?');
+            guideParts.push('🐱 반려동물 관련 걱정이시군요. 병원 다녀오신 후 어떠셨나요?');
             guideParts.push('💡 너무 가슴 아파할 수 있으니, 일단 위로나 건네보는 건 어떨까요?');
         } else {
-            guideParts.push('🏥 병원/건강 관련 이야기시군요. 어떤 점이 가장 걱정되시나요?');
+            guideParts.push('🏥 병원/건강 관련 이야기시군요. 어떤 쩜이 가장 걱정되시나요?');
         }
     }
     if (lowerInput.includes('슬픔') || lowerInput.includes('힘들') || lowerInput.includes('괴롭')) {
@@ -1287,7 +1305,14 @@ HAEMA_CONSOLE.generateHostPreview = function(inputText) {
 };
 
 // ===== API 키 저장 =====
+// 이제 API 키 저장은 haema-api-key-modal.js에서 담당한다.
+// 여기서는 하위 호환성을 위해 분리 파일을 호출하고, 없으면 기존 함수를 사용한다.
 HAEMA_CONSOLE.saveApiKeyModal = function() {
+    if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+        HAEMA_API_KEY_MODAL.saveApiKeyModal();
+        return;
+    }
+
     const provider = document.getElementById("modalApiProvider")?.value;
     const model = document.getElementById("modalApiModel")?.value.trim();
     const apiKey = document.getElementById("modalApiKey")?.value;
@@ -1312,6 +1337,12 @@ HAEMA_CONSOLE.saveApiKeyModal = function() {
     const existingBaseURL = localStorage.getItem("haema_api_base_url") || "";
 
     // 새 설정 저장
+    // 이제 실제 저장/안내/모달 닫기는 haema-api-key-modal.js에서 처리한다.
+    if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+        HAEMA_API_KEY_MODAL.saveApiKeyModal();
+        return;
+    }
+
     localStorage.setItem("haema_api_key", apiKey);
     localStorage.setItem("haema_api_provider", provider);
     localStorage.setItem("haema_api_model", model);
@@ -1324,4 +1355,10 @@ HAEMA_CONSOLE.saveApiKeyModal = function() {
 
 document.addEventListener("DOMContentLoaded", () => {
     HAEMA_CONSOLE.init();
+
+    // API 키 모달 분리 파일에 콘솔 참조를 전달한다.
+    // 분리 파일에서 저장 완료 후 상태 텍스트 갱신이나 render() 호출 시 사용한다.
+    if (typeof HAEMA_API_KEY_MODAL !== "undefined" && typeof HAEMA_API_KEY_MODAL.setConsole === "function") {
+        HAEMA_API_KEY_MODAL.setConsole(HAEMA_CONSOLE);
+    }
 });
