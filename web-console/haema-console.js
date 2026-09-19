@@ -205,64 +205,6 @@ HAEMA_CONSOLE.handleSend = function() {
     }, 800);
 };
 
-// ===== 입력 텍스트에서 새 JJum 생성 =====
-// 사용자가 입력한 텍스트에서 새로운 쩜(JJum) 후보를 생성하여 로컬 서버에 저장
-HAEMA_CONSOLE.createJJumFromInput = function(text) {
-    // 간단한 heuristics: 입력 텍스트에서 첫 번째 명사구/이름 추출
-    // 예: "오늘 내가 키우던 고양이 뇸뇸이가" → "뇸뇸이"
-    // 예: "성수 카페 갔었는데" → "성수 카페"
-
-    // 공백/조사 기준으로 첫 의미 있는 구절 추출
-    const words = text.split(/\s+/);
-    let candidateName = '';
-
-    // 2~4단어 범위에서 후보 추출 (너무 짧거나 길면 제외)
-    if (words.length >= 2 && words.length <= 6) {
-        // 마지막 1~2단어를 후보로 (이름/장소일 가능성 높음)
-        const lastWords = words.slice(-2).join(' ');
-        // 조사가 붙어있으면 제거
-        candidateName = lastWords.replace(/(이|가|은|는|을|를|에|에서|하고|와|과)$/, '').trim();
-    } else if (words.length === 1) {
-        candidateName = words[0];
-    }
-
-    // 후보가 유효하면 JJum 생성
-    if (candidateName && candidateName.length >= 1 && candidateName.length <= 30) {
-        // 기존 JJum과 중복 체크
-        const existing = this.allJJums.find(j =>
-            j.jjumName === candidateName ||
-            j.aliases?.some(a => a === candidateName)
-        );
-
-        if (!existing) {
-            // 새 JJum 생성 API 호출
-            fetch('/api/owners/demo/jjums', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jjumName: candidateName,
-                    aliases: [candidateName],
-                    type: '인물',
-                    tags: [],
-                    summary: text.slice(0, 100),
-                })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.jjum) {
-                    this.allJJums.push(data.jjum);
-                    this.render();
-                    console.log('새 JJum 생성 완료:', data.jjum.jjumName);
-                    this.statusText = `✅ 새 쩜 생성: ${data.jjum.jjumName}`;
-                    this.render();
-                }
-            })
-            .catch(err => {
-                console.error('JJum 생성 실패:', err);
-            });
-        }
-    }
-};
 
 HAEMA_CONSOLE.handleClear = function() {
     const input = document.getElementById("userInput");
@@ -309,17 +251,15 @@ HAEMA_CONSOLE.handleInput = function(inputValue) {
     // 1. 논블로킹 백그라운드 스트리밍: 0.5초 간격으로 스냅샷 전달
     this.startBackgroundStream(inputValue);
     
-    // 2. 실시간 키워드 감지 및 쩜 자동 생성 (입력 도중 키워드 포착)
-    this.detectAndCreateKeywords(inputValue);
+    // 2. 실시간 키워드 감지 및 쩜 자동 생성 (입력 도중 키워드 포착)_지움
+   
     
-    // 3. 망설임 및 감정선 감지 (입력 호흡 변화 캐치)
-    this.detectHesitationAndEmotion(inputValue);
+    // 3. 망설임 및 감정선 감지 (입력 호흡 변화 캐치) _ 지움
     
-    // 4. 연쇄적 쩜선 확장 (문장 완성 시 파생 정보 연결)
-    this.extendSeonsFromContext(inputValue);
+    // 4. 연쇄적 쩜선 확장 (문장 완성 시 파생 정보 연결)_지움
     
-    // 5. 다정한 대화 가이드 제공 (감정/맥락 기반 호스트 챗봇 가이드)
-    this.generateCompassionateGuide(inputValue);
+    // 5. 다정한 대화 가이드 제공 (감정/맥락 기반 호스트 챗봇 가이드)_지움
+    
     
     // 쓰로틀 타이머 설정 (0.5초)
     if (this.throttleTimer) {
@@ -344,10 +284,10 @@ HAEMA_CONSOLE.startBackgroundStream = function(inputValue) {
             return;
         }
         
-        // 가벼운 회상 시뮬레이션 (메인 스레드 블로킹 방지)
-        setTimeout(() => {
+        // 가벼운 회상 시뮬레이션 (메인 스레드 블로킹 방지)_ 일단 주석처리
+       /* setTimeout(() => {
             this.simulateRecall(inputValue);
-        }, 0);
+        }, 0);*/
     };
     
     // 즉시 첫 스냅샷
@@ -389,10 +329,10 @@ HAEMA_CONSOLE.openCreateModal = function() {
         setTimeout(() => {
             try {
                 // 백엔드 연동 지점: HAEMA_CONSOLE.streamSnapshot(inputValue)
-                // 현재는 simulateRecall을 비동기 컨텍스트에서 호출 (백엔드 연동 전)
-                if (typeof this.simulateRecall === 'function') {
+                // 현재는 simulateRecall을 비동기 컨텍스트에서 호출 (백엔드 연동 전)_ 일단 주석처리
+                /* if (typeof this.simulateRecall === 'function') {
                     this.simulateRecall(trimmed);
-                }
+                } */
                 
                 console.debug('[HAEMA] streamSnapshot: 스냅샷 전송 완료 -', trimmed.substring(0, 30) + (trimmed.length > 30 ? '...' : ''));
             } catch (error) {
@@ -754,8 +694,8 @@ HAEMA_CONSOLE.saveModal = function() {
     this.render();
 };
 
-// ===== 시뮬레이션 로직 =====
-HAEMA_CONSOLE.simulateRecall = function(inputText) {
+// ===== 시뮬레이션 로직 ===== 일단 주석처리.
+/* HAEMA_CONSOLE.simulateRecall = function(inputText) {
     if (!inputText || !this.allJJums) {
         this.recallResults = [];
         this.render();
@@ -817,7 +757,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         hostPreview: this.generateHostPreview(inputText)
     };
     this.render();
-};
+};*/
 
 // ===== 유틸리티 함수 =====
 HAEMA_CONSOLE.escapeHtml = function(str) {
@@ -862,7 +802,7 @@ HAEMA_CONSOLE.syntaxHighlight = function(json) {
 HAEMA_CONSOLE.renderLeftPanel = function() {
     const inputValue = localStorage.getItem('haema_input') || '';
     const jsonViewerContent = this.answerGuide ? this.syntaxHighlight(JSON.stringify(this.answerGuide, null, 2)) : '<span style="color: #6b6560;">전송하면 JSON 답변 가이드가 여기에 표시됩니다</span>';
-    const hostPreview = this.answerGuide && this.answerGuide.hostPreview ? this.answerGuide.hostPreview : '';
+    /*const hostPreview = this.answerGuide && this.answerGuide.hostPreview ? this.answerGuide.hostPreview : ''; */ //answerGuide.hostPreview 일단 주석처리. 
     
     return '<div class="panel">' +
         '<div class="panel-header"><div class="panel-title"><span class="icon">💬</span> 사용자 입력 & 답변 가이드</div></div>' +
@@ -1027,25 +967,7 @@ HAEMA_CONSOLE.renderModalContent = function() {
     '</div>';
 };
 
-HAEMA_CONSOLE.generateHostPreview = function(inputText) {
-    const topRecall = this.recallResults.slice(0, 3);
-    if (topRecall.length === 0) {
-        return '음... 그 이야기는 잘 기억나지 않네요. 좀 더 자세히 말해줄 수 있나요?';
-    }
-    
-    const names = topRecall.map(j => j.jjumName);
-    const primary = names[0];
-    const secondary = names.length > 1 ? names[1] : null;
-    
-    const templates = [
-        '아, ' + primary + '요! 기억나요. ' + (secondary ? secondary + '도 같이 생각나네요.' : '그때 일이 떠오르는데요.'),
-        primary + ' 이야기 말이죠. ' + (topRecall[0].summary ? topRecall[0].summary + ' ' : '') + '맞아요, 그런 일이 있었죠.',
-        '네, ' + primary + '요. ' + (topRecall[0].facts && topRecall[0].facts.length > 0 ? topRecall[0].facts[0].text + ' 그리고...' : '그거요!') + ' 좀 더 얘기해 볼까요?'
-    ];
-    
-    const idx = Math.floor(Math.random() * templates.length);
-    return templates[idx];
-};
+//HAEMA_CONSOLE.generateHostPreview _삭제
 
 // ===== 쩜 토글 =====
 HAEMA_CONSOLE.toggleJJum = function(jjumId) {
@@ -1103,24 +1025,9 @@ HAEMA_CONSOLE.loadLocalServerData = function() {
         });
 };
 
-// ===== 연쇄적 쩜선 확장 =====
-// 문장이 완성됨에 따라 파생 정보(예: 뇸뇸이_건강상태.jj)를 추가 쩜으로 연결하고
-// 쩜선으로 엮어 입체적인 기억 구조를 구축
-HAEMA_CONSOLE.extendSeonsFromContext = function(inputValue) {
-    if (!inputValue || !inputValue.trim()) return;
-    
-    const mentionedJJums = this.findMentionedJJums(inputValue);
-    
-    if (mentionedJJums.length >= 2) {
-        const sourceJJum = mentionedJJums[0];
-        for (let i = 1; i < mentionedJJums.length; i++) {
-            const targetJJum = mentionedJJums[i];
-            this.createSeonConnection(sourceJJum, targetJJum, inputValue);
-        }
-    }
-    
-    this.createDerivativeJJums(inputValue, mentionedJJums);
-};
+// ===== 연쇄적 쩜선 확장 ===== 지움 
+
+
 
 HAEMA_CONSOLE.findMentionedJJums = function(inputValue) {
     const lowerInput = inputValue.toLowerCase();
@@ -1160,99 +1067,15 @@ HAEMA_CONSOLE.createSeonConnection = function(sourceJJum, targetJJum, context) {
     this.render();
 };
 
-HAEMA_CONSOLE.inferSeonLabel = function(sourceJJum, targetJJum, context) {
-    const lowerContext = context.toLowerCase();
-    if (lowerContext.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태')) return '건강상태';
-    if (lowerContext.includes('키우') || lowerContext.includes('내') || lowerContext.includes('나의')) return '소유/관계';
-    return '연결';
-};
+//HAEMA_CONSOLE.inferSeonLabel - 지움. 
 
-HAEMA_CONSOLE.createDerivativeJJums = function(inputValue, mentionedJJums) {
-    const lowerInput = inputValue.toLowerCase();
-    
-    if (lowerInput.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태') || lowerContext.includes('진료')) {
-        mentionedJJums.forEach(jjum => {
-            const baseName = jjum.jjumName || '';
-            const derivativeName = `${baseName}_건강상태`;
-            
-            const existing = this.allJJums.find(j => 
-                j.jjumName === derivativeName 
-            );
-            
-            if (!existing) {
-                this.createKeywordJJum(derivativeName, `${baseName}의 건강 상태 관련 정보`);
-                
-                if (!jjum.seons) {
-                    jjum.seons = [];
-                }
-                const existingSeon = jjum.seons.find(s => s.label === '건강상태');
-                if (!existingSeon) {
-                    jjum.seons.push({
-                        targetId: derivativeName,
-                        weight: 0.7,
-                        label: '건강상태',
-                        lastActivated: new Date().toISOString(),
-                    });
-                }
-            }
-        });
-    }
-};
 
-// ===== 다정한 대화 가이드 제공 =====
-// 해마가 분석한 실시간 감정과 기억 맥락을 바탕으로,
-// 호스트 챗봇이 건넬 수 있는 최적의 위로와 다정한 대화 가이드를 도출
-HAEMA_CONSOLE.generateCompassionateGuide = function(inputValue) {
-    if (!inputValue || !inputValue.trim()) {
-        this.answerGuide = null;
-        return;
-    }
-    
-    const guide = {
-        input: inputValue,
-        timestamp: new Date().toISOString(),
-        recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName),
-        emotionContext: this.emotionContext,
-        hostPreview: this.generateHostPreview(inputValue),
-    };
-    
-    this.answerGuide = guide;
-};
+//HAEMA_CONSOLE.createDerivativeJJums 지움. 
+ 
+// ===== 다정한 대화 가이드 제공 ===== 지움.
 
-HAEMA_CONSOLE.generateHostPreview = function(inputText) {
-    const lowerInput = inputText.toLowerCase();
-    const guideParts = [];
-    
-    if (lowerInput.includes('걱정') || lowerInput.includes('불안') || lowerInput.includes('무서')) {
-        guideParts.push('💛 걱정되는 마음이 느껴져요. 천천히 이야기해 주세요.');
-    }
-    if (lowerInput.includes('병원') || lowerInput.includes('진료') || lowerInput.includes('건강')) {
-        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
-            guideParts.push('🐱 반려동물 관련 걱정이시군요. 병원 다녀오신 후 어떠셨나요?');
-            guideParts.push('💡 너무 가슴 아파할 수 있으니, 일단 위로나 건네보는 건 어떨까요?');
-        } else {
-            guideParts.push('🏥 병원/건강 관련 이야기시군요. 어떤 쩜이 가장 걱정되시나요?');
-        }
-    }
-    if (lowerInput.includes('슬픔') || lowerInput.includes('힘들') || lowerInput.includes('괴롭')) {
-        guideParts.push('💚 힘든 마음이 느껴져요. 제가 여기 있어요.');
-    }
-    if (lowerInput.includes('놀람') || lowerInput.includes('깜짝') || lowerInput.includes('갑자기')) {
-        guideParts.push('✨ 갑작스러운 일이 있었군요. 놀라고 당황스러우셨겠어요.');
-    }
-    
-    if (guideParts.length === 0) {
-        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
-            guideParts.push('🐾 반려동물 이야기시군요! 어떤 아이인가요?');
-        } else {
-            guideParts.push('💛 말씀해 주신 내용 잘 들었어요. 더 나누고 싶은 이야기가 있으신가요?');
-        }
-    }
-    
-    return guideParts.join(' ');
-};
-
+//HAEMA_CONSOLE.generateHostPreview = 지움.
+   
 
 document.addEventListener("DOMContentLoaded", () => {
     HAEMA_CONSOLE.init();
