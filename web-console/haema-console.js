@@ -51,43 +51,47 @@ HAEMA_CONSOLE.render = function() {
 HAEMA_CONSOLE.renderHeader = function() {
     const statusClass = "status-" + this.status;
     const emojis = this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" : "💛💚💛";
-    
+
     // API 키 설정 상태 확인
     const apiProvider = localStorage.getItem("haema_api_provider") || "";
     const apiModel = localStorage.getItem("haema_api_model") || "";
     const hasApiKey = localStorage.getItem("haema_api_key") ? true : false;
-    
+
     let apiBtnHtml = "";
     if (hasApiKey && apiProvider) {
-        const providerEmoji = apiProvider === "openai" ? "🟢" : 
+        const providerEmoji = apiProvider === "openai" ? "🟢" :
                               apiProvider === "anthropic" ? "🟣" :
                               apiProvider === "google" ? "🔵" :
                               apiProvider === "grok" ? "⚡" :
                               apiProvider === "deepseek" ? "🔶" : "🔑";
         apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
-            providerEmoji + ' ' + this.escapeHtml(apiProvider) + 
-            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') + 
+            providerEmoji + ' ' + this.escapeHtml(apiProvider) +
+            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') +
             ' 🔑</button>';
     } else if (apiProvider) {
         apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
             '🔑 ' + this.escapeHtml(apiProvider) + ' (키 미설정)</button>';
     } else {
-        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑</button>';
+        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑: 없음</button>';
     }
-    
-    return "<header class=\"header " + statusClass + "\">" +
-        "<div class=\"header-left\">" +
-            "<div class=\"logo-icon\"><img src=\"/resources/h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
-            "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
-        "</div>" +
-        "<div class=\"header-right\">" +
-            apiBtnHtml +
-        "</div>" +
-        "<div class=\"status-bar\"><span class=\"status-emojis\">" + emojis + "</span><span class=\"status-text\">" + this.statusText + "</span></div>" +
-    "</header>";
-};
 
-HAEMA_CONSOLE.renderMainContainer = function() {
+    const storagePath = localStorage.getItem("haema_storage_path") || "";
+    const storageBtnHtml = '<button class="btn btn-icon" id="storageBtn" title="저장 폴더 연결">🪣</button>';
+    const storageStatusHtml = '<span class="storage-status" id="storageStatus">🪣 : ' + (storagePath ? "연결✅" : "없음") + '</span>';
+
+    return [
+        '<header class="header ' + statusClass + '">',
+        '<div class="header-left">',
+        '<div class="logo-icon"><img src="/resources/h_LOGO.png" alt="HAEMA.AI 로고"></div>',
+        '<div><div class="header-title">HAEMA.AI</div><div class="header-subtitle">해마.AI 실험실</div></div>',
+        '</div>',
+        '<div class="header-right">',
+        storageBtnHtml,
+        apiBtnHtml,
+        '</div>',
+        '<div class="status-bar"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.statusText + '</span>' + storageStatusHtml + '</div>',
+        '</header>',
+    ].join("");HAEMA_CONSOLE.renderMainContainer = function() {
     return "<div class=\"main-container\">" + this.renderLeftPanel() + this.renderRightPanel() + "</div>";
 };
 
@@ -1085,4 +1089,20 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof HAEMA_API_KEY_MODAL !== "undefined" && typeof HAEMA_API_KEY_MODAL.setConsole === "function") {
         HAEMA_API_KEY_MODAL.setConsole(HAEMA_CONSOLE);
     }
+
+    // 저장소 모달 분리 파일에 콘솔 참조를 전달한다.
+    if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.setConsole === "function") {
+        HAEMA_STORAGE_MODAL.setConsole(HAEMA_CONSOLE);
+    }
+
+    // 저장소 버튼 클릭 시 모달 열기
+    const storageBtn = document.getElementById("storageBtn");
+    if (storageBtn) {
+        storageBtn.addEventListener("click", () => {
+            if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+                HAEMA_STORAGE_MODAL.open();
+            }
+        });
+    }
 });
+
