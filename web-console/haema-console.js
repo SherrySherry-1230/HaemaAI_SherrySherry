@@ -163,6 +163,10 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     const modalCancel = document.getElementById("modalCancel");
     const modalSave = document.getElementById("modalSave");
     const userInput = document.getElementById("userInput");
+    const inputArea = document.querySelector(".input-area");
+
+    // 저장소/API 키 준비 상태에 따라 userInput disabled 처리
+    this.updateInputAvailability();
 
     if (sendBtn) sendBtn.addEventListener("click", () => this.handleSend());
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
@@ -175,10 +179,86 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (modalClose) modalClose.addEventListener("click", () => this.closeModal());
     if (modalCancel) modalCancel.addEventListener("click", () => this.closeModal());
     if (modalSave) modalSave.addEventListener("click", () => this.saveModal());
-    
+
+    // input-area 클릭 시 저장소/API 키 상태에 따라 안내 모달 열기
+    if (inputArea) {
+        inputArea.addEventListener("click", (e) => {
+            // textarea나 버튼 클릭은 무시 (이미 해당 이벤트 핸들러가 처리)
+            if (e.target.id === "userInput" || e.target.closest("button")) {
+                return;
+            }
+            this.handleInputAreaClick();
+        });
+    }
+
     // 실시간 타이핑 쓰로틀 (Throttle 500ms - 타이핑 중에도 0.5초마다 계속 호출)
     if (userInput) {
         userInput.addEventListener("input", (e) => this.handleInput(e.target.value));
+    }
+};
+
+// ===== 저장소/API 키 준비 상태 체크 =====
+HAEMA_CONSOLE.isStorageReady = function() {
+    const storagePath = localStorage.getItem("haema_storage_path") || "";
+    return storagePath !== "";
+};
+
+HAEMA_CONSOLE.isApiKeyReady = function() {
+    const apiKey = localStorage.getItem("haema_api_key") || "";
+    const apiProvider = localStorage.getItem("haema_api_provider") || "";
+    return apiKey !== "" && apiProvider !== "";
+};
+
+// ===== userInput 사용 가능 여부 업데이트 =====
+HAEMA_CONSOLE.updateInputAvailability = function() {
+    const userInput = document.getElementById("userInput");
+    if (!userInput) return;
+
+    const storageReady = this.isStorageReady();
+    const apiKeyReady = this.isApiKeyReady();
+    const isReady = storageReady && apiKeyReady;
+
+    userInput.disabled = !isReady;
+
+    // disabled 상태일 때 title 속성으로 안내 추가
+    if (!isReady) {
+        const reasons = [];
+        if (!storageReady) {
+            reasons.push("🪣저장소🪣 연결을 다시 확인해 주세요😢💦");
+        }
+        if (!apiKeyReady) {
+            reasons.push("🗝️API🗝️를 다시 확인해 주세요 😢💦");
+        }
+        userInput.title = reasons.join("\n");
+    } else {
+        userInput.title = "";
+    }
+};
+
+// ===== input-area 클릭 시 처리 =====
+HAEMA_CONSOLE.handleInputAreaClick = function() {
+    const storageReady = this.isStorageReady();
+    const apiKeyReady = this.isApiKeyReady();
+
+    if (!storageReady && !apiKeyReady) {
+        // 둘 다 준비 안 됨: 저장소 모달 먼저 열기
+        this.statusText = "🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요";
+        this.render();
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    } else if (!storageReady) {
+        // 저장소만 준비 안 됨
+        this.statusText = "🪣저장소🪣 연결을 다시 확인해 주세요😢💦";
+        this.render();
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    } else if (!apiKeyReady) {
+        // API 키만 준비 안 됨
+        this.statusText = "🗝️API🗝️를 다시 확인해 주세요 😢💦";
+        this.render();
+        this.openApiKeyModal();
     }
 };
 
