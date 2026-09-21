@@ -1186,5 +1186,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-};
-
