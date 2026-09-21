@@ -1,8 +1,10 @@
-<!-- @editedBy SherrySherry 2026-09-12 -->
+<!-- @editedBy 사람사람 작성자 힘듦...  2026-09-21 -->
 # 쩜(JJum) 스키마 (확정)
 
-> 확정: 2026-09-12 (운영자) · 용어·확장자 전면 교체: 2026-09-12.
-> 이 문서가 쩜(jjum) 구조의 단일 기준이다. TypeScript 타입: `src/types/jjum.ts`.
+> 버전 3 
+> 확정: 2026-09-13 (사람야옹이) · 용어 전면 교체: 2026-09-13. 원문 출처: 마이풉 기획서 §2-1-1 "해마.AI". 스키마 파일 AI 폴더로 옮김. 
+> '해마세포' 구용어 -> '쩜' 으로 교체 'HCell'도 'JJum'으로 일단 교체 
+> 이 문서가 쩜 구조의 단일 기준이다. TypeScript 타입: `src/types/jjum.ts`.
 > 원칙: `meta`는 서비스별 자유 확장 소켓이며 **Haema는 그 내용을 해석하지 않는다** (도메인 무지).
 
 > **생각과 기억의 최소단위, 생각점·기억점, 그래서 점이다!**
@@ -12,9 +14,9 @@
 
 | 개념 | 문서 용어 | 코드 |
 | --- | --- | --- |
-| 생각·기억의 최소 단위 — AI와 유저가 공유하는 기억 하나 | **쩜** (생각점·기억점, 그래서 점이다!) | `JJum` (jjum), 논리 경로 `jjums/{JJumId}` — 파일 어댑터의 실제 경로는 `local-server/haema/{ownerId}/{jjumName}.jj` |
-| 쩜 사이 연관 — "점이 이어지면 선(선이라고만 표기하면 '선'한글자라 검색도 어렵고, 너무 헷갈리므로, '쩜선'이라 표기.)" | **쩜선** (Seon) | `Seon`, 필드 `seons` |
-| 점에 달린 표식 (valence 긍정/중립/부정도 여기 속한다) | **H-tag (해마태그)** | 필드 `tags` |
+| 기억의 최소 단위 — AI와 유저가 공유하는 기억 하나, 기억점에서 '점' -> 일상에서의 '점'과 구분하기 위해 '쩜' | **쩜** (쩜-기존 해마세포, 해마쎌이라고 불렀음 9월 8일부터 교체중) | `JJum` (jjum), 논리 경로 `jjums/{jjumId}` — 파일 어댑터의 실제 경로는 `local-server/haema/{ownerId}/jjum_*.json` |
+| 쩜선 — "점이 연결되면 선" | **쩜선** | `Seon`, 필드 `seons` |
+| 쩜에 달린 표식 (valence 긍정/중립/부정도 여기 속한다) | **H-tag (해마태그)** | 필드 `tags` |
 
 "노드"·"엔티티"·"마디"는 쓰지 않는다.
 
@@ -23,7 +25,7 @@
 
 // ═══ 신원 ═══
 jjumId          string      // 자동 생성 고유 ID
-jjumName   string      // 대표 이름 ("박**", "루*코인", "성수 카페")
+jjumName        string      // 대표 이름 ("박**", "루*코인", "성수 카페")
 aliases         string[]    // 별칭 (["핑크", "박**"]) — 어느 이름으로 언급돼도 같은 쩜 히트
 type            string      // 개방형. AI가 자유 생성 (인물·장소·사물·사건·개념·작품·조직·표현·시기·감정 …)
 tags            string[]    // H-tag — 다중 분류 ("루*코인" = [코인, 사건, 밈]). valence(긍정/중립/부정)도 H-tag
@@ -37,9 +39,9 @@ events          array       // [{ date, summary, refJJumIds[] }] — 사건에 �
 seons           array       // [{ targetId, weight, label?, lastActivated }]
                             //   weight: 함께 언급될수록↑, 미사용 시 서서히 감쇠
                             //   label: 관계 설명(선택) — "창작자", "동일 사건"
-                            //   회상 규칙: 기본 1홉·최대 2홉 / weight 상위 N개 / 총 토큰 상한
-                            //   중복 규칙(2026-09-06, "핀 여러 개"): 같은 상대라도 라벨이 다르면 선 여러 개 허용
-                            //     (예: "이전 동거" + "이사 원인"). 라벨이 같은 선이 또 오면 새로 만들지 않고 기존 weight↑.
+                            //   회상&연상 규칙: MCTS, weight 따라 탐색 / weight 상위 N개 / 총 토큰 상한
+                            //   중복 규칙(2026-09-06, "핀 여러 개"): 같은 상대라도 라벨이 다르면 쩜선 여러 개 허용
+                            //     (예: "이전 동거" + "이사 원인"). 라벨이 같은 쩜선이 또 오면 새로 만들지 않고 기존 weight↑.
                             //     회상 점수는 같은 상대로 가는 쩜선 중 가장 굵은 것 기준.
 
 // ═══ 통계 ═══
@@ -52,7 +54,7 @@ recallCount     number      // AI가 회상에 실제 사용한 횟수
 pinned          boolean     // 자동 정리 영구 면제
 status          enum        // active | archived | merged
                             //   archived: 상한 초과로 잠든 기억 (삭제 아님, 재언급 시 부활)
-                            //   merged:   다른 점에 흡수됨
+                            //   merged:   다른 쩜에 흡수됨
 mergedFrom      string[]    // 흡수한 구 쩜 ID들 — 오병합 분리 복원용
 mergedInto      string?     // (status=merged일 때) 흡수된 대상 역참조
 editHistory     array       // [{ date, action, field, by }]  by: user | ai | batch
@@ -67,6 +69,7 @@ schemaVersion   number      // 마이그레이션 대비
 ```
 
 ## 변경 이력
+- 2026-09-21 회상규칙 -> 회상&연상규칙 : '홉' 용어 제거. 'MCTS, weight 따라 탐색'으로 변경 
 
 - 2026-09-12 용어·확장자 전면 교체: `HCell`→`JJum`, `Tail`→`Seon`, `cellId`→`JJumId`(타입명)/`jjumId`(필드명), `tails`→`seons`, `cells/{cellId}`→`jjums/{JJumId}`, 파일 `cell_*.json`→`{jjumName}.jj`, `_index.json`→`_index.jj`, 스키마 v2→v3.
   - 타입명 `JJumId`는 PascalCase(타입 표준), 필드명은 `jjumId`(camelCase)로 구분.
@@ -77,8 +80,6 @@ schemaVersion   number      // 마이그레이션 대비
   `reindex` 리포트에 잡힌다 — 콘솔 `demo`로 재생성.
 
 ## 구현 단계 메모
-
 - 1단계 진행 중 (2026-09-12, 쉐리쉐리): 쩜(jjum) 스키마 v3 + 검증기 + 파일명 `.jj` 기준 전환 시작.
 - 다음 단계: 생성·조작 헬퍼(Step 2) → 어댑터(Step 3) → 회상·선·감성·답변 가이드(Step 4) → 데모·로컬 파일(Step 5) → 도구·콘솔(Step 6) → 테스트(Step 7) → 문서(Step 8).
 - 단계 정의·완료 기준은 `docs/PLAN.md`.
-
