@@ -96,6 +96,22 @@ const HAEMA_STORAGE_MODAL = (function () {
             return;
         }
 
+        overlay.classList.add("active");
+
+        // 이미 연결된 저장소가 있으면 상태 표시
+        HAEMA_STORAGE_DB.getStorageStatus().then(status => {
+            if (status.connected) {
+                folderHint.textContent = "✅ 저장소가 연결되어 있습니다. " + FOLDER_NAMES.longTerm + " 폴더가 준비됨.";
+                folderSelectBtn.textContent = "📁 폴더 다시 선택";
+            } else if (status.needsRepermission) {
+                folderHint.textContent = "⚠️ 저장소 접근 권한이 필요합니다. 다시 선택해주세요.";
+                folderSelectBtn.textContent = "📁 권한 재요청";
+            } else {
+                folderHint.textContent = "선택한 폴더 안에 해마 장기기억 저장소를 생성합니다.";
+                folderSelectBtn.textContent = "📁 폴더 선택";
+            }
+        });
+
         closeBtn.addEventListener("click", closeModal);
 
         overlay.addEventListener("click", function (e) {
@@ -113,7 +129,8 @@ const HAEMA_STORAGE_MODAL = (function () {
         const overlay = document.getElementById("storageModalOverlay");
 
         if (overlay) {
-            overlay.remove();
+            overlay.classList.remove("active");
+            setTimeout(() => overlay.remove(), 180);
         }
     }
 
@@ -138,23 +155,22 @@ const HAEMA_STORAGE_MODAL = (function () {
             );
 
             // 쩜통 생성
-            await rootHandle.getDirectoryHandle(
+            const jjumHandle = await rootHandle.getDirectoryHandle(
                 FOLDER_NAMES.jjum,
                 { create: true }
             );
 
             // 엔드유저 관계 저장소 생성
-            await rootHandle.getDirectoryHandle(
+            const endUserHandle = await rootHandle.getDirectoryHandle(
                 FOLDER_NAMES.endUser,
                 { create: true }
             );
 
             // ----------------------------------------------------
             // 여기까지 실제 폴더 생성이 모두 성공한 경우에만
-            // 연결 상태를 저장
+            // Handle을 IndexedDB에 저장하고 연결 상태 표시
             // ----------------------------------------------------
-
-            localStorage.setItem(STORAGE_PATH_KEY, "connected");
+            await HAEMA_STORAGE_DB.saveHandles(rootHandle, jjumHandle, endUserHandle);
 
             // Header 상태 갱신
             if (consoleRef && typeof consoleRef.render === "function") {
