@@ -25,7 +25,7 @@
 
 // ═══ 신원 ═══
 jjumId          string      // 자동 생성 고유 ID
-jjumName        string      // 대표 이름 ("박**", "루*코인", "성수 카페")
+jjumName        string      // 대표 이름 ("박OO", "루O코인", "성수 카페")
 aliases         string[]    // 별칭 (["핑크", "박**"]) — 어느 이름으로 언급돼도 같은 쩜 히트
 type            string      // 개방형. AI가 자유 생성 (인물·장소·사물·사건·개념·작품·조직·표현·시기·감정 …)
 tags            string[]    // H-tag — 다중 분류 ("루*코인" = [코인, 사건, 밈]). valence(긍정/중립/부정)도 H-tag
