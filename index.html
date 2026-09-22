@@ -33,6 +33,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 12px;
             padding: 12px 24px;
             background: linear-gradient(135deg, var(--brand-pink) 0%, var(--brand-peach) 100%);
             box-shadow: 0 2px 8px rgba(255, 173, 222, 0.3);
@@ -45,6 +46,25 @@
             display: flex;
             align-items: center;
             gap: 12px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-left: auto;
+        }
+
+        .header-tools {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #storageBtn {
+            white-space: nowrap;
+            min-width: 110px;
+            justify-content: center;
         }
 
         .logo-icon {
@@ -87,6 +107,7 @@
             font-size: 13px;
             font-weight: 500;
             backdrop-filter: blur(10px);
+            white-space: nowrap;
         }
 
         .status-emojis {
@@ -147,6 +168,16 @@
 
         .input-area {
             margin-bottom: 20px;
+            position: relative;
+        }
+
+        .input-disabled-overlay {
+            position: absolute;
+            inset: 0;
+            border-radius: 12px;
+            background: rgba(120, 120, 120, 0.04);
+            cursor: pointer;
+            z-index: 2;
         }
 
         .user-input {
@@ -169,8 +200,16 @@
             box-shadow: 0 0 0 3px rgba(255, 173, 222, 0.2);
         }
 
-        .user-input::placeholder {
-            color: #b0a8a0;
+        .user-input:disabled {
+            background: #f3f3f3;
+            border-color: #e7e0dc;
+            color: #8a8a8a;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .user-input:disabled::placeholder {
+            color: #a9a1a0;
         }
 
         .action-buttons {
@@ -736,6 +775,30 @@
             margin-top: 4px;
         }
 
+        .folder-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 12px 14px;
+            background: var(--bg-light);
+            border: 1px solid var(--border-light);
+            border-radius: 10px;
+        }
+
+        .folder-item {
+            font-size: 12px;
+            line-height: 1.5;
+            color: var(--text-primary);
+            padding: 6px 8px;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .folder-item span {
+            display: inline-block;
+            word-break: break-word;
+        }
+
         .tag-input-wrapper {
             display: flex;
             flex-wrap: wrap;
@@ -848,9 +911,9 @@
          - haema-console.js: 콘솔 핵심 로직 담당
          - API 키 모달은 분리 파일에서 렌더링하고, 콘솔은 모드 전환과 저장 호출만 위임한다.
          ========================================================= -->
-    <script src="web-console/haema-api-key-modal.js"></script>
-    <script src="web-console/haema-console.js?v=2"></script>
-    <script src="web-console/haema-storage-db.js"></script>
-    <script src="web-console/haema-storage-modal.js"></script>
+    <script src="web-console/haema-api-key-modal.js?v=3"></script>
+    <script src="web-console/haema-console.js?v=3"></script>
+    <script src="web-console/haema-storage-db.js?v=3"></script>
+    <script src="web-console/haema-storage-modal.js?v=3"></script>
 </body>
 </html>
