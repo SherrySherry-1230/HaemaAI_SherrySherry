@@ -3,7 +3,7 @@
 // IndexedDB 기반 FileSystemDirectoryHandle 영속화 + 저장소 접근
 // ============================================================
 
-const HAEMA_STORAGE_DB = (function () {
+window.HAEMA_STORAGE_DB = (function () {
     const DB_NAME = 'haema-storage-db';
     const DB_VERSION = 1;
     const STORE_NAME = 'handles';
@@ -11,6 +11,8 @@ const HAEMA_STORAGE_DB = (function () {
     const KEY_ROOT = 'rootHandle';
     const KEY_JJUM = 'jjumHandle';
     const KEY_ENDUSER = 'endUserHandle';
+    const KEY_HIDDEN_SYSTEM = 'hiddenSystemHandle';
+    const KEY_ALGORITHM = 'algorithmHandle';
 
     const STORAGE_PATH_KEY = 'haema_storage_path';
 
@@ -22,6 +24,8 @@ const HAEMA_STORAGE_DB = (function () {
         longTerm: "🧠장기기억저장소_feat.해마🧠",
         jjum: "🪣쩜통🪣",
         endUser: "☺️♥️🤖엔드유저와의 관계를 위하여🤖♥️☺️",
+        hiddenSystem: "🫀해마_심층_중추신경계🫀",
+        algorithm: "📜해마.ai 핵심 13 알고리즘 계율📜",
     };
 
     // ============================================================
@@ -101,11 +105,15 @@ const HAEMA_STORAGE_DB = (function () {
             const rootHandle = await getHandle(KEY_ROOT);
             const jjumHandle = await getHandle(KEY_JJUM);
             const endUserHandle = await getHandle(KEY_ENDUSER);
+            const hiddenSystemHandle = await getHandle(KEY_HIDDEN_SYSTEM);
+            const algorithmHandle = await getHandle(KEY_ALGORITHM);
 
             return !!(
                 rootHandle &&
                 jjumHandle &&
-                endUserHandle
+                endUserHandle &&
+                hiddenSystemHandle &&
+                algorithmHandle
             );
         } catch (error) {
             console.error('[HaemaStorage] 저장소 연결 확인 실패:', error);
@@ -118,11 +126,13 @@ const HAEMA_STORAGE_DB = (function () {
             const rootHandle = await getHandle(KEY_ROOT);
             const jjumHandle = await getHandle(KEY_JJUM);
             const endUserHandle = await getHandle(KEY_ENDUSER);
+            const hiddenSystemHandle = await getHandle(KEY_HIDDEN_SYSTEM);
+            const algorithmHandle = await getHandle(KEY_ALGORITHM);
 
-            if (!rootHandle || !jjumHandle || !endUserHandle) {
+            if (!rootHandle || !jjumHandle || !endUserHandle || !hiddenSystemHandle || !algorithmHandle) {
                 return {
                     connected: false,
-                    reason: '3개 저장소 폴더의 Handle이 모두 저장되어 있지 않습니다.'
+                    reason: '필수 폴더의 Handle이 모두 저장되어 있지 않습니다.'
                 };
             }
 
@@ -147,11 +157,19 @@ const HAEMA_STORAGE_DB = (function () {
     async function saveHandles(
         rootHandle,
         jjumHandle,
-        endUserHandle
+        endUserHandle,
+        hiddenSystemHandle = null,
+        algorithmHandle = null
     ) {
         await putHandle(KEY_ROOT, rootHandle);
         await putHandle(KEY_JJUM, jjumHandle);
         await putHandle(KEY_ENDUSER, endUserHandle);
+        if (hiddenSystemHandle) {
+            await putHandle(KEY_HIDDEN_SYSTEM, hiddenSystemHandle);
+        }
+        if (algorithmHandle) {
+            await putHandle(KEY_ALGORITHM, algorithmHandle);
+        }
 
         localStorage.setItem(
             STORAGE_PATH_KEY,
@@ -166,11 +184,15 @@ const HAEMA_STORAGE_DB = (function () {
             const rootHandle = await getHandle(KEY_ROOT);
             const jjumHandle = await getHandle(KEY_JJUM);
             const endUserHandle = await getHandle(KEY_ENDUSER);
+            const hiddenSystemHandle = await getHandle(KEY_HIDDEN_SYSTEM);
+            const algorithmHandle = await getHandle(KEY_ALGORITHM);
 
             if (
                 !rootHandle ||
                 !jjumHandle ||
-                !endUserHandle
+                !endUserHandle ||
+                !hiddenSystemHandle ||
+                !algorithmHandle
             ) {
                 return null;
             }
@@ -178,7 +200,9 @@ const HAEMA_STORAGE_DB = (function () {
             return {
                 rootHandle,
                 jjumHandle,
-                endUserHandle
+                endUserHandle,
+                hiddenSystemHandle,
+                algorithmHandle
             };
         } catch (error) {
             console.error(
