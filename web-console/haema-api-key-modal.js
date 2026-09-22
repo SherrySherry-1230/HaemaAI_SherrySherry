@@ -1178,13 +1178,41 @@ function startEditingKey(keyId) {
 async function bindEvents() {
     const providerSelect = document.getElementById("modalApiProvider");
     const modelSelect = document.getElementById("modalApiModel");
+    const apiKeyInput = document.getElementById("modalApiKey");
+    const baseUrlInput = document.getElementById("modalApiBaseUrl");
+
+    async function refreshModelOptions() {
+        if (!providerSelect || !modelSelect) return;
+        const provider = providerSelect.value;
+        const currentModel = modelSelect?.value || "";
+
+        if (!provider) {
+            modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
+            return;
+        }
+
+        if (!apiKeyInput || !apiKeyInput.value.trim()) {
+            modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
+            return;
+        }
+
+        modelSelect.innerHTML = '<option value="">모델을 불러오는 중...</option>';
+        try {
+            modelSelect.innerHTML = await buildModelOptions(provider, currentModel);
+        } catch (error) {
+            console.warn('[HAEMA_API_KEY_MODAL] 모델 목록 갱신 실패:', error);
+            modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
+        }
+    }
 
     if (providerSelect) {
-        providerSelect.addEventListener("change", async () => {
-            const provider = providerSelect.value;
-            const currentModel = modelSelect?.value || "";
-            modelSelect.innerHTML = await buildModelOptions(provider, currentModel);
-        });
+        providerSelect.addEventListener("change", refreshModelOptions);
+    }
+    if (apiKeyInput) {
+        apiKeyInput.addEventListener("input", refreshModelOptions);
+    }
+    if (baseUrlInput) {
+        baseUrlInput.addEventListener("input", refreshModelOptions);
     }
 
     const savedKeysListEl = document.getElementById("savedKeysList");

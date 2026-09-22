@@ -76,8 +76,7 @@ HAEMA_CONSOLE.renderHeader = function() {
     }
 
     const storagePath = localStorage.getItem("haema_storage_path") || "";
-    const storageBtnHtml = '<button class="btn btn-icon" id="storageBtn" title="저장 폴더 연결">🪣</button>';
-    const storageStatusHtml = '<span class="storage-status" id="storageStatus">🪣 : ' + (storagePath ? "연결✅" : "없음") + '</span>';
+    const storageBtnHtml = '<button class="btn btn-icon" id="storageBtn" title="저장 폴더 연결">🪣 : ' + (storagePath ? "연결✅" : "없음") + '</button>';
 
     return [
         '<header class="header ' + statusClass + '">',
@@ -86,12 +85,17 @@ HAEMA_CONSOLE.renderHeader = function() {
         '<div><div class="header-title">HAEMA.AI</div><div class="header-subtitle">해마.AI 실험실</div></div>',
         '</div>',
         '<div class="header-right">',
+        '<div class="header-tools">',
         storageBtnHtml,
         apiBtnHtml,
         '</div>',
-        '<div class="status-bar"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.statusText + '</span>' + storageStatusHtml + '</div>',
+        '<div class="status-bar"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.statusText + '</span></div>',
+        '</div>',
         '</header>',
-    ].join("");HAEMA_CONSOLE.renderMainContainer = function() {
+    ].join("");
+};
+
+HAEMA_CONSOLE.renderMainContainer = function() {
     return "<div class=\"main-container\">" + this.renderLeftPanel() + this.renderRightPanel() + "</div>";
 };
 
@@ -164,6 +168,7 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     const modalSave = document.getElementById("modalSave");
     const userInput = document.getElementById("userInput");
     const inputArea = document.querySelector(".input-area");
+    const storageBtn = document.getElementById("storageBtn");
 
     // 저장소/API 키 준비 상태에 따라 userInput disabled 처리
     this.updateInputAvailability();
@@ -171,6 +176,11 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (sendBtn) sendBtn.addEventListener("click", () => this.handleSend());
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
+    if (storageBtn) storageBtn.addEventListener("click", () => {
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    });
     const apiKeyBtn = document.getElementById("apiKeyBtn");
     if (apiKeyBtn) apiKeyBtn.addEventListener("click", () => this.openApiKeyModal());
     if (modalOverlay) modalOverlay.addEventListener("click", (e) => {
@@ -183,8 +193,21 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     // input-area 클릭 시 저장소/API 키 상태에 따라 안내 모달 열기
     if (inputArea) {
         inputArea.addEventListener("click", (e) => {
-            // textarea나 버튼 클릭은 무시 (이미 해당 이벤트 핸들러가 처리)
-            if (e.target.id === "userInput" || e.target.closest("button")) {
+            const disabledOverlay = e.target.closest(".input-disabled-overlay");
+            if (disabledOverlay) {
+                this.handleInputAreaClick();
+                return;
+            }
+
+            const input = document.getElementById("userInput");
+            if (e.target.id === "userInput") {
+                if (input && input.disabled) {
+                    this.handleInputAreaClick();
+                    return;
+                }
+                return;
+            }
+            if (e.target.closest("button")) {
                 return;
             }
             this.handleInputAreaClick();
@@ -241,22 +264,22 @@ HAEMA_CONSOLE.handleInputAreaClick = function() {
     const apiKeyReady = this.isApiKeyReady();
 
     if (!storageReady && !apiKeyReady) {
-        // 둘 다 준비 안 됨: 저장소 모달 먼저 열기
+        alert("🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요");
         this.statusText = "🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요";
         this.render();
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
         }
     } else if (!storageReady) {
-        // 저장소만 준비 안 됨
-        this.statusText = "🪣저장소🪣 연결을 다시 확인해 주세요😢💦";
+        alert("🪣저장소🪣를 확인해 주세요");
+        this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
         this.render();
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
         }
     } else if (!apiKeyReady) {
-        // API 키만 준비 안 됨
-        this.statusText = "🗝️API🗝️를 다시 확인해 주세요 😢💦";
+        alert("🗝️API 키🗝️가 연결되지 않았습니다.");
+        this.statusText = "올바른 🗝️API 키🗝️를 입력해주세요.";
         this.render();
         this.openApiKeyModal();
     }
@@ -886,13 +909,17 @@ HAEMA_CONSOLE.syntaxHighlight = function(json) {
 HAEMA_CONSOLE.renderLeftPanel = function() {
     const inputValue = localStorage.getItem('haema_input') || '';
     const jsonViewerContent = this.answerGuide ? this.syntaxHighlight(JSON.stringify(this.answerGuide, null, 2)) : '<span style="color: #6b6560;">전송하면 JSON 답변 가이드가 여기에 표시됩니다</span>';
-    /*const hostPreview = this.answerGuide && this.answerGuide.hostPreview ? this.answerGuide.hostPreview : ''; */ //answerGuide.hostPreview 일단 주석처리. 
+    const hostPreview = this.answerGuide && this.answerGuide.hostPreview ? this.answerGuide.hostPreview : '';
     
+    const isInputDisabled = !this.isStorageReady() || !this.isApiKeyReady();
+    const disabledOverlay = isInputDisabled ? '<div class="input-disabled-overlay" title="저장소와 API 키를 모두 준비해 주세요" aria-label="저장소와 API 키를 모두 준비해 주세요"></div>' : '';
+
     return '<div class="panel">' +
         '<div class="panel-header"><div class="panel-title"><span class="icon">💬</span> 사용자 입력 & 답변 가이드</div></div>' +
         '<div class="panel-content">' +
-        '<div class="input-area">' +
+        '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '">' +
         '<textarea class="user-input" id="userInput" placeholder="사용자에게 받은 메시지나 자극을 입력하세요... (예: 친구랑 카페 갔었는데)">' + this.escapeHtml(inputValue) + '</textarea>' +
+        disabledOverlay +
         '<div class="action-buttons">' +
         '<button class="btn btn-primary" id="sendBtn">🧠 해마 자극 전송</button>' +
         '<button class="btn btn-secondary" id="clearBtn">🗑️ 지우기</button>' +
@@ -1185,6 +1212,4 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
-
-};
 
