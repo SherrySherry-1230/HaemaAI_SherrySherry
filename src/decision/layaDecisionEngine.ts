@@ -20,6 +20,7 @@ export interface RecallDecisionEngine {
 export interface LayaDecisionEngineOptions {
   pythonCommand?: string;
   enginePath?: string;
+  storageRoot?: string; // 사용자 저장소 경로
   minConfidence?: number;
   timeoutMs?: number;
 }
@@ -52,6 +53,22 @@ json.dump({
 }, sys.stdout)
 `;
 
+const HIDDEN_SYSTEM_FOLDER = '.🫀해마_심층_중추신경계🫀';
+const ENGINES_FOLDER = 'engines';
+
+function defaultEnginePath(storageRoot?: string): string {
+  if (storageRoot) {
+    // 사용자 저장소 내부 경로: {storageRoot}/🧠장기기억저장소_feat.해마🧠/.🫀해마_심층_중추신경계🫀/engines/laya
+    const hiddenSystemPath = join(storageRoot, '🧠장기기억저장소_feat.해마🧠', HIDDEN_SYSTEM_FOLDER);
+    const userEnginePath = join(hiddenSystemPath, ENGINES_FOLDER, 'laya');
+    if (existsSync(userEnginePath)) {
+      return userEnginePath;
+    }
+  }
+  // 개발 프로젝트 경로: {cwd}/engines/laya
+  return join(process.cwd(), 'engines', 'laya');
+}
+
 function defaultPythonCommand(enginePath: string) {
   const venvPython = join(enginePath, '.venv', 'bin', 'python');
   return existsSync(venvPython) ? venvPython : 'python3';
@@ -68,7 +85,7 @@ export class LayaDecisionEngine implements RecallDecisionEngine {
   private readonly timeoutMs: number;
 
   constructor(options: LayaDecisionEngineOptions = {}) {
-    this.enginePath = options.enginePath || join(process.cwd(), 'engines', 'laya');
+    this.enginePath = options.enginePath || defaultEnginePath(options.storageRoot);
     this.pythonCommand = options.pythonCommand || defaultPythonCommand(this.enginePath);
     this.minConfidence = clamp(options.minConfidence ?? 0.7);
     this.timeoutMs = Math.max(1000, options.timeoutMs ?? 30000);
