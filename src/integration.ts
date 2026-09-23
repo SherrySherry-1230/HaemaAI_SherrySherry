@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-14
+// @editedBy SherrySherry 2026-09-24
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
@@ -17,6 +17,7 @@ import type {
 } from './adapters/aiAdapter.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
+import { upsertSeon } from './seons.ts';
 import type { JJum } from './types/jjum.ts';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -42,7 +43,7 @@ export async function extractJJums(
  * 초안 필드 매핑:
  * - factTexts → facts (JJumFact[] 로 변환, 출처는 conversation)
  * - eventSummary → events (JJumEvent[] 로 변환)
- * - relatedNames → seons (Seon[] 로 변환, 꼬리 후보)
+ * - relatedNames → 저장된 쩜 ID가 확인된 뒤 쩜선으로 변환
  */
 export function createJJumsFromDrafts(
   ownerId: string,
@@ -56,7 +57,7 @@ export function createJJumsFromDrafts(
       jjumName: d.jjumName,
       type: d.type,
       aliases: d.aliases,
-      tags: d.tags,
+      jjtags: d.tags,
       sourceService,
       now,
     });
@@ -79,15 +80,6 @@ export function createJJumsFromDrafts(
           refJJumIds: [],
         },
       ];
-    }
-
-    // 쩜선(Seon) 후보 매핑 — relatedNames 기반
-    if (d.relatedNames && d.relatedNames.length > 0) {
-      jjum.seons = d.relatedNames.map((name) => ({
-        targetId: name,
-        weight: 1,
-        lastActivated: now ?? Date.now(),
-      }));
     }
 
     return jjum;
@@ -160,20 +152,72 @@ export async function processConversationToStorage(
     summarizeHint?: string;
   },
 ): Promise<{ storedCount: number; failedSummaries: number }> {
+  const now = extractReq.now ?? Date.now();
+  const current = await storageAdapter.listJJums(ownerId, { status: 'active' });
+  const knownNames = [...new Set([...current.flatMap((j) => [j.jjumName, ...j.aliases]), ...(extractReq.knownNames ?? [])])];
   // 1. 추출
-  const drafts = await extractJJums(aiAdapter, extractReq);
+  const drafts = await extractJJums(aiAdapter, { ...extractReq, ownerId, knownNames });
 
   if (drafts.length === 0) {
     return { storedCount: 0, failedSummaries: 0 };
   }
 
-  // 2. 쩜(JJum) 구조 변환
-  const jjums = createJJumsFromDrafts(
-    ownerId,
-    drafts,
-    options?.sourceService,
-    extractReq.now,
-  );
+  // 2. 정확히 같은 대표 이름/별칭만 기존 쩜에 반영한다. 여러 쩜이 맞으면 추정하지 않는다.
+  const all = new Map(current.map((j) => [j.jjumId, j]));
+  const changed = new Map<string, JJum>();
+  const related = new Map<string, string[]>();
+  const normalize = (name: string): string => name.trim().toLowerCase();
+  const matches = (name: string): JJum[] => {
+    const key = normalize(name);
+    return [...all.values()].filter((j) => [j.jjumName, ...j.aliases].some((n) => normalize(n) === key));
+  };
+  for (const draft of drafts) {
+    if (!normalize(draft.jjumName)) continue;
+    const candidates = matches(draft.jjumName);
+    if (candidates.length > 1) continue;
+    const fresh = createJJumsFromDrafts(ownerId, [draft], options?.sourceService, now)[0];
+    const existing = candidates[0];
+    let jjum: JJum;
+    if (existing) {
+      const seenFacts = new Set(existing.facts.map((fact) => fact.text));
+      const facts = [...existing.facts, ...fresh.facts.filter((fact) => !seenFacts.has(fact.text))];
+      const events = [...existing.events, ...fresh.events];
+      jjum = {
+        ...existing,
+        aliases: [...new Set([...existing.aliases, ...fresh.aliases])],
+        jjtags: [...new Set([...existing.jjtags, ...fresh.jjtags])],
+        type: existing.type === 'unknown' ? fresh.type : existing.type,
+        facts,
+        events,
+        mentionCount: existing.mentionCount + 1,
+        lastMentioned: now,
+        editHistory: [...existing.editHistory, { date: now, action: 'conversation_update', by: 'ai' }],
+      };
+    } else {
+      jjum = fresh;
+    }
+    all.set(jjum.jjumId, jjum);
+    changed.set(jjum.jjumId, jjum);
+    related.set(jjum.jjumId, [...(related.get(jjum.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
+  }
+
+  // 초안 사이의 이름도 해결한다. 불명확하거나 없는 이름은 가짜 targetId로 저장하지 않는다.
+  for (const [sourceId, names] of related) {
+    const source = all.get(sourceId)!;
+    for (const name of names) {
+      const targets = matches(name);
+      if (targets.length !== 1 || targets[0].jjumId === sourceId) continue;
+      const target = targets[0];
+      if (!source.seons.some((s) => s.targetId === target.jjumId && !s.label)) {
+        upsertSeon(source, target.jjumId, 1, undefined, now);
+      }
+      if (!target.seons.some((s) => s.targetId === sourceId && !s.label)) {
+        upsertSeon(target, sourceId, 1, undefined, now);
+      }
+      changed.set(target.jjumId, target);
+    }
+  }
+  const jjums = [...changed.values()];
 
   // 3. 요약 보강 (실패해도 계속 진행)
   const summarized = await summarizeJJums(

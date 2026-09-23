@@ -6,8 +6,10 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "server:solo": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/solo-server.ts",
+    "server": "node --disable-warning=ExperimentalWarning --experimental-strip-types local-server/server.ts",
     "console": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/console.ts",
-    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/adapter-contract.test.ts tests/file-adapter.test.ts tests/recall.test.ts",
+    "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/adapter-contract.test.ts tests/file-adapter.test.ts tests/recall.test.ts tests/integration.test.ts",
     "typecheck": "tsc --noEmit",
     "seed": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/seed.ts",
     "scenario": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/scenario.ts"
@@ -19,7 +21,8 @@
     "openai": "^7.10.0"
   },
   "devDependencies": {
-    "@types/node": "^22.20.2",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.4",
     "typescript": "^5.9.3"
   }
 }
