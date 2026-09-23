@@ -13,7 +13,7 @@ import type {
   ExtractRequest,
   MergeJudgement,
   RecallScore,
-} from './aiAdapter';
+} from './aiAdapter.ts';
 import type { JJum, JJumId } from '../types/jjum.ts';
 
 export class GroqAdapter implements AIAdapter {
@@ -29,6 +29,7 @@ export class GroqAdapter implements AIAdapter {
 
     this.client = new Groq({
       apiKey: config.apiKey,
+      ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
   }
 

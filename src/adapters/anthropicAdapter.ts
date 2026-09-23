@@ -29,6 +29,7 @@ export class AnthropicAdapter implements AIAdapter {
 
     this.client = new Anthropic({
       apiKey: config.apiKey,
+      ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
   }
 

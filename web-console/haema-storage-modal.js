@@ -12,8 +12,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
         longTerm: "🧠장기기억저장소_feat.해마🧠",
         jjum: "🪣쩜통🪣",
         endUser: "☺️♥️🤖엔드유저와의 관계를 위하여🤖♥️☺️",
-        hiddenSystem: "🫀해마_심층_중추신경계🫀",
-        algorithm: "📜해마.ai 핵심 13 알고리즘 계율📜",
+        hiddenSystem: ".🫀해마_심층_중추신경계🫀",
+        algorithm: ".📜해마.ai 핵심 13 알고리즘 계율📜",
     };
 
     // 실제 저장소 연결 상태 표시용
@@ -92,7 +92,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const folderSelectBtn = document.getElementById("storageFolderSelectBtn");
         const folderHint = document.getElementById("storageFolderHint");
 
-        folderHint.textContent = "※ 내부 제어 폴더인 " + FOLDER_NAMES.hiddenSystem + " [숨김] 아래의 " + FOLDER_NAMES.algorithm + " [숨김]은 일반 사용자 화면에서 보이지 않습니다.";
+        folderHint.textContent = "※ 내부 제어 폴더인 " + FOLDER_NAMES.hiddenSystem + " 아래의 " + FOLDER_NAMES.algorithm + "도 숨김 폴더로 생성됩니다.";
 
         if (
             !overlay ||
@@ -144,77 +144,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
     }
 
-    async function writeTextFile(folderHandle, fileName, content) {
-        const fileHandle = await folderHandle.getFileHandle(fileName, { create: true });
-        const writable = await fileHandle.createWritable();
-        await writable.write(content);
-        await writable.close();
-        return fileHandle;
-    }
-
-    async function createStorageFiles(
-        rootHandle,
-        jjumHandle,
-        endUserHandle,
-        hiddenSystemHandle,
-        algorithmHandle
-    ) {
-        await writeTextFile(
-            rootHandle,
-            "README.md",
-            [
-                "# HAEMA 장기기억 저장소",
-                "",
-                "이 폴더는 HAEMA AI의 로컬 장기기억 저장소입니다.",
-                "",
-                "- " + FOLDER_NAMES.jjum + ": JJum 데이터 저장 폴더",
-                "- " + FOLDER_NAMES.endUser + ": 사용자 관계 데이터 저장 폴더",
-                "- " + FOLDER_NAMES.hiddenSystem + " [숨김]: 내부 시스템 폴더",
-                "- " + FOLDER_NAMES.algorithm + " [숨김]: 알고리즘 계율 및 시스템 파일",
-                ""
-            ].join("\n")
-        );
-
-        await writeTextFile(
-            jjumHandle,
-            "README.md",
-            "# " + FOLDER_NAMES.jjum + "\n\n사용자가 직접 열람할 수 있는 JJum 저장 폴더입니다.\n"
-        );
-
-        await writeTextFile(
-            endUserHandle,
-            "README.md",
-            "# " + FOLDER_NAMES.endUser + "\n\n사용자 관계 기반 메타데이터와 대화 맥락을 저장합니다.\n"
-        );
-
-        await writeTextFile(
-            hiddenSystemHandle,
-            "README.md",
-            "# " + FOLDER_NAMES.hiddenSystem + " [숨김]\n\nHAEMA 내부 보조 시스템이 사용하는 비노출 영역입니다.\n"
-        );
-
-        await writeTextFile(
-            algorithmHandle,
-            "README.md",
-            "# " + FOLDER_NAMES.algorithm + " [숨김]\n\n해마.ai의 핵심 알고리즘 계율 및 내부 규칙 파일을 보관합니다.\n"
-        );
-
-        await writeTextFile(
-            algorithmHandle,
-            "algorithm-manifest.json",
-            JSON.stringify({
-                name: FOLDER_NAMES.algorithm,
-                kind: "hidden_system",
-                createdAt: new Date().toISOString(),
-                description: "HAEMA 내부 알고리즘 계율 폴더",
-                files: [
-                    "README.md",
-                    "algorithm-manifest.json"
-                ]
-            }, null, 2)
-        );
-    }
-
     async function handleCreate() {
         // File System Access API 지원 여부 확인
         if (typeof window.showDirectoryPicker !== "function") {
@@ -256,14 +185,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const algorithmHandle = await hiddenSystemHandle.getDirectoryHandle(
                 FOLDER_NAMES.algorithm,
                 { create: true }
-            );
-
-            await createStorageFiles(
-                rootHandle,
-                jjumHandle,
-                endUserHandle,
-                hiddenSystemHandle,
-                algorithmHandle
             );
 
             // ----------------------------------------------------

@@ -2,8 +2,7 @@
 # 쩜(JJum) 스키마 (v4)
 > 버전 4
   > 해마태그 H-tag -> 쩜태그 JJ-tag로 교체
-> 버전 3
-> 확정: 2026-09-13 (사람야옹이) · 용어 전면 교체: 2026-09-13. 원문 출처: 마이풉 기획서 §2-1-1 "해마.AI". 스키마 파일 AI 폴더로 옮김.
+> 확정: 2026-09-22 (사람야옹이) · 용어 전면 교체: 2026-09-13. 원문 출처: 마이풉 기획서 §2-1-1 "해마.AI".
 > '해마세포' 구용어 -> '쩜' 으로 교체 'HCell'도 'JJum'으로 일단 교체
 > 이 문서가 쩜 구조의 단일 기준이다. TypeScript 타입: `src/types/jjum.ts`.
 > 원칙: `meta`는 서비스별 자유 확장 소켓이며 **Haema는 그 내용을 해석하지 않는다** (도메인 무지).
@@ -15,7 +14,7 @@
 ## 용어
 | 개념 | 문서 용어 | 코드 및 경로 |
 | :--- | :--- | :--- |
-| **기억의 최소 단위**<br>• AI와 유저가 공유하는 기억 하나<br>• '기억점'의 '점' ➔ 일상 단어와 구분하기 위해 '**쩜**'으로 명명 | **쩜**<br>*(구: 해마세포, 해마쎌)* | • 타입: `JJum` (`jjum`)<br>• 논리 경로: `jjums/{jjumId}`<br>• 파일 어댑터 실제 경로:<br>`{storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣/{jjumName}.jj` |
+| **기억의 최소 단위**<br>• AI와 유저가 공유하는 기억 하나<br>• '기억점'의 '점' ➔ 일상 단어와 구분하기 위해 '**쩜**'으로 명명 | **쩜**<br>*(구: 해마세포, 해마쎌)* | • 타입: `JJum` (`jjum`)<br>• 논리 경로: `jjums/{jjumId}`<br>• 파일 어댑터 실제 경로:<br>`{storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣/{jjumName}.jj`<br>•기존 baseDir 기반 저장 구조는 폐기하고, 사용자가 선택한 storageRoot 기반으로 쩜통 경로를 잡아라.|
 | **연상 네트워크**<br>• "점이 연결되면 선" | **쩜선** | • 타입: `Seon`<br>• 필드명: `seons` |
 | **쩜에 달린 표식**<br>• 정서가(Valence: 긍정/중립/부정) 등 포함 | **JJ-tag** *(쩜태그)* | • 필드명: `jjtags` |
 
@@ -24,7 +23,7 @@
 - 문서상 용어는 JJum, 코드 식별자는 기존 camelCase 규칙에 따라 jjumId, jjumName을 사용한다.
 
 ```
-쩜 스키마 — 논리 경로 jjums/{jjumId} (물리 경로는 {storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣/{maskedJJumName}.jj)
+쩜 스키마 — 논리 경로 jjums/{jjumId} (파일 어댑터 물리 경로는 {baseDir}/{ownerId}/{maskedJJumName}.jj)
 
 **문서 하단에 파일명(쩜 파일) 규칙 필독**
 
@@ -148,10 +147,8 @@ schemaVersion   number      // 마이그레이션 대비
 - 2026-09-22 해마태그 이름 변경 -> 쩜태그
 - 2026-09-21 회상규칙 -> 회상&연상규칙 : '홉' 용어 제거. 'MCTS, weight 따라 탐색'으로 변경
 
-- 2026-09-12 용어·확장자 전면 교체: `HCell`→`JJum`, `Tail`→`Seon`, `cellId`→`JJumId`(타입명)/`jjumId`(필드명), `tails`→`seons`, `cells/{cellId}`→`jjums/{jjumId}`, 파일 `cell_*.json`→`{jjumName}.jj`, `_index.json`→`_index.jj`, 스키마 v2→v3.
+- 2026-09-22 스키마 v4 확정: `H-tag`→`JJ-tag`, 기존 baseDir 기반 저장 구조는 폐기하고, 사용자가 선택한 storageRoot 기반으로 쩜통 경로를 잡아라..
   - 타입명 `JJumId`는 PascalCase(타입 표준), 필드명은 `jjumId`(camelCase)로 구분.
-  - 기존 v2(`cell_*.json`)는 점진적 전환 — 읽을 때 v3로 변환 저장. 구 파일은 대표님 정책 따라 처리.
-  - 개인 데이터(`local-server/haema/user/`) 전부 `.jj`로 일괄 변환.
+  - v4의 `jjtags` 필드와 `schemaVersion=4`를 현재 기준으로 사용한다.
+- 2026-09-12 용어·확장자 전면 교체: `HCell`→`JJum`, `Tail`→`Seon`, `cellId`→`JJumId`(타입명)/`jjumId`(필드명), `tails`→`seons`, `cells/{cellId}`→`jjums/{jjumId}`, 파일 `cell_*.json`→`{jjumName}.jj`, `_index.json`→`_index.jj`.
 - 2026-09-05 용어 교체: `nodeId`→`jjumId`, `links`→`seons`, `refNodeIds`→`refJJumIds`, 파일 `node_*`→`jjum_*`.
-  구조·의미는 동일 (schemaVersion 유지). 구형 `node_*.json`은 필수 필드(`cellId`)가 없어 검증 실패로 건너뛰며
-  `reindex` 리포트에 잡힌다 — 콘솔 `demo`로 재생성.

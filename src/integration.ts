@@ -12,10 +12,10 @@
 
 import type {
   AIAdapter,
-  StorageAdapter,
   ExtractRequest,
   ExtractedDraft,
 } from './adapters/aiAdapter.ts';
+import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
 import type { JJum } from './types/jjum.ts';
 
