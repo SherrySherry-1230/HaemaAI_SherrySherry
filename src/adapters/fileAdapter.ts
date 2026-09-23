@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-12
+// @editedBy SherrySherry 2026-09-24
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -25,8 +25,12 @@ const LONG_TERM_FOLDER = '🧠장기기억저장소_feat.해마🧠';
 const JJUM_BUCKET_FOLDER = '🪣쩜통🪣';
 
 export interface FileAdapterOptions {
+  /** 장기기억저장소 폴더 자체. 접미사가 붙은 선택 폴더도 그대로 사용한다. */
+  memoryRoot?: string;
   /** 저장 루트. 기본값: <cwd>/local-server/haema */
   storageRoot?: string;
+  /** 구 호출자의 저장 루트 별칭 */
+  baseDir?: string;
   /** 기존 구조 사용 여부 (하위 호환성용) */
   useLegacyStructure?: boolean;
 }
@@ -64,11 +68,13 @@ const SORT_KEYS: JJumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 
 
 export class FileAdapter implements StorageAdapter {
   readonly storageRoot: string;
+  readonly memoryRoot?: string;
   readonly useLegacyStructure: boolean;
   private loadErrors: LoadError[] = [];
 
   constructor(options?: FileAdapterOptions) {
-    this.storageRoot = options?.storageRoot ?? path.join(process.cwd(), 'local-server', 'haema');
+    this.storageRoot = options?.storageRoot ?? options?.baseDir ?? path.join(process.cwd(), 'local-server', 'haema');
+    this.memoryRoot = options?.memoryRoot;
     this.useLegacyStructure = options?.useLegacyStructure ?? false;
   }
 
@@ -78,7 +84,7 @@ export class FileAdapter implements StorageAdapter {
       return this.storageRoot;
     }
     // 새 구조: {storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣
-    return path.join(this.storageRoot, LONG_TERM_FOLDER, JJUM_BUCKET_FOLDER);
+    return path.join(this.memoryRoot ?? path.join(this.storageRoot, LONG_TERM_FOLDER), JJUM_BUCKET_FOLDER);
   }
 
   /** 마지막 스캔에서 건너뛴 파일들 — 콘솔 reindex 리포트용 */
@@ -88,8 +94,7 @@ export class FileAdapter implements StorageAdapter {
 
   /** 점이 실제로 저장된 파일 경로 (인덱스 기준). 없으면 null */
   getFilePath(ownerId: string, jjumId: JJumId): string | null {
-    const filename = this.loadIndex().owners[ownerId]?.files[jjumId];
-    return filename ? path.join(this.ownerDir(ownerId), filename) : null;
+    return this.jjumPath(ownerId, jjumId);
   }
 
   // ── 경로 ──────────────────────────────────────────────
@@ -102,11 +107,13 @@ export class FileAdapter implements StorageAdapter {
     return this.baseDir;
   }
 
-  private jjumPath(ownerId: string, jjumId: JJumId): string {
+  private jjumPath(ownerId: string, jjumId: JJumId): string | null {
     const index = this.loadIndex();
     const filename = index.owners[ownerId]?.files[jjumId];
-    if (filename) {
-      return path.join(this.ownerDir(ownerId), filename);
+    if (typeof filename === 'string' && path.basename(filename) === filename && filename.endsWith('.jj') && !filename.startsWith('_')) {
+      const candidate = path.join(this.ownerDir(ownerId), filename);
+      const { jjum } = this.readJJumFile(candidate);
+      if (jjum?.ownerId === ownerId && jjum.jjumId === jjumId) return candidate;
     }
     // 인덱스에 없으면 스캔으로 찾기 (fallback)
     const { files } = this.scanOwner(ownerId);
@@ -114,16 +121,11 @@ export class FileAdapter implements StorageAdapter {
     if (fileName) {
       return path.join(this.ownerDir(ownerId), fileName);
     }
-    throw new Error(`JJum not found: ${jjumId}`);
+    return null;
   }
 
   private indexPath(): string {
     return path.join(this.baseDir, '_index.jj');
-  }
-
-  /** 새 구조 기반 경로 계산 */
-  private jjumBucketPath(): string {
-    return path.join(this.storageRoot, LONG_TERM_FOLDER, JJUM_BUCKET_FOLDER);
   }
 
   // ── 인덱스 ────────────────────────────────────────────
@@ -131,12 +133,31 @@ export class FileAdapter implements StorageAdapter {
   private loadIndex(): IndexFile {
     try {
       const raw = fs.readFileSync(this.indexPath(), 'utf-8');
-      const parsed = JSON.parse(raw) as IndexFile;
-      if (parsed && typeof parsed === 'object' && parsed.owners) return parsed;
+      const parsed = JSON.parse(raw) as Partial<IndexFile>;
+      if (parsed && typeof parsed.owners === 'object' && parsed.owners !== null && !Array.isArray(parsed.owners)) {
+        const owners: Record<string, OwnerIndex> = Object.create(null);
+        for (const [ownerId, value] of Object.entries(parsed.owners)) {
+          if (!value || typeof value !== 'object') continue;
+          const names: Record<string, JJumId[]> = Object.create(null);
+          const files: Record<JJumId, string> = Object.create(null);
+          if (value.names && typeof value.names === 'object') {
+            for (const [name, ids] of Object.entries(value.names)) {
+              if (Array.isArray(ids)) names[name] = ids.filter((id): id is string => typeof id === 'string');
+            }
+          }
+          if (value.files && typeof value.files === 'object') {
+            for (const [id, filename] of Object.entries(value.files)) {
+              if (typeof filename === 'string') files[id] = filename;
+            }
+          }
+          owners[ownerId] = { names, files };
+        }
+        return { version: 1, owners };
+      }
     } catch {
       // 없거나 깨짐 — 빈 인덱스에서 시작, 조회 시 스캔으로 자가 복구
     }
-    return { version: 1, owners: {} };
+    return { version: 1, owners: Object.create(null) };
   }
 
   private saveIndex(index: IndexFile): void {
@@ -145,7 +166,7 @@ export class FileAdapter implements StorageAdapter {
   }
 
   private ownerIndex(index: IndexFile, ownerId: string): OwnerIndex {
-    if (!index.owners[ownerId]) index.owners[ownerId] = { names: {}, files: {} };
+    if (!index.owners[ownerId]) index.owners[ownerId] = { names: Object.create(null), files: Object.create(null) };
     return index.owners[ownerId];
   }
 
@@ -198,11 +219,21 @@ export class FileAdapter implements StorageAdapter {
   }
 
   /** jjumName 기반 파일명 결정 — 다른 점과 충돌하면 jjumId 앞 8자리를 붙인다 */
-  private filenameFor(jjum: JJum, oi: OwnerIndex): string {
+  private filenameFor(jjum: JJum, oldFilename?: string): string {
     const base = `${sanitize(jjum.jjumName)}.jj`;
-    const takenBy = Object.entries(oi.files).find(([id, f]) => f === base && id !== jjum.jjumId);
-    if (!takenBy) return base;
-    return `${sanitize(jjum.jjumName)}_${jjum.jjumId.slice(0, 8)}.jj`;
+    const dir = this.ownerDir(jjum.ownerId);
+    const available = (filename: string): boolean => {
+      if (filename === oldFilename) return true;
+      const target = path.join(dir, filename);
+      if (!fs.existsSync(target)) return true;
+      const { jjum: stored } = this.readJJumFile(target);
+      return stored?.ownerId === jjum.ownerId && stored.jjumId === jjum.jjumId;
+    };
+    if (available(base)) return base;
+    const prefix = `${sanitize(jjum.jjumName)}_${sanitize(jjum.jjumId.slice(0, 8))}`;
+    let filename = `${prefix}.jj`;
+    for (let suffix = 2; !available(filename); suffix++) filename = `${prefix}_${suffix}.jj`;
+    return filename;
   }
 
   /** 소유자 폴더 전체 스캔 — 인덱스 자가 복구의 원천 */
@@ -210,7 +241,7 @@ export class FileAdapter implements StorageAdapter {
     this.loadErrors = [];
     const dir = this.ownerDir(ownerId);
     const jjums: JJum[] = [];
-    const files: Record<JJumId, string> = {};
+    const files: Record<JJumId, string> = Object.create(null);
     let entries: string[];
     try {
       entries = fs.readdirSync(dir);
@@ -225,10 +256,7 @@ export class FileAdapter implements StorageAdapter {
         continue;
       }
       if (jjum) {
-        if (jjum.ownerId !== ownerId) {
-          // 폴더 위치가 소유자의 진실 — 손으로 옮긴 파일은 폴더 기준으로 교정
-          jjum.ownerId = ownerId;
-        }
+        if (jjum.ownerId !== ownerId) continue;
         jjums.push(jjum);
         files[jjum.jjumId] = entry;
       }
@@ -240,7 +268,7 @@ export class FileAdapter implements StorageAdapter {
   reindex(ownerId: string): { count: number; errors: LoadError[] } {
     const { jjums, files } = this.scanOwner(ownerId);
     const index = this.loadIndex();
-    index.owners[ownerId] = { names: {}, files: {} };
+    index.owners[ownerId] = { names: Object.create(null), files: Object.create(null) };
     for (const jjum of jjums) {
       this.registerInIndex(index, jjum, files[jjum.jjumId]);
     }
@@ -248,14 +276,37 @@ export class FileAdapter implements StorageAdapter {
     return { count: jjums.length, errors: this.getLoadErrors() };
   }
 
+  /** 실제 유효한 쩜 파일에서 소유자를 찾는다. 낡은 인덱스의 소유자는 노출하지 않는다. */
+  async listOwnerIds(): Promise<string[]> {
+    const owners = new Set<string>();
+    if (this.useLegacyStructure) {
+      if (!fs.existsSync(this.baseDir)) return [];
+      for (const entry of fs.readdirSync(this.baseDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        for (const filename of fs.readdirSync(path.join(this.baseDir, entry.name))) {
+          if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
+          const { jjum } = this.readJJumFile(path.join(this.baseDir, entry.name, filename));
+          if (jjum) owners.add(jjum.ownerId);
+        }
+      }
+    } else if (fs.existsSync(this.baseDir)) {
+      for (const filename of fs.readdirSync(this.baseDir)) {
+        if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
+        const { jjum } = this.readJJumFile(path.join(this.baseDir, filename));
+        if (jjum) owners.add(jjum.ownerId);
+      }
+    }
+    return [...owners].sort();
+  }
+
   // ── StorageAdapter 구현 ────────────────────────────────
 
   async getJJum(ownerId: string, jjumId: JJumId): Promise<JJum | null> {
     const index = this.loadIndex();
     const filename = index.owners[ownerId]?.files[jjumId];
-    if (filename) {
+    if (typeof filename === 'string' && path.basename(filename) === filename && filename.endsWith('.jj') && !filename.startsWith('_')) {
       const { jjum } = this.readJJumFile(path.join(this.ownerDir(ownerId), filename));
-      if (jjum && jjum.jjumId === jjumId) return jjum;
+      if (jjum && jjum.jjumId === jjumId && jjum.ownerId === ownerId) return jjum;
     }
     // 인덱스 불일치 — 스캔으로 찾고 자가 복구
     const { jjums, files } = this.scanOwner(ownerId);
@@ -270,17 +321,16 @@ export class FileAdapter implements StorageAdapter {
   async putJJum(ownerId: string, jjum: JJum): Promise<void> {
     const stored: JJum = { ...jjum, ownerId };
     const index = this.loadIndex();
-    const oi = this.ownerIndex(index, ownerId);
     const dir = this.ownerDir(ownerId);
     fs.mkdirSync(dir, { recursive: true });
 
-    const oldFilename = oi.files[stored.jjumId];
-    const newFilename = this.filenameFor(stored, oi);
+    const oldFilename = this.jjumPath(ownerId, stored.jjumId);
+    const newFilename = this.filenameFor(stored, oldFilename ? path.basename(oldFilename) : undefined);
     atomicWrite(path.join(dir, newFilename), JSON.stringify(stored, null, 2));
-    if (oldFilename && oldFilename !== newFilename) {
+    if (oldFilename && path.basename(oldFilename) !== newFilename) {
       // jjumName이 바뀌면 파일명도 따라간다
       try {
-        fs.unlinkSync(path.join(dir, oldFilename));
+        fs.unlinkSync(oldFilename);
       } catch {
         /* 이미 없으면 무시 */
       }
@@ -298,34 +348,14 @@ export class FileAdapter implements StorageAdapter {
 
   async patchJJum(ownerId: string, jjumId: JJumId, partial: Partial<JJum>): Promise<void> {
     const existing = await this.getJJum(ownerId, jjumId);
-    if (!existing) {
-      // 인덱스에 없지만 파일에 있을 수 있음 — 스캔으로 찾는다
-      const { jjums, files } = this.scanOwner(ownerId);
-      const found = jjums.find((n) => n.jjumId === jjumId) ?? null;
-      if (found) {
-        this.registerInIndex(this.loadIndex(), found, files[found.jjumId]);
-        this.saveIndex(this.loadIndex());
-        await this.putJJum(ownerId, { ...found, ...partial, jjumId: found.jjumId, ownerId });
-        return;
-      }
-      throw new Error(`patchJJum: 쩜 없음 — ${ownerId}/${jjumId}`);
-    }
+    if (!existing) throw new Error(`patchJJum: 쩜 없음 — ${ownerId}/${jjumId}`);
     await this.putJJum(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
   }
 
   async deleteJJum(ownerId: string, jjumId: JJumId): Promise<void> {
     const index = this.loadIndex();
-    const filename = index.owners[ownerId]?.files[jjumId];
-    if (filename) {
-      try {
-        fs.unlinkSync(path.join(this.ownerDir(ownerId), filename));
-      } catch {
-        /* 이미 없으면 무시 */
-      }
-    } else {
-      const { files } = this.scanOwner(ownerId);
-      if (files[jjumId]) fs.unlinkSync(path.join(this.ownerDir(ownerId), files[jjumId]));
-    }
+    const filename = this.jjumPath(ownerId, jjumId);
+    if (filename) fs.unlinkSync(filename);
     this.removeFromIndex(index, ownerId, jjumId);
     this.saveIndex(index);
   }
@@ -338,7 +368,7 @@ export class FileAdapter implements StorageAdapter {
       jjums = jjums.filter((n) => statuses.includes(n.status));
     }
     if (query?.type !== undefined) jjums = jjums.filter((n) => n.type === query.type);
-    if (query?.tag !== undefined) jjums = jjums.filter((n) => (n.tags || []).includes(query.tag as string));
+    if (query?.tag !== undefined) jjums = jjums.filter((n) => n.jjtags.includes(query.tag as string));
     if (query?.pinned !== undefined) jjums = jjums.filter((n) => n.pinned === query.pinned);
 
     if (query?.sortBy && SORT_KEYS.includes(query.sortBy)) {
@@ -353,21 +383,11 @@ export class FileAdapter implements StorageAdapter {
   async findByName(ownerId: string, name: string): Promise<JJum[]> {
     const key = normName(name);
     if (!key) return [];
-    const index = this.loadIndex();
-    const ids = index.owners[ownerId]?.names[key] ?? [];
-    const viaIndex: JJum[] = [];
-    for (const id of ids) {
-      const jjum = await this.getJJum(ownerId, id);
-      if (jjum && [jjum.jjumName, ...jjum.aliases].some((n) => normName(n) === key)) {
-        viaIndex.push(jjum);
-      }
-    }
-    if (viaIndex.length > 0) return viaIndex;
-
-    // 인덱스 미스 — 손으로 고친 파일 대비 스캔 폴백 + 자가 복구
+    // 손으로 고친 파일이 기존 이름에 추가로 매칭될 수도 있으므로 전체 스캔한다.
     const { jjums, files } = this.scanOwner(ownerId);
     const found = jjums.filter((n) => [n.jjumName, ...n.aliases].some((x) => normName(x) === key));
     if (found.length > 0) {
+      const index = this.loadIndex();
       for (const jjum of found) this.registerInIndex(index, jjum, files[jjum.jjumId]);
       this.saveIndex(index);
     }
@@ -391,11 +411,11 @@ export class FileAdapter implements StorageAdapter {
     options?: { seons?: { targetId: JJumId; weight?: number; label?: string }[] },
   ): Promise<JJum | null> {
     const filePath = this.jjumPath(ownerId, jjumId);
-    if (!fs.existsSync(filePath)) return null;
+    if (!filePath) return null;
 
     const raw = fs.readFileSync(filePath, 'utf-8');
     const result = validateJJum(JSON.parse(raw), Date.now());
-    if (!result?.jjum) return null;
+    if (!result?.jjum || result.jjum.ownerId !== ownerId || result.jjum.jjumId !== jjumId) return null;
 
     const jjum = result.jjum;
     const now = Date.now();
@@ -409,30 +429,22 @@ export class FileAdapter implements StorageAdapter {
 
     // 쩜선 갱신: 기존 선은 weight 상승 + lastActivated 갱신, 새 선은 추가
     if (options?.seons && options.seons.length > 0) {
-      const seonMap = new Map<JJumId, typeof updated.seons[0]>();
-      for (const s of updated.seons ?? []) {
-        seonMap.set(s.targetId, s);
-      }
       for (const input of options.seons) {
-        const existing = seonMap.get(input.targetId);
+        const existing = updated.seons.find((seon) =>
+          seon.targetId === input.targetId && (seon.label ?? '') === (input.label ?? ''),
+        );
         if (existing) {
-          // 같은 대상 쩜선 → weight 상승 + lastActivated 갱신
-          seonMap.set(input.targetId, {
-            ...existing,
-            weight: Math.min(1, existing.weight + (input.weight ?? 0.1)),
-            lastActivated: now,
-          });
+          existing.weight = Math.min(1, existing.weight + (input.weight ?? 0.1));
+          existing.lastActivated = now;
         } else {
-          // 새 쩜선 추가
-          seonMap.set(input.targetId, {
+          updated.seons.push({
             targetId: input.targetId,
             weight: Math.min(1, input.weight ?? 0.1),
-            label: input.label,
+            ...(input.label ? { label: input.label } : {}),
             lastActivated: now,
           });
         }
       }
-      updated.seons = Array.from(seonMap.values());
     }
 
     atomicWrite(filePath, JSON.stringify(updated, null, 2));
@@ -459,7 +471,7 @@ export class FileAdapter implements StorageAdapter {
     for (const jjum of jjums) {
       try {
         const filePath = this.jjumPath(ownerId, jjum.jjumId);
-        if (!fs.existsSync(filePath)) continue;
+        if (!filePath) continue;
 
         const raw = fs.readFileSync(filePath, 'utf-8');
         const result = validateJJum(JSON.parse(raw), Date.now());
@@ -492,7 +504,7 @@ export class FileAdapter implements StorageAdapter {
         // 인덱스 업데이트 — 파일명은 그대로, jjumId 등록 확인
         const index = this.loadIndex();
         if (!index.owners[ownerId]) {
-          index.owners[ownerId] = { names: {}, files: {} };
+          index.owners[ownerId] = { names: Object.create(null), files: Object.create(null) };
         }
         const oi = index.owners[ownerId];
         if (!oi.files[jjum.jjumId]) {

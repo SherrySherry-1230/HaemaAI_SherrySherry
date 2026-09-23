@@ -1,9 +1,9 @@
-// @editedBy SherrySherry 2026-09-13
+// @editedBy SherrySherry 2026-09-24
 /**
  * 회상 엔진 (2-a) — AI 없이 결정론적으로 동작한다.
  *
  * recall(ownerId, cues) 는 매 턴 3종을 돌려준다:
- *   ① 회상 후보  — 단서(이름·별칭·H-tag)에 걸린 쩜 + 쩜선 확산(기본 1홉·최대 2홉·weight 상위 N·토큰 상한)
+ *   ① 회상 후보  — 단서(이름·별칭·JJ-tag)에 걸린 쩜 + 쩜선 확산(기본 1홉·최대 2홉·weight 상위 N·토큰 상한)
  *   ② 답변 가이드 — 규칙 기반 뼈대 { mode, allowed, comfortCues, forbidden, followUpQuestions }
  *   ③ 이야깃거리  — 대화가 끊길 때 던질 화제 (긍정·중립만)
  *
@@ -235,13 +235,13 @@ export async function recall(
   const active = await adapter.listJJums(ownerId, { status: 'active' });
   const byId = new Map(active.map((c) => [c.jjumId, c]));
 
-  // ── 직접 매칭: 이름·별칭 / H-tag ──
+  // ── 직접 매칭: 이름·별칭 / JJ-tag ──
   const found = new Map<JJumId, RecallCandidate>();
   const matchedCues = new Set<string>();
   for (const jjum of active) {
     const names = [jjum.jjumName, ...jjum.aliases].map(norm);
     const nameHits = cueList.filter((q) => names.includes(q));
-    const tagSet = new Set((jjum.tags ?? jjum.jjtags ?? []).map(norm));
+    const tagSet = new Set(jjum.jjtags.map(norm));
     const tagHits = cueList.filter((q) => tagSet.has(q));
     if (nameHits.length === 0 && tagHits.length === 0) continue;
     for (const q of [...nameHits, ...tagHits]) matchedCues.add(q);
@@ -253,7 +253,7 @@ export async function recall(
     }
     if (tagHits.length > 0) {
       score = Math.max(score, Math.min(0.9, 0.7 + 0.1 * (tagHits.length - 1)));
-      reasons.push(`H-tag 일치: ${tagHits.join(', ')}`);
+      reasons.push(`JJ-tag 일치: ${tagHits.join(', ')}`);
     }
     const valence = valenceOf(jjum);
     found.set(jjum.jjumId, {

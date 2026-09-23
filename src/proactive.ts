@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-13
+// @editedBy SherrySherry 2026-09-24
 /**
  * 먼저 말 걸 거리 · 선제 안부 재료 (2-a, 집계만)
  *
@@ -16,10 +16,10 @@
  */
 
 import type { JJumEvent, JJumId, JJum, JJumTimestamp } from './types/jjum.ts';
-import type { StorageAdapter } from './adapters/storageAdapter';
+import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { CAREFUL_INSTRUCTION, isUnresolvedConcern } from './concern.ts';
-import type { GuideMode } from './guideModes';
+import type { GuideMode } from './guideModes.ts';
 
 const DAY = 24 * 60 * 60 * 1000;
 

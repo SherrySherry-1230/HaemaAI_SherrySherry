@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-08
+// @editedBy SherrySherry 2026-09-24
 /**
  * OpenAI SDK 호환 어댑터 구현
  * OpenAI SDK를 사용하여 OpenAI 호환 API (Upstage Solar 등)를 호출한다.
@@ -87,7 +87,8 @@ export class OpenAIAdapter implements AIAdapter {
 
 규칙:
 - 근거 없는 내용은 만들지 마세요(기억 지어내기 금지)
-- 이미 알고 있는 이름(knownNames)은 중복 생성하지 마세요
+- 이미 알고 있는 이름(knownNames)에도 새로운 사실이나 변화가 있으면 같은 이름 또는 별칭으로 초안을 내세요
+- 같은 대상을 한 응답에서 여러 초안으로 중복 출력하지 마세요
 - 사건은 하나의 사건으로 요약하세요
 - 함께 등장한 이름은 relatedNames에 포함하세요`;
 
@@ -97,7 +98,7 @@ ${turnsText}
 이미 알고 있는 이름: ${knownNamesText}
 ${hint}
 
-점(JJum)를 추출하세요.`;
+쩜(JJum)을 추출하세요.`;
 
     const response = await this.callAI('extract', system, user);
     
@@ -120,7 +121,7 @@ ${hint}
 이름: ${jjum.jjumName}
 유형: ${jjum.type}
 별칭: ${jjum.aliases.join(', ')}
-태그: ${jjum.tags.join(', ')}
+태그: ${jjum.jjtags.join(', ')}
 사실: ${jjum.facts.map(f => f.text).join('\n')}
 ${jjum.summary ? `기존 요약: ${jjum.summary}` : ''}
 ${hintText}
