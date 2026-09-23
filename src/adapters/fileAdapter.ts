@@ -478,7 +478,7 @@ export class FileAdapter implements StorageAdapter {
           const seonLastActivated = seon.lastActivated ?? lastMentioned;
           const seonDays = (since - seonLastActivated) / msPerDay;
           if (seonDays <= 0) return seon;
-          const newSeonWeight = Math.max(minWeight, (seon.weight ?? 0.5) - decayRate * seonDays;
+          const newSeonWeight = Math.max(minWeight, (seon.weight ?? 0.5) - decayRate * seonDays);
           return { ...seon, weight: newSeonWeight };
         });
 
