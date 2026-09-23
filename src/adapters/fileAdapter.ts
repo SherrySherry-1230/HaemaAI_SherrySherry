@@ -3,11 +3,12 @@
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
  * 사람이 파인더에서 직접 열어 보고 고칠 수 있는 저장소:
- * - local-server/haema/{ownerId}/{jjumName}.jj — 쩜 1개 = .jj 파일 1개 (2칸 들여쓰기)
- * - local-server/haema/_index.jj — 이름·별칭 → jjumId 조회 인덱스
+ * - 새 구조: {storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣/{jjumName}.jj
+ * - 기존 구조 호환: {storageRoot}/{ownerId}/{jjumName}.jj
+ * - 인덱스: {storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣/_index.jj
  *
  * 내성 정책:
- * - 손으로 고친 파일도 스키마 v3 검증(validateJJum) 후 로드. 깨진 파일은 건너뛰고
+ * - 손으로 고친 파일도 스키마 v4 검증(validateJJum) 후 로드. 깨진 파일은 건너뛰고
  *   getLoadErrors()에 리포트 — 전체는 계속 동작한다.
  * - 인덱스가 유실·불일치하면 파일 스캔으로 찾아내고 인덱스를 자가 복구한다.
  *
@@ -20,9 +21,14 @@ import type { JJum, JJumId, JJumStatus } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
 import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
 
+const LONG_TERM_FOLDER = '🧠장기기억저장소_feat.해마🧠';
+const JJUM_BUCKET_FOLDER = '🪣쩜통🪣';
+
 export interface FileAdapterOptions {
   /** 저장 루트. 기본값: <cwd>/local-server/haema */
-  baseDir?: string;
+  storageRoot?: string;
+  /** 기존 구조 사용 여부 (하위 호환성용) */
+  useLegacyStructure?: boolean;
 }
 
 export interface LoadError {
@@ -57,11 +63,22 @@ function atomicWrite(filePath: string, content: string): void {
 const SORT_KEYS: JJumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 'recallCount'];
 
 export class FileAdapter implements StorageAdapter {
-  readonly baseDir: string;
+  readonly storageRoot: string;
+  readonly useLegacyStructure: boolean;
   private loadErrors: LoadError[] = [];
 
   constructor(options?: FileAdapterOptions) {
-    this.baseDir = options?.baseDir ?? path.join(process.cwd(), 'local-server', 'haema');
+    this.storageRoot = options?.storageRoot ?? path.join(process.cwd(), 'local-server', 'haema');
+    this.useLegacyStructure = options?.useLegacyStructure ?? false;
+  }
+
+  /** 기존 구조 호환성을 위한 baseDir getter */
+  get baseDir(): string {
+    if (this.useLegacyStructure) {
+      return this.storageRoot;
+    }
+    // 새 구조: {storageRoot}/🧠장기기억저장소_feat.해마🧠/🪣쩜통🪣
+    return path.join(this.storageRoot, LONG_TERM_FOLDER, JJUM_BUCKET_FOLDER);
   }
 
   /** 마지막 스캔에서 건너뛴 파일들 — 콘솔 reindex 리포트용 */
@@ -78,7 +95,11 @@ export class FileAdapter implements StorageAdapter {
   // ── 경로 ──────────────────────────────────────────────
 
   private ownerDir(ownerId: string): string {
-    return path.join(this.baseDir, sanitize(ownerId));
+    if (this.useLegacyStructure) {
+      return path.join(this.baseDir, sanitize(ownerId));
+    }
+    // 새 구조: ownerId 폴더 없이 🪣쩜통🪣에 직접 저장
+    return this.baseDir;
   }
 
   private jjumPath(ownerId: string, jjumId: JJumId): string {
@@ -98,6 +119,11 @@ export class FileAdapter implements StorageAdapter {
 
   private indexPath(): string {
     return path.join(this.baseDir, '_index.jj');
+  }
+
+  /** 새 구조 기반 경로 계산 */
+  private jjumBucketPath(): string {
+    return path.join(this.storageRoot, LONG_TERM_FOLDER, JJUM_BUCKET_FOLDER);
   }
 
   // ── 인덱스 ────────────────────────────────────────────
@@ -227,17 +253,13 @@ export class FileAdapter implements StorageAdapter {
   async getJJum(ownerId: string, jjumId: JJumId): Promise<JJum | null> {
     const index = this.loadIndex();
     const filename = index.owners[ownerId]?.files[jjumId];
-    console.log('[DEBUG getJJum] ownerId:', ownerId, 'jjumId:', jjumId, 'filename:', filename);
     if (filename) {
       const { jjum } = this.readJJumFile(path.join(this.ownerDir(ownerId), filename));
-      console.log('[DEBUG getJJum] readJJumFile result:', jjum);
       if (jjum && jjum.jjumId === jjumId) return jjum;
     }
     // 인덱스 불일치 — 스캔으로 찾고 자가 복구
     const { jjums, files } = this.scanOwner(ownerId);
-    console.log('[DEBUG getJJum] scanOwner result:', jjums, files);
     const found = jjums.find((n) => n.jjumId === jjumId) ?? null;
-    console.log('[DEBUG getJJum] found:', found);
     if (found) {
       this.registerInIndex(index, found, files[found.jjumId]);
       this.saveIndex(index);
@@ -254,8 +276,6 @@ export class FileAdapter implements StorageAdapter {
 
     const oldFilename = oi.files[stored.jjumId];
     const newFilename = this.filenameFor(stored, oi);
-    console.log('[DEBUG putJJum] ownerId:', ownerId, 'jjumId:', stored.jjumId, 'jjumName:', stored.jjumName);
-    console.log('[DEBUG putJJum] dir:', dir, 'oldFilename:', oldFilename, 'newFilename:', newFilename);
     atomicWrite(path.join(dir, newFilename), JSON.stringify(stored, null, 2));
     if (oldFilename && oldFilename !== newFilename) {
       // jjumName이 바뀌면 파일명도 따라간다
@@ -318,7 +338,7 @@ export class FileAdapter implements StorageAdapter {
       jjums = jjums.filter((n) => statuses.includes(n.status));
     }
     if (query?.type !== undefined) jjums = jjums.filter((n) => n.type === query.type);
-    if (query?.tag !== undefined) jjums = jjums.filter((n) => n.tags.includes(query.tag as string));
+    if (query?.tag !== undefined) jjums = jjums.filter((n) => (n.tags || []).includes(query.tag as string));
     if (query?.pinned !== undefined) jjums = jjums.filter((n) => n.pinned === query.pinned);
 
     if (query?.sortBy && SORT_KEYS.includes(query.sortBy)) {
@@ -361,14 +381,14 @@ export class FileAdapter implements StorageAdapter {
   }
 
   /**
-   * 쩜 언급(touch) — mentionCount 증가, lastMentioned 갱신, weight 상승.
+   * 쩜 언급(touch) — mentionCount 증가, lastMentioned 갱신.
    * 쩜선도 함께 갱신: 관련 쩜선의 weight 상승 + lastActivated 갱신.
    * M2: 파일 어댑터에서 쩜/쩜선 무게 실시간 감쇠/상승 확인을 위한 핵심 함수.
    */
   async touchJJum(
     ownerId: string,
     jjumId: JJumId,
-    options?: { seons?: { targetId: JJumId; weight?: number; label?: string }[]; weightDelta?: number },
+    options?: { seons?: { targetId: JJumId; weight?: number; label?: string }[] },
   ): Promise<JJum | null> {
     const filePath = this.jjumPath(ownerId, jjumId);
     if (!fs.existsSync(filePath)) return null;
@@ -379,14 +399,12 @@ export class FileAdapter implements StorageAdapter {
 
     const jjum = result.jjum;
     const now = Date.now();
-    const weightDelta = options?.weightDelta ?? 0.1;
 
-    // 쩜 자체 weight 상승 + 언급 카운트/시각 갱신
+    // 쩜 자체 언급 카운트/시각 갱신
     const updated: JJum = {
       ...jjum,
       mentionCount: (jjum.mentionCount ?? 0) + 1,
       lastMentioned: now,
-      weight: Math.min(1, (jjum.weight ?? 1) + weightDelta),
     };
 
     // 쩜선 갱신: 기존 선은 weight 상승 + lastActivated 갱신, 새 선은 추가
@@ -423,7 +441,7 @@ export class FileAdapter implements StorageAdapter {
 
   /**
    * 시간 기반 weight 감쇠 적용.
-   * M2: 오래 언급되지 않은 쩜/쩜선의 weight를 서서히 감소.
+   * M2: 오래 언급되지 않은 쩜선의 weight를 서서히 감소.
    * - 기본 감쇠율: 하루(86400000ms)당 0.01
    * - 최소 weight: 0.1 (완전 소멸 방지)
    * - lastMentioned가 없으면 감쇠하지 않음 (신규 쩜 보호)
@@ -455,22 +473,17 @@ export class FileAdapter implements StorageAdapter {
         const daysSince = (since - lastMentioned) / msPerDay;
         if (daysSince <= 0.001) continue; // 0.001일(약 86초) 미만은 감쇠하지 않음
 
-        // weight 감쇠
-        const newWeight = Math.max(minWeight, (current.weight ?? 1) - decayRate * daysSince);
-        if (newWeight >= (current.weight ?? 1)) continue; // 변화 없음
-
-        // 쩜선 weight도 함께 감쇠
-        const newSeons = (current.seons ?? []).map((seon) => {
+        // 쩜선 weight만 감쇠 (쩜 자체에는 weight 필드가 없음)
+        const newSeons = (current.seons ?? []).map(function(seon) {
           const seonLastActivated = seon.lastActivated ?? lastMentioned;
           const seonDays = (since - seonLastActivated) / msPerDay;
           if (seonDays <= 0) return seon;
-          const newSeonWeight = Math.max(minWeight, (seon.weight ?? 0.5) - decayRate * seonDays);
+          const newSeonWeight = Math.max(minWeight, (seon.weight ?? 0.5) - decayRate * seonDays;
           return { ...seon, weight: newSeonWeight };
         });
 
         const updated: JJum = {
           ...current,
-          weight: newWeight,
           seons: newSeons,
         };
 
