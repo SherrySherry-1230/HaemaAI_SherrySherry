@@ -33,6 +33,8 @@ export interface AIAdapterConfig {
   model: string;
   /** 메모리에서만 사용 — 저장·로깅 금지. provider='custom'이면 생략 가능 */
   apiKey?: string;
+  /** OpenAI 호환/Anthropic 엔드포인트를 덮어쓸 때 사용 */
+  baseUrl?: string;
   /** 작업별 모델 분리 — 예: { extract: 경량 모델, judgeMerge: 상위 모델 } */
   taskModels?: Partial<Record<AITask, string>>;
   /** provider='custom'일 때 필수 */

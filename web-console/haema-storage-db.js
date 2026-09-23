@@ -24,8 +24,8 @@ window.HAEMA_STORAGE_DB = (function () {
         longTerm: "🧠장기기억저장소_feat.해마🧠",
         jjum: "🪣쩜통🪣",
         endUser: "☺️♥️🤖엔드유저와의 관계를 위하여🤖♥️☺️",
-        hiddenSystem: "🫀해마_심층_중추신경계🫀",
-        algorithm: "📜해마.ai 핵심 13 알고리즘 계율📜",
+        hiddenSystem: ".🫀해마_심층_중추신경계🫀",
+        algorithm: ".📜해마.ai 핵심 13 알고리즘 계율📜",
     };
 
     // ============================================================

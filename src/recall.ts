@@ -14,6 +14,8 @@
 
 import type { JJumId, JJum, JJumTimestamp, Seon } from './types/jjum.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
+import type { ConversationTurn } from './adapters/aiAdapter.ts';
+import type { RecallDecisionEngine } from './decision/layaDecisionEngine.ts';
 import { canBringUpFirst, valenceOf, type Valence } from './valence.ts';
 import { earliestUpcomingEvent, num } from './proactive.ts';
 import { GUIDE_MODES, type GuideMode } from './guideModes.ts';
@@ -37,6 +39,9 @@ export interface RecallOptions {
   now?: JJumTimestamp;
   /** recallCount · 쩜선 lastActivated 갱신 여부. 기본 true */
   touch?: boolean;
+  /** Optional fast decision layer. Errors or low-confidence results preserve rule scores. */
+  decisionEngine?: RecallDecisionEngine;
+  decisionContext?: ConversationTurn[];
 }
 
 export type MatchedBy = 'name' | 'tag' | 'seon';
@@ -117,7 +122,7 @@ export function estimateTokens(text: string): number {
 export function renderJJum(jjum: JJum): string {
   const alias = jjum.aliases.length > 0 ? `(${jjum.aliases.join('/')})` : '';
   const facts = jjum.facts.slice(-3).map((f) => f.text).join('; ');
-  const tags = jjum.tags.length > 0 ? `#${jjum.tags.join(' #')}` : '';
+  const tags = jjum.jjtags.length > 0 ? `#${jjum.jjtags.join(' #')}` : '';
   return [`[${jjum.jjumName}${alias}]`, jjum.type, jjum.summary, facts, tags].filter(Boolean).join(' · ');
 }
 
@@ -165,7 +170,7 @@ function buildGuide(
     if (!c.jjum.summary) {
       followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'summary', prompt: `${name}: 어떤 사이·어떤 맥락인지 요약 없음 — 관계/배경을 물어볼 것` });
     }
-    if (c.jjum.tags.length === 0) {
+    if (c.jjum.jjtags.length === 0) {
       followUpQuestions.push({ jjumId: c.jjum.jjumId, field: 'tags', prompt: `${name}: 표식(H-tag) 없음 — 어떤 종류의 이야기인지 물어볼 것` });
     }
     if (c.jjum.facts.length === 0) {
@@ -236,7 +241,7 @@ export async function recall(
   for (const jjum of active) {
     const names = [jjum.jjumName, ...jjum.aliases].map(norm);
     const nameHits = cueList.filter((q) => names.includes(q));
-    const tagSet = new Set(jjum.tags.map(norm));
+    const tagSet = new Set((jjum.tags ?? jjum.jjtags ?? []).map(norm));
     const tagHits = cueList.filter((q) => tagSet.has(q));
     if (nameHits.length === 0 && tagHits.length === 0) continue;
     for (const q of [...nameHits, ...tagHits]) matchedCues.add(q);
@@ -304,6 +309,26 @@ export async function recall(
   const ordered = [...found.values()].sort(
     (a, b) => b.score - a.score || a.hop - b.hop || b.jjum.mentionCount - a.jjum.mentionCount,
   );
+  if (options.decisionEngine && options.decisionContext && ordered.length > 0) {
+    try {
+      const decisions = await options.decisionEngine.scoreRecallCandidates(
+        options.decisionContext,
+        ordered.map((candidate) => candidate.jjum),
+      );
+      const decisionById = new Map(decisions.map((decision) => [decision.jjumId, decision]));
+      for (const candidate of ordered) {
+        const decision = decisionById.get(candidate.jjum.jjumId);
+        if (!decision) continue;
+        candidate.score = candidate.score * 0.4 + decision.score * 0.6;
+        candidate.reasons.push(`판단 엔진 회상 점수: ${decision.score.toFixed(2)}`);
+      }
+      ordered.sort(
+        (a, b) => b.score - a.score || a.hop - b.hop || b.jjum.mentionCount - a.jjum.mentionCount,
+      );
+    } catch {
+      // Optional engine failure must not block deterministic recall.
+    }
+  }
   const candidates: RecallCandidate[] = [];
   let tokensUsed = 0;
   let truncated = 0;

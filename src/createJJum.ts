@@ -1,5 +1,5 @@
 // @editedBy SherrySherry 2026-09-13
-/** 점(JJum) 생성 헬퍼 — 스키마 v3 기본값을 채워 새 점을 만든다. */
+/** 쩜(JJum) 생성 헬퍼 — 스키마 v4 기본값을 채워 새 쩜을 만든다. */
 
 import { randomUUID } from 'node:crypto';
 import type { JJum, JJumFact, JJumEvent, Seon, JJumEditEntry, JJumTimestamp } from './types/jjum.ts';
@@ -10,6 +10,7 @@ export interface CreateJJumInput {
   jjumName: string;
   type?: string;
   aliases?: string[];
+  jjtags?: string[];
   tags?: string[];
   summary?: string;
   sourceService?: string;
@@ -25,10 +26,12 @@ export function createJJum(input: CreateJJumInput): JJum {
     jjumName: input.jjumName.trim(),
     aliases: input.aliases ?? [],
     type: input.type ?? 'unknown',
-    tags: input.tags ?? [],
+    jjtags: input.jjtags ?? input.tags ?? [],
+    tags: input.tags,
     summary: input.summary ?? '',
     facts: [] as JJumFact[],
     events: [] as JJumEvent[],
+    responseFeedback: [],
     seons: [] as Seon[],
     mentionCount: 1,
     firstSeen: now,
