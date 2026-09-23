@@ -13,8 +13,8 @@ import type {
   ExtractRequest,
   MergeJudgement,
   RecallScore,
-} from './aiAdapter';
-import type { JJum, JJumId } from '../types/jjum';
+} from './aiAdapter.ts';
+import type { JJum, JJumId } from '../types/jjum.ts';
 
 export class OpenAIAdapter implements AIAdapter {
   readonly config: AIAdapterConfig;
@@ -29,7 +29,7 @@ export class OpenAIAdapter implements AIAdapter {
 
     this.client = new OpenAI({
       apiKey: config.apiKey,
-      baseURL: process.env.SOLAR_BASE_URL || 'https://api.upstage.ai/v1/solar',
+      baseURL: config.baseUrl || process.env.SOLAR_BASE_URL || 'https://api.upstage.ai/v1/solar',
     });
   }
 

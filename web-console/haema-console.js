@@ -55,7 +55,7 @@ HAEMA_CONSOLE.renderHeader = function() {
     // API 키 설정 상태 확인
     const apiProvider = localStorage.getItem("haema_api_provider") || "";
     const apiModel = localStorage.getItem("haema_api_model") || "";
-    const hasApiKey = localStorage.getItem("haema_api_key") ? true : false;
+    const hasApiKey = localStorage.getItem("haema_api_configured") === "true";
 
     let apiBtnHtml = "";
     if (hasApiKey && apiProvider) {
@@ -227,9 +227,8 @@ HAEMA_CONSOLE.isStorageReady = function() {
 };
 
 HAEMA_CONSOLE.isApiKeyReady = function() {
-    const apiKey = localStorage.getItem("haema_api_key") || "";
     const apiProvider = localStorage.getItem("haema_api_provider") || "";
-    return apiKey !== "" && apiProvider !== "";
+    return localStorage.getItem("haema_api_configured") === "true" && apiProvider !== "";
 };
 
 // ===== userInput 사용 가능 여부 업데이트 =====
@@ -285,7 +284,7 @@ HAEMA_CONSOLE.handleInputAreaClick = function() {
     }
 };
 
-HAEMA_CONSOLE.handleSend = function() {
+HAEMA_CONSOLE.handleSend = async function() {
     const input = document.getElementById("userInput");
     if (!input) return;
     const text = input.value.trim();
@@ -295,21 +294,43 @@ HAEMA_CONSOLE.handleSend = function() {
         this.render();
         return;
     }
-    localStorage.setItem("haema_input", text);
     this.status = "working";
     this.statusText = "🔍 해마 자극 분석 중...";
     this.render();
 
-    // 1. 회상 시뮬레이션 (기존 기능)
-    setTimeout(() => {
-        this.simulateRecall(text);
-    }, 500);
+    try {
+        const response = await fetch("/api/conversation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ownerId: "demo",
+                turns: [{ role: "user", text: text, at: Date.now() }]
+            })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            const error = new Error(payload.error || "대화 처리에 실패했습니다.");
+            error.code = payload.code || (response.status === 429 ? "USAGE_LIMIT" : "");
+            throw error;
+        }
 
-    // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 쩜 후보 감지)
-    // 간단히 첫 문장/구절을 JJum 이름으로 사용하여 생성
-    setTimeout(() => {
-        this.createJJumFromInput(text);
-    }, 800);
+        this.recallResults = (payload.recall?.candidates || []).map(candidate => ({
+            ...candidate.jjum,
+            simulationScore: candidate.score,
+            recallReason: candidate.reasons
+        }));
+        this.answerGuide = payload.hostPreview || null;
+        await this.loadLocalServerData();
+        this.status = "resting";
+        this.statusText = "✅ 대화 분석·저장·회상 완료";
+        this.render();
+    } catch (error) {
+        this.status = "error";
+        this.statusText = error.code === "USAGE_LIMIT"
+            ? "⚠️ API 사용량 한도 초과: 사용량·결제 상태를 확인하거나 다른 키/모델로 바꿔주세요."
+            : "⚠️ " + (error.message || "대화 처리에 실패했습니다.");
+        this.render();
+    }
 };
 
 
@@ -677,7 +698,7 @@ HAEMA_CONSOLE.openApiKeyModal = function() {
     // 여기서는 모드만 설정하고, 실제 콘텐츠 렌더링과 저장은 분리 파일에 맡긴다.
     this.modalMode = "apiKey";
     this.modalData = {
-        apiKey: localStorage.getItem("haema_api_key") || "",
+        apiKey: "",
         provider: localStorage.getItem("haema_api_provider") || "",
         model: localStorage.getItem("haema_api_model") || "",
         baseURL: localStorage.getItem("haema_api_base_url") || "",
@@ -1107,6 +1128,19 @@ HAEMA_CONSOLE.confirmDelete = function(jjumId) {
 // ===== 초기화 =====
 HAEMA_CONSOLE.init = function() {
     this.render();
+    fetch("/api/config/status")
+        .then(response => response.ok ? response.json() : null)
+        .then(config => {
+            if (!config) return;
+            if (config.configured) {
+                localStorage.setItem("haema_api_configured", "true");
+                localStorage.setItem("haema_api_provider", config.provider || "");
+                localStorage.setItem("haema_api_model", config.model || "");
+                localStorage.setItem("haema_api_base_url", config.baseUrl || "");
+            }
+            this.render();
+        })
+        .catch(() => {});
     // 로컬 서버에서 JJum 데이터 로딩 시도
     this.loadLocalServerData();
     console.log("HAEMA_CONSOLE 초기화 완료");
@@ -1129,10 +1163,12 @@ HAEMA_CONSOLE.loadLocalServerData = function() {
             this.allJJums = data.jjums || [];
             this.render();
             console.log('로컬 서버 데이터 로딩 완료:', this.allJJums.length, '개 쩜');
+            return this.allJJums;
         })
         .catch(err => {
             // 로컬 서버가 실행되지 않았으면 조용히 무시
             console.log('로컬 서버 미실행 — 데이터 로딩 건너뜀:', err.message);
+            return [];
         });
 };
 
@@ -1212,4 +1248,3 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
-

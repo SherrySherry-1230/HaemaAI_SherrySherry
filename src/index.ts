@@ -19,6 +19,12 @@ export type {
   RecallScore,
 } from './adapters/aiAdapter';
 export { OpenAIAdapter } from './adapters/openaiAdapter';
+export {
+  LayaDecisionEngine,
+  type DecisionScore,
+  type LayaDecisionEngineOptions,
+  type RecallDecisionEngine,
+} from './decision/layaDecisionEngine.ts';
 export { valenceOf, isNegative, canBringUpFirst, VALENCE_TAGS, type Valence } from './valence';
 export {
   recall,

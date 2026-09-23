@@ -610,6 +610,16 @@ const HAEMA_API_KEY_MODAL = (() => {
         ]
     };
 
+    const PROVIDER_BASE_URLS = {
+        openai: "https://api.openai.com/v1",
+        anthropic: "https://api.anthropic.com",
+        google: "https://generativelanguage.googleapis.com",
+        grok: "https://api.x.ai/v1",
+        deepseek: "https://api.deepseek.com",
+        openrouter: "https://openrouter.ai/api/v1",
+        "openai-compatible": "https://api.openai.com/v1"
+    };
+
 // =========================================================
 // 2. 내부 상태
 // =========================================================
@@ -657,8 +667,7 @@ async function buildModelOptions(provider, selectedModel) {
 
         return `<option value="">모델을 선택하세요</option>${options}`;
     } catch (e) {
-        console.warn('[HAEMA_API_KEY_MODAL] 백엔드 모델 목록 조회 실패, 고정 목록으로 폴백합니다.', e);
-        return buildModelOptionsFallback(provider, selectedModel);
+        throw e;
     }
 }
 
@@ -676,6 +685,10 @@ async function fetchProviderModels(provider) {
     if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Error(`모델 목록 조회 실패: ${res.status} ${text}`);
+    }
+
+    function getDefaultBaseUrl(provider) {
+        return PROVIDER_BASE_URLS[provider] || "";
     }
 
     const data = await res.json();
@@ -741,7 +754,7 @@ function renderApiKeyModalContent(data = {}) {
     const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
     const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
     const savedBaseUrl = data.baseURL || localStorage.getItem("haema_api_base_url") || "";
-    const savedKey = data.apiKey || localStorage.getItem("haema_api_key") || "";
+    const savedKey = data.apiKey || "";
     const savedName = data.name || "";
 
     // 제공자 선택
@@ -808,6 +821,7 @@ function renderApiKeyModalContent(data = {}) {
                 <option value="">모델을 선택하세요</option>
             </select>
             <div class="form-hint">선택한 제공자에 맞는 모델을 선택하세요.</div>
+            <div class="form-hint" id="modalApiConnectionStatus" role="status"></div>
         </div>
     `;
 
@@ -910,7 +924,9 @@ function getSavedKeys() {
 
 function saveKeysList(keys) {
     try {
-        localStorage.setItem("haema_api_keys", JSON.stringify(keys));
+        localStorage.setItem("haema_api_keys", JSON.stringify(
+            keys.map(({ apiKey, ...safeKey }) => safeKey)
+        ));
     } catch (e) {
         // 저장 실패 시에도 앱은 계속 동작하도록 조용히 넘긴다.
         console.warn("HAEMA_API_KEY_MODAL: 저장된 키 목록 유지에 실패했습니다.", e);
@@ -972,39 +988,71 @@ function saveApiKeyModal() {
         return false;
     }
 
-    // 현재 저장 대상 키 객체
+    const modalSaveButton = document.getElementById("modalSave");
+    if (modalSaveButton) modalSaveButton.disabled = true;
+    validateProviderConnection(provider, apiKey, baseURL)
+        .then(result => {
+            if (!result.ok) {
+                notifySaveResult(false, provider, model, false, result.message);
+                return;
+            }
+            persistApiKeyModal({
+                provider,
+                model,
+                apiKey,
+                baseURL,
+                name
+            });
+        })
+        .catch(error => {
+            notifySaveResult(false, provider, model, false, error.message || "API 연결을 확인할 수 없습니다.");
+        })
+        .finally(() => {
+            if (modalSaveButton) modalSaveButton.disabled = false;
+        });
+
+    return true;
+}
+
+async function validateProviderConnection(provider, apiKey, baseUrl) {
+    const response = await fetch("/api/provider/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, apiKey, baseUrl })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.success) {
+        return {
+            ok: false,
+            message: payload.error || "API 키 또는 Base URL 연결에 실패했습니다."
+        };
+    }
+    return { ok: true };
+}
+
+function persistApiKeyModal({ provider, model, apiKey, baseURL, name }) {
+
     const keyItem = {
         keyId: editingKeyId || ("key_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7)),
-        name: name,
-        provider: provider,
-        model: model,
-        apiKey: apiKey,
+        name,
+        provider,
+        model,
+        apiKey,
         baseURL: baseURL || "",
         updatedAt: new Date().toISOString()
     };
 
-    // 1) 단일 키 필드 저장
-    localStorage.setItem("haema_api_key", apiKey);
+    // API 키 평문은 브라우저 저장소에 보관하지 않는다.
     localStorage.setItem("haema_api_provider", provider);
     localStorage.setItem("haema_api_model", model);
     localStorage.setItem("haema_api_base_url", baseURL || "");
 
-    // 2) 여러 키 목록에도 저장
-    const existingKeys = getSavedKeys();
-    const existingIndex = existingKeys.findIndex(item => item.keyId === editingKeyId);
-    if (existingIndex >= 0) {
-        existingKeys[existingIndex] = keyItem;
-    } else {
-        existingKeys.push(keyItem);
-    }
-    saveKeysList(existingKeys);
-    setCurrentKeyId(keyItem.keyId);
-
-    // 3) 로컬 서버 .env 저장 요청
+    // 로컬 서버 .env 저장 요청
     // - 프론트가 직접 파일 시스템에 쓸 수 없으므로 서버로 요청을 보낸다.
     // - 서버가 없으면 이 요청은 실패해도 앱 동작에는 영향이 없도록 처리한다.
     saveToLocalServerEnv(keyItem).then(success => {
         if (success) {
+            localStorage.setItem("haema_api_configured", "true");
             notifySaveResult(true, provider, model);
         } else {
             notifySaveResult(true, provider, model, true);
@@ -1013,7 +1061,6 @@ function saveApiKeyModal() {
         notifySaveResult(true, provider, model, true);
     });
 
-    return true;
 }
 
 // =========================================================
@@ -1062,8 +1109,10 @@ async function saveToLocalServerEnv(keyItem) {
 // 12. 저장 결과 안내
 // =========================================================
 // 콘솔 참조가 있으면 상태 텍스트를 갱신하고, 없으면 alert로 안내한다.
-function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false) {
-    const message = serverSaveOnlyFailed
+function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false, errorMessage = "") {
+    const message = !success
+        ? `❌ API 연결 실패: ${errorMessage || "키 또는 Base URL을 확인해주세요."}`
+        : serverSaveOnlyFailed
         ? `✅ API 키 저장 완료: ${provider} / ${model} (로컬 서버 .env 저장은 확인되지 않았습니다)`
         : `✅ API 키 저장 완료: ${provider} / ${model}`;
 
@@ -1087,10 +1136,10 @@ function switchToKey(keyId) {
         return false;
     }
 
-    localStorage.setItem("haema_api_key", target.apiKey);
     localStorage.setItem("haema_api_provider", target.provider);
     localStorage.setItem("haema_api_model", target.model);
     localStorage.setItem("haema_api_base_url", target.baseURL || "");
+    localStorage.setItem("haema_api_configured", "true");
     setCurrentKeyId(target.keyId);
 
     if (typeof saveToLocalServerEnv === "function") {
@@ -1180,6 +1229,18 @@ async function bindEvents() {
     const modelSelect = document.getElementById("modalApiModel");
     const apiKeyInput = document.getElementById("modalApiKey");
     const baseUrlInput = document.getElementById("modalApiBaseUrl");
+    const connectionStatus = document.getElementById("modalApiConnectionStatus");
+    let lastAutoBaseUrl = baseUrlInput?.value.trim() || "";
+
+    function updateBaseUrl() {
+        if (!providerSelect || !baseUrlInput) return;
+        const nextDefault = getDefaultBaseUrl(providerSelect.value);
+        const current = baseUrlInput.value.trim();
+        if (!current || current === lastAutoBaseUrl) {
+            baseUrlInput.value = nextDefault;
+            lastAutoBaseUrl = nextDefault;
+        }
+    }
 
     async function refreshModelOptions() {
         if (!providerSelect || !modelSelect) return;
@@ -1188,32 +1249,46 @@ async function bindEvents() {
 
         if (!provider) {
             modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
+            if (connectionStatus) connectionStatus.textContent = "Provider를 선택하면 연결 상태와 모델 목록을 확인합니다.";
             return;
         }
 
         if (!apiKeyInput || !apiKeyInput.value.trim()) {
             modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
+            if (connectionStatus) connectionStatus.textContent = "⚠️ API 키를 입력하면 연결을 확인하고 모델 목록을 가져옵니다.";
             return;
         }
 
         modelSelect.innerHTML = '<option value="">모델을 불러오는 중...</option>';
+        if (connectionStatus) connectionStatus.textContent = "🔄 API 연결과 모델 목록을 확인하는 중...";
         try {
             modelSelect.innerHTML = await buildModelOptions(provider, currentModel);
+            if (connectionStatus) connectionStatus.textContent = "✅ API 연결 확인됨. 모델을 선택하세요.";
         } catch (error) {
             console.warn('[HAEMA_API_KEY_MODAL] 모델 목록 갱신 실패:', error);
             modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
+            if (connectionStatus) connectionStatus.textContent = `❌ API 연결 실패: ${error.message || "키와 Base URL을 확인해주세요."}`;
         }
     }
 
     if (providerSelect) {
-        providerSelect.addEventListener("change", refreshModelOptions);
+        providerSelect.addEventListener("change", () => {
+            updateBaseUrl();
+            refreshModelOptions();
+        });
     }
     if (apiKeyInput) {
         apiKeyInput.addEventListener("input", refreshModelOptions);
     }
     if (baseUrlInput) {
-        baseUrlInput.addEventListener("input", refreshModelOptions);
+        baseUrlInput.addEventListener("input", () => {
+            lastAutoBaseUrl = "";
+            refreshModelOptions();
+        });
     }
+
+    updateBaseUrl();
+    refreshModelOptions();
 
     const savedKeysListEl = document.getElementById("savedKeysList");
     if (savedKeysListEl) {

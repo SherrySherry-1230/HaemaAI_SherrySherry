@@ -1,9 +1,17 @@
 # Haema 개발 계획 (PLAN)
 
-<!-- @editedBy SherrySherry 2026-09-12 -->
-> 작성: 2026-09-04 (쉐리쉐리). 기준: `SCHEMA.md`(쩜(jjum) 스키마, 확정) · `USAGE_SCENARIOS.md`(테스트 정답지) ·
+<!-- @editedBy SherrySherry 2026-09-22 -->
+> 작성: 2026-09-22 (쉐리쉐리). 기준: `SCHEMA.md`(쩜(jjum) 스키마, 확정) · `USAGE_SCENARIOS.md`(테스트 정답지) ·
 > `CONTEXT.md`(검증 목표) · AI/agents/AGENTS.md(도메인 무지 원칙).
 > 원칙: 각 단계는 **마이풉(피피/푸푸)에서 실제로 테스트 가능한 형태**로 끝난다.
+> 알고리즘별 상세 계율은 `docs/📜해마.ai 핵심 13 알고리즘 계율📜`폴더의 13개 문서에 분리해 둔다.
+
+## 선택적 Laya 판단층
+
+`engines/laya`의 Laya는 쩜 원문 생성기가 아니라 회상 후보를 빠르게 점수화하는 보조 판단 엔진으로 사용한다.
+기본값은 꺼져 있으며, 로컬 서버 실행 시 `HAEMA_LAYA_ENABLED=1`을 지정한 경우에만 활성화된다.
+Laya 모델 로딩 실패, 실행 오류, 또는 confidence가 기준(기본 0.70)보다 낮은 결과는 기존 결정론적 회상 점수를 유지한다.
+첫 적용 범위는 회상 후보 재정렬이며, 쩜 생성·요약·최종 병합은 기존 AI 어댑터와 코어가 담당한다.
 
 
 ## AI 어댑터 — 설계 원칙 (2026-09-04 확정)
@@ -17,20 +25,20 @@
 - 레퍼런스 구현 3종 + 커스텀 함수 주입. **작업별 모델 분리 가능** (추출용/판정용 따로 지정).
 - 프롬프트는 범용. 서비스 특화 지시는 호스트가 **hint 문자열**로 넘기고, Haema는 hint를
   해석하지 않는다 — 프롬프트에 그대로 전달할 뿐 (도메인 무지 유지).
-- 인터페이스: `src/adapters/aiAdapter.ts` (1단계에서 정의, 구현체는 2단계)
+- 인터페이스: `src/adapters/aiAdapter.ts`와 provider 어댑터 구현체(2단계)
 
 ## 1단계 — 파일 시스템 어댑터 + 쩜 저장/조회 (최소 동작 단위)
 
 **범위 (여기까지만):**
 - 패키지 골격: `package.json`(`@haema/core`) · `tsconfig`(strict) — **런타임 의존성 0**
   (실행: Node 타입 스트리핑 / 테스트: 내장 `node:test` — vitest 도입은 패키징 단계에서 검토)
-- `createCell()` 헬퍼: 기본값 채움 (`schemaVersion=3`, 빈 배열들, 타임스탬프)
+- `createJJum()` 헬퍼: 기본값 채움 (`schemaVersion=4`, 빈 배열들, 타임스탬프)
 - **`FileAdapter`** (`StorageAdapter` 구현체 — 사람이 파인더에서 직접 열어보고 고칠 수 있는 저장소):
   - `local-server/haema/{ownerId}/{jjumName}.jj` — **쩜 1개 = .jj 파일 1개** (2칸 들여쓰기)
   - `local-server/haema/_index.jj` — 이름·별칭 → jjumId 조회 인덱스 (유실·불일치 시 파일 스캔으로 자가 복구)
   - 자극(언급·회상·선 갱신) 시 **파일 읽기 → 갱신 → 다시 쓰기** — `mentionCount` ·
     `lastMentioned` · `seons.weight` · `recallCount` 변화가 파일에 실제로 보인다
-  - **손으로 고친 파일도 스키마 v3 검증 후 로드** — 깨진 파일은 건너뛰고 리포트, 전체는 계속 동작
+  - **손으로 고친 파일도 스키마 v4 검증 후 로드** — 깨진 파일은 건너뛰고 리포트, 전체는 계속 동작
   - Firestore 어댑터와 교체 가능 (동일 `StorageAdapter` 계약)
 - **테스트 콘솔(CLI)**: 쩜 생성/조회/자극/선/회상 후보 미리보기 — **AI 호출 없이** 손 조작용
 - `AIAdapter` **인터페이스 정의만** 추가 (`src/adapters/aiAdapter.ts` — 구현체는 2단계)
@@ -52,16 +60,15 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 
 > 두 덩이로 나눠 구현: **2-a 회상 엔진(AI 없이 결정론)** — `src/recall.ts` · `src/proactive.ts` · `src/valence.ts` 완료 /
 > **2-b AI 어댑터**(extract·summarize·judgeMerge·score) — 인터페이스 + 레퍼런스 구현(OpenAI SDK 호환
-> Upstage Solar Adapter)까지 완료. 단, **대화→추출→저장 통합 파이프라인은 아직 완성되지 않았다.**
-> 추출 결과(ExtractedDraft)를 실제 쩜(JJum)으로 만들어 저장·병합·선 연결까지 묶어 돌리는 주체는
-> 아직 코어/호스트에 완전히 조립되지 않았으며, 마이풉 연동도 아직 착수하지 않았다.
+> Upstage Solar Adapter)까지 완료. 단, **기본 대화→추출→쩜 생성→요약→저장 파이프라인은 `src/integration.ts`에 조립되어 있다.**
+> 다만 추출 결과의 병합·선 연결 고도화와 마이풉 연동은 아직 남아 있으며, 마이풉 연동은 아직 착수하지 않았다.
 > 마이풉↔Haema 연동은 마이풉에 직접 붙이기 전에 임시 웹콘솔(로컬 HTML)로 먼저 돌려보고,
 > 그다음 정식 연동하는 순서로 진행한다.
 >
 > ※ 용어 참고: 이 문서의 "2-b"는 `haema_ai.md` §4 "파이프라인 및 대화 처리 흐름"의 ①~③ 동작과 대응된다 
 >(`haema_ai.md`는 Human_ONLY 폴더에 위치한다.)
-> (① 대화 수신 및 해마점 자동 생성 = extractCells, ② 유저 프로필 추론/갱신 = summarizeCell,
-> ③ MCTS 꼬리 탐색 & 가이드 조립 = scoreRecallCandidates + 가이드 뼈대). `haema_ai.md`에는 "2-b"라는
+> (① 대화 수신 및 쩜 자동 생성 = extractJJums, ② 쩜 요약 보강 = summarizeJJums,
+> ③ seons 기반 회상 후보 점수화 = scoreRecallCandidates + 가이드 뼈대). `haema_ai.md`에는 "2-b"라는
 > 용어가 직접 나오지 않으며, 5절 로드맵의 "2단계"가 PLAN.md의 2-a+2-b+암호화 모듈을 포괄하는 더 넓은 개념이다.
 
 **출력 구조 — 점만 주지 않는다. 매 턴 3종을 반환한다:**
@@ -80,17 +87,17 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 - **Haema는 말을 만들지 않는다.** 가이드는 방향과 재료. 최종 발화는 호스트
 - 가이드 구조는 범용. 서비스 특화 지시는 호스트 `hint` 문자열로, Haema는 해석 안 함
 
-**회상 단서(cue)**: 이름·별칭뿐 아니라 **H-tag·개념 문자열**도 받는다. 태그 매칭 + 선 확산으로 후보 반환
+**회상 단서(cue)**: 이름·별칭뿐 아니라 **JJ-tag·개념 문자열**도 받는다. 태그 매칭 + 선 확산으로 후보 반환
 (시나리오 02 — 이름 없이 [즐거움, 스트레스 해소]만으로 핑크 술자리 점이 나와야 한다)
 
 **valence 정책**:
-- 추출 시 AI 어댑터가 valence H-tag(긍정/중립/부정) 부여
+- 추출 시 AI 어댑터가 valence JJ-tag(긍정/중립/부정) 부여
 - Haema가 **"먼저 꺼내는"** 후보(이야깃거리 · 먼저 말 걸 거리)는 **긍정·중립만**
 - 부정 점은 회상 후보에 **항상 포함하되 flag로 표시** — 호스트가 "유저가 먼저 꺼냈을 때 알아봐 주는" 용도로만 쓰도록
 - 호스트가 "부정이어도 반드시 상기"할 별도 트랙을 원하면 hint로 정의. Haema는 관여 안 함
 
 **고민 쩜 정책 (2026-09-06 확정 · 2-a 구현)**:
-- type **"고민"**은 정식 종류. 상태는 meta가 아니라 H-tag **"미해결" / "해결"**로. 해결되면 미해결 태그를 떼고
+- type **"고민"**은 정식 종류. 상태는 meta가 아니라 JJ-tag **"미해결" / "해결"**로. 해결되면 미해결 태그를 떼고
   해결 시점을 사건으로 남긴다 (`resolveConcern`, 콘솔 `resolve`)
 - `getProactiveCues`: 부정 valence여도 **type=고민 & 미해결**이면 후보 허용 — 단 결과에 **careful: true** 표시
 - 답변 가이드 mode에 **"조심 안부"** 추가 — 내용을 먼저 말하지 말고 "고민 있어?" 수준으로만 열라는 지시
@@ -110,7 +117,7 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 **범위 (구현 항목)**:
 - `recall(ownerId, cues, options)` → 위 3종 반환 (후보 스코어링·홉 확산·토큰 상한·valence flag 포함)
 - **`AIAdapter` 레퍼런스 구현 3종**(anthropic/openai/google) + 커스텀 함수 주입:
-  대화에서 쩜 추출(extract — valence H-tag 부여 포함) · summary/관계 요약(summarize) · 회상 후보 점수화(scoreRecallCandidates)
+  대화에서 쩜 추출(extract — valence JJ-tag 부여 포함) · summary/관계 요약(summarize) · 회상 후보 점수화(scoreRecallCandidates)
 - `getProactiveCues` · `getRecentMoodSignals`
 - 사용된 점의 `recallCount` · 선 `lastActivated` 갱신
 - 판단 분리: **Haema의 AI 어댑터가 후보를 점수화**까지 한다. 꺼낼지·침묵할지·어떤 말투로 연출할지는 **호스트 챗봇의 몫**
@@ -119,7 +126,7 @@ AI 연동 전에 미리 실험할 수 있다. (마이풉 웹 연동용 LocalStor
 **완료 기준:**
 - [x] 유닛 테스트: 1홉/2홉 경계, weight 정렬 상위 N 컷, 토큰 상한 잘림, 후보 없음 → 빈 결과(환각 재료 제공 금지) (2-a)
 - [x] 매 턴 3종(회상 후보 · 답변 가이드 · 이야깃거리) 반환 구조 테스트 — 이야깃거리·먼저 말 걸 거리에 부정 쩜 미포함, 회상 후보의 부정 점은 flag (2-a, 가이드는 규칙 기반 뼈대)
-- [x] cue 확장 테스트 — 이름 없이 H-tag 단서만으로 후보 반환 (2-a)
+- [x] cue 확장 테스트 — 이름 없이 JJ-tag 단서만으로 후보 반환 (2-a)
 - [x] `getProactiveCues` 후보 없으면 빈 결과 / `getRecentMoodSignals` 집계값만 반환 (2-a)
 - [x] 미해결 고민은 먼저 말 걸 거리에 careful(조심 안부) 표시로 뜨고, 상처는 여전히 안 뜬다 (2-a)
 - [x] 같은 cues 반복 호출 시 recallCount 증가 확인 (2-a)
