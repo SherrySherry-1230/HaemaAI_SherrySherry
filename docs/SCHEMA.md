@@ -26,25 +26,26 @@
 쩜 스키마 — 논리 경로 jjums/{jjumId} (파일 어댑터 물리 경로는 {baseDir}/{ownerId}/{maskedJJumName}.jj)
 
 **문서 하단에 파일명(쩜 파일) 규칙 필독**
+해마 콘솔에 노출되는 쩜의 정보 ✅표시(요약쩜에 표시, 길면 ‘...’활용해서 표시)  ➕는 점을 펼쳤을때만 드러남
 
 // ═══ 신원 ═══
 jjumId          string      // 자동 생성되는 쩜의 고유 ID.
-                            // 쩜의 파일명이나 사용자 입력값을 ID로 사용하지 않는다.
-jjumName        string      // 대표 이름 ("홍길동", "댕춍코인", "성수 카페")
+                            // 유저는 몰라도 되므로, 노출시키지 않는것을 원칙으로 한다. 쩜의 파일명이나 사용자 입력값을 ID로 사용하지 않는다.
+✅jjumName        string      // 대표 이름 ("홍길동", "댕춍코인", "성수 카페")
                             // 파일명으로도 사용되므로 아래 "쩜 이름 및 파일명 보호 규칙"을 따른다.
-aliases         string[]    // 별칭 (["핑크", "홍길동"]) — 어느 이름으로 언급돼도 같은 쩜 히트
-type            string      // 개방형. AI가 자유 생성 (인물·장소·사물·사건·개념·작품·조직·표현·시기 …)
-jjtags          string[]    // JJ-tag — 다중 분류 ("댕춍코인" = [코인, 사건, 밈]). valence(긍정/중립/부정)도 JJ-tag
+✅aliases         string[]    // 별칭 (["핑크", "홍길동"]) — 어느 이름으로 언급돼도 같은 쩜 히트
+✅type            string      // 개방형. AI가 자유 생성 (인물·장소·사물·사건·개념·작품·조직·표현·시기 …)
+✅jjtags          string[]    // JJ-tag — 다중 분류 ("댕춍코인" = [코인, 사건, 밈]). valence(긍정/중립/부정)도 JJ-tag
 
 // ═══ 내용 ═══
-summary         string      // 쩜 한 줄 요약 ("월 1~2회 만나는 친한 친구") — 배치가 생성·갱신
-facts           array       // [{ text, addedAt, source }]  source: conversation | user_edit | batch
-events          array       // [{ date, summary, refJJumIds[] }] — 사건에 함께 등장한 쩜 연결
+✅summary         string      // 쩜 한 줄 요약 ("월 1~2회 만나는 친한 친구") — 배치가 생성·갱신
+➕facts           array       // [{ text, addedAt, source }]  ➕source: conversation | user_edit | batch
+➕events          array       // [{ date, summary, refJJumIds[] }] — 사건에 함께 등장한 쩜 연결
  // ═══ 맥락 ═══
-context         object?     // 기억이 형성된 대화·환경 맥락. 급작스런 타이핑 속도 변화와 함께 꼼꼼히. 현단계에선 느껴지는 사용자의 감정도 여기에 간략기록 ('관계 데이터' 폴더에 따로 분리 자세히 기록. 마일스톤4 이후에 감정 따로 분리)
+✅context         object?     // 기억이 형성된 대화·환경 맥락. 급작스런 타이핑 속도 변화와 함께 꼼꼼히. 현단계에선 느껴지는 사용자의 감정도 여기에 간략기록 ('관계 데이터' 폴더에 따로 분리 자세히 기록. 마일스톤4 이후에 감정 따로 분리)
 
 // ═══ 쩜선 — 연상 네트워크 (핵심) ═══
-seons           array       // [{ targetId, weight, label?, lastActivated }]
+✅seons           array       // [{ targetId, weight, label?, lastActivated }]
                             //   weight: 함께 언급될수록↑, 미사용 시 서서히 감쇠
                             //   label: 관계 설명(선택) — "창작자", "동일 사건"
                             //   회상&연상 규칙: MCTS, weight 따라 탐색 / weight 상위 N개 / 총 토큰 상한
@@ -53,11 +54,11 @@ seons           array       // [{ targetId, weight, label?, lastActivated }]
                             //     회상 점수는 같은 상대로 가는 쩜선 중 가장 굵은 것 기준.
 
 // ═══ 통계 ═══
-mentionCount    number      // 언급 횟수 — 인기순 정렬 키
-firstSeen       timestamp
-lastMentioned   timestamp   // 날짜순 정렬 키, 최근 언급 시각 — 회상 및 관리 우선순위 계산에 활용
-recallCount     number      // AI가 회상에 실제 사용한 횟수. recallCount === 0 이면 미회상쩜 -> 알고리즘에서 보너스 줄 예정.
-lastRecalled    timestamp?  // 마지막으로 회상된 시각
+➕mentionCount    number      // 언급 횟수 — 인기순 정렬 키
+➕firstSeen       timestamp
+➕lastMentioned   timestamp   // 날짜순 정렬 키, 최근 언급 시각 — 회상 및 관리 우선순위 계산에 활용
+➕recallCount     number      // AI가 회상에 실제 사용한 횟수. recallCount === 0 이면 미회상쩜 -> 알고리즘에서 보너스 줄 예정.
+➕lastRecalled    timestamp?  // 마지막으로 회상된 시각
 
 // ═══ 관리 ═══
 pinned          boolean     // 자동 정리 영구 면제
@@ -76,8 +77,8 @@ responseFeedback[] array      // 호스트 AI 답변에 대한 유저 반응 및
                             //[{ timestamp, result, cues, responseId? }]  
 
 // ═══ 소속 ═══
-ownerId         string      // 기억의 주인. 인증 방식은 Haema 소관 아님 — 문자열로 받을 뿐
-sourceService   string      // "mypoopai" | "daengchong" | …
+➕ownerId         string      // 기억의 주인. 인증 방식은 Haema 소관 아님 — 문자열로 받을 뿐
+➕sourceService   string      // "mypoopai" | "daengchong" | …
 schemaVersion   number      // 마이그레이션 대비
 ```
 
