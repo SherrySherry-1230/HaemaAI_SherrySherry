@@ -18,3 +18,7 @@ engines/laya/
 
 # 사용자 해마 저장소
 🧠장기기억저장소_feat.해마🧠/
+# Firebase local secrets and generated logs
+.secret.local
+.firebase/
+*-debug.log

@@ -12,7 +12,10 @@
     "test": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/adapter-contract.test.ts tests/file-adapter.test.ts tests/recall.test.ts tests/integration.test.ts",
     "typecheck": "tsc --noEmit",
     "seed": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/seed.ts",
-    "scenario": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/scenario.ts"
+    "scenario": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/scenario.ts",
+    "test:firebase": "npm --prefix functions test && node --test firebase-client/*.test.mjs",
+    "test:firebase:m2": "node --disable-warning=ExperimentalWarning --experimental-strip-types --test functions/m2.test.ts",
+    "server:firebase": "node --env-file=.env.firebase-proxy --import ./firebase-client/register.mjs --disable-warning=ExperimentalWarning --experimental-strip-types local-server/server.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.0",
