@@ -5,8 +5,9 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tools"]
+  "include": ["src/**/*.ts", "local-server/*.ts", "tools/solo-server.ts"]
 }

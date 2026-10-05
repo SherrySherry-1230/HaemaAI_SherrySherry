@@ -1,11 +1,11 @@
-// @editedBy SherrySherry 2026-09-06
+// @editedBy SherrySherry 2026-09-24
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
-export { validateJJum, type ValidationResult } from './types/validateJJum';
-export { createJJum, type CreateJJumInput } from './createJJum';
-export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter';
-export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter';
+export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
+export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
+export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
   AIAdapter,
   AIAdapterConfig,
@@ -17,9 +17,15 @@ export type {
   ExtractedDraft,
   MergeJudgement,
   RecallScore,
-} from './adapters/aiAdapter';
-export { OpenAIAdapter } from './adapters/openaiAdapter';
-export { valenceOf, isNegative, canBringUpFirst, VALENCE_TAGS, type Valence } from './valence';
+} from './adapters/aiAdapter.ts';
+export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
+export {
+  LayaDecisionEngine,
+  type DecisionScore,
+  type LayaDecisionEngineOptions,
+  type RecallDecisionEngine,
+} from './decision/layaDecisionEngine.ts';
+export { valenceOf, isNegative, canBringUpFirst, VALENCE_TAGS, type Valence } from './valence.ts';
 export {
   recall,
   renderJJum,
@@ -37,7 +43,7 @@ export {
   type Topic,
   type TopicKind,
   type MatchedBy,
-} from './recall';
+} from './recall.ts';
 export {
   CONCERN_TYPE,
   TAG_UNRESOLVED,
@@ -46,8 +52,8 @@ export {
   isConcern,
   isUnresolvedConcern,
   resolveConcern,
-} from './concern';
-export { upsertSeon, seonsTo, strongestSeon, strongestSeons } from './seons';
+} from './concern.ts';
+export { upsertSeon, seonsTo, strongestSeon, strongestSeons } from './seons.ts';
 export {
   getOpenConcerns,
   selectOpenConcerns,
@@ -58,4 +64,4 @@ export {
   type ProactiveOptions,
   type MoodSignals,
   type MoodOptions,
-} from './proactive';
+} from './proactive.ts';

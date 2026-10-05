@@ -1,0 +1,85 @@
+{
+  "source": "../01-card-expand.svg",
+  "sourceSha256": "E894AD2B4611C49229243E18868CBE7B8D8B9B75256474645EB40D9FFCCA1A84",
+  "faceColor": "#FDFBFC",
+  "intrinsicWidth": 29.3827,
+  "intrinsicHeight": 17.0097,
+  "viewBox": "-3 -3 29.3827 17.0097",
+  "triangleWidth": 23.3827,
+  "triangleHeight": 11.0097,
+  "padding": 3,
+  "notes": [
+    "Original source is unchanged. These are derived copies.",
+    "Triangle path, light direction, filter sequence, offsets, blur, and opacity are preserved.",
+    "Only collapse path rotates 180 degrees around 11.69135,5.50485; filter group never rotates.",
+    "3px padding and expanded filter bounds accommodate the drop shadow through four blur standard deviations without scaling the original triangle.",
+    "Drop tint mixes card background with 24% black. Lower-right inner tint mixes with 12% black. Upper-left inner tint mixes with 35% white.",
+    "CSS should use the intrinsic 29.3827px by 17.0097px size to retain the original art scale."
+  ],
+  "states": {
+    "general": {
+      "background": "#F7F3EA",
+      "dropTint": "#BCB9B2",
+      "innerLowerRightTint": "#D9D6CE",
+      "innerUpperLeftTint": "#FAF7F1",
+      "expand": "expand-general.svg",
+      "collapse": "collapse-general.svg"
+    },
+    "new": {
+      "background": "#A2ED99",
+      "dropTint": "#7BB474",
+      "innerLowerRightTint": "#8FD187",
+      "innerUpperLeftTint": "#C3F3BD",
+      "expand": "expand-new.svg",
+      "collapse": "collapse-new.svg"
+    },
+    "candidate": {
+      "background": "#FFE895",
+      "dropTint": "#C2B071",
+      "innerLowerRightTint": "#E0CC83",
+      "innerUpperLeftTint": "#FFF0BA",
+      "expand": "expand-candidate.svg",
+      "collapse": "collapse-candidate.svg"
+    },
+    "related": {
+      "background": "#FFBC9D",
+      "dropTint": "#C28F77",
+      "innerLowerRightTint": "#E0A58A",
+      "innerUpperLeftTint": "#FFD3BF",
+      "expand": "expand-related.svg",
+      "collapse": "collapse-related.svg"
+    },
+    "strong": {
+      "background": "#EB9BB0",
+      "dropTint": "#B37686",
+      "innerLowerRightTint": "#CF889B",
+      "innerUpperLeftTint": "#F2BECC",
+      "expand": "expand-strong.svg",
+      "collapse": "collapse-strong.svg"
+    },
+    "sent-strong": {
+      "background": "#B8A9C9",
+      "dropTint": "#8C8099",
+      "innerLowerRightTint": "#A295B1",
+      "innerUpperLeftTint": "#D1C7DC",
+      "expand": "expand-sent-strong.svg",
+      "collapse": "collapse-sent-strong.svg"
+    },
+    "sent-related": {
+      "background": "#CC987F",
+      "dropTint": "#9B7461",
+      "innerLowerRightTint": "#B48670",
+      "innerUpperLeftTint": "#DEBCAC",
+      "expand": "expand-sent-related.svg",
+      "collapse": "collapse-sent-related.svg"
+    },
+    "sent-candidate": {
+      "background": "#F4E2B2",
+      "dropTint": "#B9AC87",
+      "innerLowerRightTint": "#D7C79D",
+      "innerUpperLeftTint": "#F8ECCD",
+      "expand": "expand-sent-candidate.svg",
+      "collapse": "collapse-sent-candidate.svg"
+    }
+  }
+}

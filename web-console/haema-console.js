@@ -1,3 +1,8 @@
+// @editedBy SherrySherry 2026-10-05
+// @editedBy SherrySherry 2026-09-24
+// @editedBy YAONG1230 2026-10-03
+// @editedBy YAONG1230 2026-10-04
+// @editedBy YAONG1230 2026-10-05
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -5,8 +10,14 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     allJJums: [],
-    streamingJjums: new Set(),
-    selectedJjumId: null,
+    cardShapeHistory: new Map(),
+    streamingJJums: new Set(),
+    selectedJJumId: null,
+    storageConnected: false,
+    apiConfigured: false,
+    sending: false,
+    sendPressed: false,
+    sendPressTimer: null,
     modalMode: null,
     modalData: null,
     throttleTimer: null,  // 실시간 타이핑 쓰로틀 타이머 (0.5초 간격)
@@ -16,10 +27,15 @@ HAEMA_CONSOLE = {
     lastKeystrokeTime: 0,
     hesitationDetected: false,
     emotionContext: null,  // 감지된 감정 컨텍스트
-    
+    conversationHistory: [],
+    activeMobilePanel: 'chat',
+    typingTimer: null,
+    isComposing: false,
+    apiKeyName: '',
+
     // 쩜 데이터는 외부에서 주입하거나 모달로 추가한다.
     // 초기 샘플 데이터는 넣지 않는다.
-    
+
 };
 
 // ===== 렌더링 함수 =====
@@ -33,87 +49,170 @@ HAEMA_CONSOLE.render = function() {
     const userInput = document.getElementById("userInput");
     const preservedValue = userInput ? userInput.value : "";
     const preservedFocus = userInput ? document.activeElement === userInput : false;
-    
+    const activeElementId = document.activeElement?.id || "";
+    const selection = userInput ? [userInput.selectionStart, userInput.selectionEnd, userInput.selectionDirection] : null;
+    const scrollPositions = [...document.querySelectorAll('[data-scroll-key]')].map(node => [node.dataset.scrollKey, node.scrollTop, node.scrollLeft]);
+    const storageOverlay = document.getElementById('storageModalOverlay');
+    const modalDrafts = [...document.querySelectorAll('.modal-overlay input, .modal-overlay textarea, .modal-overlay select')]
+        .filter(node => node.id).map(node => [node.id, node.value, node.selectionStart, node.selectionEnd]);
+
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
-    
+    if (storageOverlay) app.appendChild(storageOverlay);
+
     // 입력창 값 복원
     const restoredInput = document.getElementById("userInput");
     if (restoredInput && preservedValue !== undefined) {
         restoredInput.value = preservedValue;
         if (preservedFocus) {
             restoredInput.focus();
+            if (selection) restoredInput.setSelectionRange(selection[0], selection[1], selection[2]);
         }
     }
-    
+    scrollPositions.forEach(([key, top, left]) => {
+        const node = document.querySelector('[data-scroll-key="' + key + '"]');
+        if (node) { node.scrollTop = top; node.scrollLeft = left; }
+    });
+    if (this.pendingConversationScroll) {
+        const history = document.querySelector('.conversation-history');
+        if (history) history.scrollTop = history.scrollHeight;
+        this.pendingConversationScroll = false;
+    }
+    modalDrafts.forEach(([id, value, start, end]) => {
+        const node = document.getElementById(id);
+        if (node) {
+            node.value = value;
+            if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end);
+            if (id === activeElementId) node.focus();
+        }
+    });
+
     this.attachEventListeners();
+    this.observeSeonLayout();
+    if (this.modalMode && this.modalData) {
+        const overlay = document.getElementById("modalOverlay");
+        if (overlay) { overlay.classList.add("active"); overlay.style.display = "flex"; }
+        if (this.modalMode === "apiKey" && typeof HAEMA_API_KEY_MODAL !== "undefined") {
+            HAEMA_API_KEY_MODAL.bindEvents();
+        }
+    }
+};
+
+HAEMA_CONSOLE.getStatusEmojis = function() {
+    return this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" :
+        this.statusText === "대화를 보냈어요" ? "🩷❤️🩷" : "💚💚💚";
 };
 
 HAEMA_CONSOLE.renderHeader = function() {
     const statusClass = "status-" + this.status;
-    const emojis = this.status === "working" ? "💛💚💛" : this.status === "error" ? "💔💔💔" : "💛💚💛";
-    
+    const emojis = this.getStatusEmojis();
+
     // API 키 설정 상태 확인
     const apiProvider = localStorage.getItem("haema_api_provider") || "";
     const apiModel = localStorage.getItem("haema_api_model") || "";
-    const hasApiKey = localStorage.getItem("haema_api_key") ? true : false;
-    
+    const hasApiKey = this.apiConfigured;
+
     let apiBtnHtml = "";
     if (hasApiKey && apiProvider) {
-        const providerEmoji = apiProvider === "openai" ? "🟢" : 
+        const providerEmoji = apiProvider === "openai" ? "🟢" :
                               apiProvider === "anthropic" ? "🟣" :
                               apiProvider === "google" ? "🔵" :
                               apiProvider === "grok" ? "⚡" :
                               apiProvider === "deepseek" ? "🔶" : "🔑";
         apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
-            providerEmoji + ' ' + this.escapeHtml(apiProvider) + 
-            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') + 
+            providerEmoji + ' ' + this.escapeHtml(apiProvider) +
+            (apiModel ? ' · ' + this.escapeHtml(apiModel) : '') +
             ' 🔑</button>';
     } else if (apiProvider) {
         apiBtnHtml = '<button class="btn btn-icon btn-api-status" id="apiKeyBtn" title="API 키 설정">' +
             '🔑 ' + this.escapeHtml(apiProvider) + ' (키 미설정)</button>';
     } else {
-        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑</button>';
+        apiBtnHtml = '<button class="btn btn-icon" id="apiKeyBtn" title="API 키 설정">🔑: 없음</button>';
     }
-    
-    return "<header class=\"header " + statusClass + "\">" +
-        "<div class=\"header-left\">" +
-            "<div class=\"logo-icon\"><img src=\"/resources/h_LOGO.png\" alt=\"HAEMA.AI 로고\"></div>" +
-            "<div><div class=\"header-title\">HAEMA.AI</div><div class=\"header-subtitle\">해마.AI 실험실</div></div>" +
-        "</div>" +
-        "<div class=\"header-right\">" +
-            apiBtnHtml +
-        "</div>" +
-        "<div class=\"status-bar\"><span class=\"status-emojis\">" + emojis + "</span><span class=\"status-text\">" + this.statusText + "</span></div>" +
-    "</header>";
+
+    const storagePath = localStorage.getItem("haema_storage_path") || "";
+    const storageBtnHtml = '<button class="btn btn-icon" id="storageBtn" title="저장 폴더 연결">🪣 : ' + (this.storageConnected ? "연결✅" : "없음") + '</button>';
+
+    return [
+        '<header class="header ' + statusClass + '">',
+        '<div class="header-left">',
+        '<div class="logo-icon"><img src="Resources/haema-design/11-haema-logo.svg" width="89" height="101" alt="해마 로고"></div>',
+        '<div class="brand-copy"><div class="header-title">해마.ai</div><p class="header-subtitle">당신의 기억을 보존하고,<br>필요한 순간 다시 연결합니다.</p><p class="header-subtitle">인공지능의 인공 해마.<br>당신을 기억하게 하세요.</p></div>',
+        '</div>',
+        '<div class="header-right">',
+        '<a class="repo-link" href="https://github.com/sherry1230/HaemaAI_SherrySherry" target="_blank" rel="noreferrer">GitHub 저장소</a>',
+        '<div class="status-bar"><img class="status-art" src="Resources/haema-design/17-haema-status-pill.svg" width="161.83" height="26" alt=""><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>',
+        '</div>',
+        '</header>',
+    ].join("");
 };
 
 HAEMA_CONSOLE.renderMainContainer = function() {
-    return "<div class=\"main-container\">" + this.renderLeftPanel() + this.renderRightPanel() + "</div>";
+    return '<main class="main-container"><nav class="mobile-tabs" aria-label="콘솔 화면 선택">' +
+        '<button class="mobile-tab" type="button" data-mobile-panel="chat" aria-selected="' + (this.activeMobilePanel === 'chat') + '">대화</button>' +
+        '<button class="mobile-tab" type="button" data-mobile-panel="haema" aria-selected="' + (this.activeMobilePanel === 'haema') + '">해마</button></nav>' +
+        '<div class="console-panels" data-mobile-panel="' + this.activeMobilePanel + '">' + this.renderLeftPanel() + this.renderRightPanel() + '</div></main>';
 };
 
 HAEMA_CONSOLE.renderRightPanel = function() {
-    return "<div class=\"panel\">" +
-        "<div class=\"panel-header\"><div class=\"panel-title\"><span class=\"icon\">📌</span> 쩜(JJum) 매니저 & 실시간 회상</div></div>" +
-        "<div class=\"panel-content\">" + this.renderRecallSection() + this.renderJjumListSection() + "</div>" +
-    "</div>";
+    const emojis = this.getStatusEmojis();
+    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div><div class="panel-heading">' +
+        '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
+        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
+        '<div class="haema-status-pill status-' + this.status + '"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>' +
+        '</div><div class="haema-preview"><img src="Resources/haema-design/35-card-vector-h.svg" width="663.84" height="146.58" alt="해마 미리보기 말풍선"></div>' +
+        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></section>';
 };
 
-HAEMA_CONSOLE.renderJjumListSection = function() {
+HAEMA_CONSOLE.renderJJumListSection = function() {
     // allJJums가 초기화되지 않았으면 빈 배열로 처리
     const jjums = this.allJJums || [];
-    const sortedJjums = jjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
-    if (sortedJjums.length === 0) {
-        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
+    const visibleIds = new Set(jjums.map(jjum => jjum.jjumId));
+    for (const id of this.cardShapeHistory.keys()) {
+        if (!visibleIds.has(id)) this.cardShapeHistory.delete(id);
     }
-    const accordionHtml = sortedJjums.map(jjum => {
-        const isExpanded = this.selectedJjumId === jjum.jjumId;
+    const workingOrder = { new: 0, strong: 1, related: 2, candidate: 3 };
+    const sortedJJums = jjums.slice().sort((a, b) => {
+        if (this.status === 'working') {
+            const aOrder = workingOrder[String(a.displayStatus || a.visualStatus || '').toLowerCase()] ?? 4;
+            const bOrder = workingOrder[String(b.displayStatus || b.visualStatus || '').toLowerCase()] ?? 4;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+        }
+        return new Date(b.firstSeen) - new Date(a.firstSeen);
+    });
+    if (sortedJJums.length === 0) {
+        return '<div class="jjum-list-section"><div class="empty-state"><img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마"><div class="empty-text">쩜이 없어요</div></div></div>';
+    }
+    const cardShapes = ['shape-15.svg', 'shape-22.svg', 'shape-42.svg'];
+    const accordionHtml = sortedJJums.map(jjum => {
+        const isExpanded = String(this.selectedJJumId || '') === String(jjum.jjumId || '');
+        const displayState = String(jjum.displayStatus || jjum.visualStatus || '').toLowerCase();
+        const visualStates = {
+            new: ['new', '새 쩜', '25-card-vector-e.svg'],
+            candidate: ['candidate', '후보', '33-related-card-outline.svg'],
+            related: ['related', '관련', '32-card-vector-f.svg'],
+            strong: ['strong', '강추천', '04-card-new-outline.svg'],
+            'sent-strong': ['sent-strong', '강추천 전송 완료', '34-card-vector-g.svg'],
+            'sent-related': ['sent-related', '관련 전송 완료', '34-card-vector-g.svg'],
+            'sent-candidate': ['sent-candidate', '후보 전송 완료', '34-card-vector-g.svg']
+        };
+        const state = visualStates[displayState] ? displayState : 'general';
+        const stateLabel = visualStates[state] ? visualStates[state][1] : '';
+        // 원본 비정형 윤곽을 매번 새로 선택한다. 쩜 ID나 상태에 모양을 고정하지 않는다.
+        const shapeChoices = cardShapes.filter(shape => shape !== this.cardShapeHistory.get(jjum.jjumId));
+        const cardShape = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+        this.cardShapeHistory.set(jjum.jjumId, cardShape);
+        const toggleAsset = 'card-toggle/' + (isExpanded ? 'collapse-' : 'expand-') + state + '.svg';
+        const hasLightParts = state === 'strong' || state === 'related';
+        const parts = hasLightParts
+            ? ['05-score-circle.svg', '03-jjum-name-pill.svg', '06-alias-pill.svg', '02-card-ellipsis.svg', '07-card-summary-background.svg']
+            : ['26-score-circle-alt.svg', '27-jjum-name-pill-alt.svg', '28-alias-pill-alt.svg', '29-card-ellipsis-alt.svg', '30-card-summary-a.svg'];
         let seonsHtml = "";
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
                 const target = this.allJJums.find(j => j.jjumId === t.targetId);
                 const targetName = target ? target.jjumName : "알 수 없음";
                 const weightPercent = (t.weight * 100).toFixed(0);
-                return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + (t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
+                return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + this.escapeHtml(t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
             }).join("");
         } else {
             seonsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 쩜선 없음</div>";
@@ -124,45 +223,143 @@ HAEMA_CONSOLE.renderJjumListSection = function() {
         } else {
             factsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">사실 정보 없음</div>";
         }
-        const tagsHtml = jjum.tags.map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
-        return "<div class=\"jjum-item " + (isExpanded ? "expanded" : "") + (this.streamingJjums.has(jjum.jjumId) ? " streaming" : "") + "\" data-jjum-id=\"" + jjum.jjumId + "\">" +
-            "<div class=\"jjum-header\" onclick=\"HAEMA_CONSOLE.toggleJjum(\"" + jjum.jjumId + "\");\">" +
-                "<div class=\"jjum-info\"><div class=\"jjum-icon\">📌</div><div class=\"jjum-main\"><div class=\"jjum-name\">" + this.escapeHtml(jjum.jjumName) + "</div><div class=\"jjum-meta\">" + jjum.type + " · 생성 " + this.formatDate(jjum.firstSeen) + " · " + jjum.mentionCount + "회 언급" + (jjum.pinned ? " · 📌 고정" : "") + "</div></div></div>" +
-                "<span class=\"expand-icon\">▼</span>" +
-            "</div>" +
-            "<div class=\"jjum-details\"><div class=\"jjum-details-content\">" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">🏷️ 태그 (Tags)</div><div class=\"detail-tags\">" + tagsHtml + "</div></div>" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">📝 한 줄 요약</div><div class=\"detail-text\">" + this.escapeHtml(jjum.summary || "요약 없음") + "</div></div>" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">📚 사실 (Facts)</div>" + factsHtml + "</div>" +
-                "<div class=\"detail-section\"><div class=\"detail-label\">🔗 쩜선 (Seons) - 연결된 쩜</div><div class=\"seons-list\">" + seonsHtml + "</div></div>" +
-                "<div class=\"detail-section\" style=\"display: flex; gap: 8px; margin-top: 12px;\">" +
-                    "<button class=\"btn btn-secondary\" style=\"flex: 1;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.openEditModal(\"" + jjum.jjumId + "\");\">✏️ 수정</button>" +
-                    "<button class=\"btn btn-secondary\" style=\"flex: 1; color: #ff6b6b;\" onclick=\"event.stopPropagation(); HAEMA_CONSOLE.confirmDelete(\"" + jjum.jjumId + "\");\">🗑️ 삭제</button>" +
-                "</div>" +
-            "</div></div>" +
-        "</div>";
+        const tagsHtml = (jjum.jjtags || jjum.tags || []).map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
+        const aliases = Array.isArray(jjum.aliases) ? jjum.aliases : [];
+        const aliasMaskedText = aliases.map(alias => this.escapeHtml(this.maskJJumName(alias))).join(' · ');
+        const aliasFullText = aliases.map(alias => this.escapeHtml(alias)).join(' · ');
+        const cardInfo = [this.escapeHtml(jjum.type || ''), (jjum.jjtags || jjum.tags || []).map(tag => this.escapeHtml(tag)).join(' · ')].filter(Boolean);
+        const cardInfoMaskedText = [aliasMaskedText, ...cardInfo].filter(Boolean).join(' · ');
+        const cardInfoFullText = [aliasFullText, ...cardInfo].filter(Boolean).join(' · ');
+        const aliasSlotHtml = cardInfoMaskedText
+            ? '<span class="jjum-alias"><img src="Resources/haema-design/' + parts[2] + '" width="262.498" height="24.1352" alt=""><span class="alias-masked">' + cardInfoMaskedText + '</span><span class="alias-full">' + cardInfoFullText + '</span></span>'
+            : '<span class="jjum-alias jjum-alias-spacer" aria-hidden="true"></span>';
+        const stateText = stateLabel ? '<span class="jjum-state-label">' + this.escapeHtml(stateLabel) + '</span>' : '';
+        return '<article class="jjum-card state-' + state + (hasLightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + this.escapeHtml(String(jjum.jjumId)) + '">' +
+            '<span class="jjum-card-art is-shape-mask" style="--card-shape:url(\'Resources/haema-design/irregular/' + cardShape + '\')" aria-hidden="true"></span>' +
+            '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + (isExpanded ? ' 닫기' : ' 펼치기') + '">' +
+                '<span class="jjum-card-row">' +
+                    '<span class="score-slot"><img src="Resources/haema-design/' + parts[0] + '" width="32" height="32" alt=""><span aria-label="' + (state === 'new' ? '새 쩜' : '선호도 미정') + '">' + (state === 'new' ? 'New' : '—') + '</span></span>' +
+                    '<span class="jjum-name"><img src="Resources/haema-design/' + parts[1] + '" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
+                    aliasSlotHtml +
+                    '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/' + parts[3] + '" width="38.2605" height="22.9574" alt=""><span class="jjum-menu-dots" aria-hidden="true">...</span></span>' +
+                '</span>' +
+                '<span class="jjum-summary-row"><span class="jjum-summary"><img src="Resources/haema-design/' + parts[4] + '" width="544" height="45" alt=""><span>' + this.escapeHtml(jjum.summary || '요약 없음') + '</span></span><span class="jjum-expand" aria-hidden="true"><img src="Resources/haema-design/' + toggleAsset + '" width="29.3827" height="17.0097" alt=""></span></span>' +
+            '</button>' +
+            '<div class="jjum-card-details">' +
+                '<div class="jjum-meta">' + stateText + this.escapeHtml(jjum.type || '기억') + ' · ' + this.escapeHtml(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
+                '<div class="jjum-identity-full"><strong>' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</strong><div class="jjum-identity-aliases">별명: ' + (aliasFullText || '없음') + '</div></div>' +
+                '<div class="detail-section"><div class="detail-label">태그</div><div class="detail-tags">' + tagsHtml + '</div></div>' +
+                '<div class="detail-section"><div class="detail-label">사실</div>' + factsHtml + '</div>' +
+                '<div class="detail-section"><div class="detail-label">쩜선 연결</div><div class="seons-list">' + seonsHtml + '</div></div>' +
+                '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div>' +
+            '</div></article>';
     }).join("");
+    const connectorsHtml = sortedJJums.flatMap(jjum => (jjum.seons || []).map(relation => {
+        if (relation.targetId === jjum.jjumId || !sortedJJums.some(item => item.jjumId === relation.targetId)) return '';
+        return '<path data-source-id="' + this.escapeHtml(jjum.jjumId) + '" data-target-id="' + this.escapeHtml(relation.targetId) + '" vector-effect="non-scaling-stroke"></path>';
+    })).join('');
     return "<div class=\"jjum-list-section\">" +
-        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJjumBtn\">+ 새 쩜(JJum) 만들기</button></div>" +
-        "<div class=\"section-label\"><span>📂</span> 전체 쩜(JJum) 목록 (" + sortedJjums.length + "개, 생성순)</div>" +
-        "<div class=\"jjum-accordion\">" + accordionHtml + "</div>" +
+        '<div class="jjum-list">' + (connectorsHtml ? '<svg class="seon-connections" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + connectorsHtml + '</svg>' : '') + accordionHtml + '</div>' +
     "</div>";
+};
+
+// 카드가 펼쳐지거나 화면 폭이 달라져도 실제 쩜의 위치를 따라가는 부드러운 곡선.
+HAEMA_CONSOLE.updateSeonLayout = function() {
+    const list = document.querySelector('.jjum-list');
+    const drawing = list?.querySelector('.seon-connections');
+    if (!drawing) return;
+    const listRect = list.getBoundingClientRect();
+    if (listRect.width <= 0 || listRect.height <= 0) return;
+    drawing.setAttribute('viewBox', '0 0 ' + listRect.width + ' ' + listRect.height);
+    const cards = new Map([...list.querySelectorAll('.jjum-card')].map(card => [card.dataset.jjumId, card]));
+    const routes = [];
+    drawing.querySelectorAll('path').forEach(path => {
+        const source = cards.get(path.dataset.sourceId)?.querySelector('.jjum-card-head');
+        const target = cards.get(path.dataset.targetId)?.querySelector('.jjum-card-head');
+        if (!source || !target) { path.removeAttribute('d'); return; }
+        const sourceRect = source.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const startX = sourceRect.right - listRect.left - 8;
+        const endX = targetRect.right - listRect.left - 8;
+        const startY = sourceRect.top - listRect.top + Math.min(24, sourceRect.height / 2);
+        const endY = targetRect.top - listRect.top + Math.min(24, targetRect.height / 2);
+        const anchorX = Math.max(startX, endX);
+        routes.push({ path, startX, startY, endX, endY, anchorX, span: Math.abs(endY - startY), room: Math.max(0, listRect.width - anchorX - 4) });
+    });
+    if (!routes.length) return;
+    routes.sort((a, b) => a.span - b.span);
+    const groups = [];
+    routes.forEach(route => {
+        const previous = groups[groups.length - 1];
+        if (previous && Math.abs(previous[0].span - route.span) < 0.01) previous.push(route);
+        else groups.push([route]);
+    });
+    const maxLane = Math.min(64, ...routes.map(route => route.room));
+    const minLane = Math.min(18, maxLane);
+    const lastGroup = groups[groups.length - 1];
+    const maxRank = groups.length - 1 + (lastGroup.length > 1 ? 0.08 : 0);
+    groups.forEach((group, groupIndex) => group.forEach((route, duplicateIndex) => {
+        // 짧은 연결부터 안쪽에 놓고, 같은 길이의 연결만 작은 간격으로 나눈다.
+        const duplicateOffset = group.length > 1 ? duplicateIndex / (group.length - 1) * 0.08 : 0;
+        const lane = groups.length === 1
+            ? Math.min(maxLane, minLane + duplicateIndex * 2)
+            : minLane + (maxLane - minLane) * (groupIndex + duplicateOffset) / maxRank;
+        const curveX = route.anchorX + lane * 4 / 3;
+        route.path.setAttribute('d', 'M ' + route.startX + ' ' + route.startY + ' C ' + curveX + ' ' + route.startY + ', ' + curveX + ' ' + route.endY + ', ' + route.endX + ' ' + route.endY);
+    }));
+};
+
+HAEMA_CONSOLE.observeSeonLayout = function() {
+    this.seonLayoutObserver?.disconnect();
+    const list = document.querySelector('.jjum-list');
+    if (!list) return;
+    this.updateSeonLayout();
+    if (typeof ResizeObserver === 'undefined') return;
+    this.seonLayoutObserver = new ResizeObserver(() => this.updateSeonLayout());
+    this.seonLayoutObserver.observe(list);
+    list.querySelectorAll('.jjum-card').forEach(card => this.seonLayoutObserver.observe(card));
 };
 
 // ===== 이벤트 리스너 =====
 HAEMA_CONSOLE.attachEventListeners = function() {
     const sendBtn = document.getElementById("sendBtn");
     const clearBtn = document.getElementById("clearBtn");
-    const createBtn = document.getElementById("createJjumBtn");
+    const createBtn = document.getElementById("createJJumBtn");
     const modalOverlay = document.getElementById("modalOverlay");
     const modalClose = document.getElementById("modalClose");
     const modalCancel = document.getElementById("modalCancel");
     const modalSave = document.getElementById("modalSave");
     const userInput = document.getElementById("userInput");
+    const inputArea = document.querySelector(".input-area");
+    const storageBtn = document.getElementById("storageBtn");
 
-    if (sendBtn) sendBtn.addEventListener("click", () => this.handleSend());
+    document.querySelectorAll("[data-action]").forEach(element => {
+        element.addEventListener("click", event => {
+            event.stopPropagation();
+            const id = element.closest("[data-jjum-id]")?.dataset.jjumId;
+            if (element.dataset.action === "toggle") this.toggleJJum(id);
+            if (element.dataset.action === "edit") this.openEditModal(id);
+            if (element.dataset.action === "hide") this.confirmDelete(id);
+        });
+    });
+    document.querySelectorAll('[data-mobile-panel]').forEach(element => {
+        if (element.classList.contains('mobile-tab')) element.addEventListener('click', () => {
+            this.activeMobilePanel = element.dataset.mobilePanel;
+            this.render();
+        });
+    });
+
+    // 저장소/API 키 준비 상태에 따라 userInput disabled 처리
+    this.updateInputAvailability();
+
+    if (sendBtn) sendBtn.addEventListener("click", () => this.activateSend());
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
+    if (storageBtn) storageBtn.addEventListener("click", () => {
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    });
     const apiKeyBtn = document.getElementById("apiKeyBtn");
     if (apiKeyBtn) apiKeyBtn.addEventListener("click", () => this.openApiKeyModal());
     if (modalOverlay) modalOverlay.addEventListener("click", (e) => {
@@ -171,14 +368,156 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (modalClose) modalClose.addEventListener("click", () => this.closeModal());
     if (modalCancel) modalCancel.addEventListener("click", () => this.closeModal());
     if (modalSave) modalSave.addEventListener("click", () => this.saveModal());
-    
+
+    // input-area 클릭 시 저장소/API 키 상태에 따라 안내 모달 열기
+    if (inputArea) {
+        inputArea.addEventListener("click", (e) => {
+            const disabledOverlay = e.target.closest(".input-disabled-overlay");
+            if (disabledOverlay) {
+                this.handleInputAreaClick();
+                return;
+            }
+
+            const input = document.getElementById("userInput");
+            if (e.target.id === "userInput") {
+                if (input && input.disabled) {
+                    this.handleInputAreaClick();
+                    return;
+                }
+                return;
+            }
+            if (e.target.closest("button")) {
+                return;
+            }
+            this.handleInputAreaClick();
+        });
+    }
+
     // 실시간 타이핑 쓰로틀 (Throttle 500ms - 타이핑 중에도 0.5초마다 계속 호출)
     if (userInput) {
-        userInput.addEventListener("input", (e) => this.handleInput(e.target.value));
+        userInput.addEventListener("compositionstart", () => { this.isComposing = true; });
+        userInput.addEventListener("compositionend", (e) => { this.isComposing = false; this.handleInput(e.target.value); });
+        userInput.addEventListener("input", (e) => { if (!this.isComposing) this.handleInput(e.target.value); });
+        userInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !this.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                if (!e.repeat) this.activateSend();
+            }
+        });
     }
 };
 
-HAEMA_CONSOLE.handleSend = function() {
+// ===== 저장소/API 키 준비 상태 체크 =====
+HAEMA_CONSOLE.isStorageReady = function() {
+    return this.storageConnected === true;
+};
+
+HAEMA_CONSOLE.isApiKeyReady = function() {
+    return this.apiConfigured === true;
+};
+
+HAEMA_CONSOLE.refreshApiStatus = async function() {
+    try {
+        const response = await fetch("/api/config/status");
+        if (!response.ok) throw new Error("설정 상태를 확인할 수 없습니다.");
+        const config = await response.json();
+        this.apiConfigured = config.configured === true;
+        localStorage.setItem("haema_api_configured", String(this.apiConfigured));
+        if (this.apiConfigured) {
+            localStorage.setItem("haema_api_provider", config.provider || "");
+            localStorage.setItem("haema_api_model", config.model || "");
+            localStorage.setItem("haema_api_base_url", config.baseUrl || "");
+        try {
+            const cipher = new WebCryptoCipher();
+            await cipher.generateSessionKey();
+            const saved = await new ConsoleConfigStore(cipher).load();
+            const active = typeof activeApiKeySet === 'function' ? activeApiKeySet(saved) : saved.apiKeySet;
+            this.apiKeyName = active?.name || active?.keyName || active?.provider || config.provider || '';
+        } catch { this.apiKeyName = config.provider || ''; }
+        }
+    } catch {
+        this.apiConfigured = false;
+        localStorage.setItem("haema_api_configured", "false");
+    }
+    this.render();
+};
+
+// ===== userInput 사용 가능 여부 업데이트 =====
+HAEMA_CONSOLE.updateInputAvailability = function() {
+    const userInput = document.getElementById("userInput");
+    if (!userInput) return;
+
+    const storageReady = this.isStorageReady();
+    const apiKeyReady = this.isApiKeyReady();
+    const isReady = storageReady && apiKeyReady;
+
+    userInput.disabled = !isReady;
+    const sendBtn = document.getElementById("sendBtn");
+    if (sendBtn) sendBtn.disabled = !isReady || this.sending;
+
+    // disabled 상태일 때 title 속성으로 안내 추가
+    if (!isReady) {
+        const reasons = [];
+        if (!storageReady) {
+            reasons.push("🪣저장소🪣 연결을 다시 확인해 주세요😢💦");
+        }
+        if (!apiKeyReady) {
+            reasons.push("🗝️API🗝️를 다시 확인해 주세요 😢💦");
+        }
+        userInput.title = reasons.join("\n");
+    } else {
+        userInput.title = "";
+    }
+};
+
+// ===== input-area 클릭 시 처리 =====
+HAEMA_CONSOLE.handleInputAreaClick = function() {
+    const storageReady = this.isStorageReady();
+    const apiKeyReady = this.isApiKeyReady();
+
+    if (!storageReady && !apiKeyReady) {
+        alert("🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요");
+        this.statusText = "🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요";
+        this.render();
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    } else if (!storageReady) {
+        alert("🪣저장소🪣를 확인해 주세요");
+        this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
+        this.render();
+        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+            HAEMA_STORAGE_MODAL.open();
+        }
+    } else if (!apiKeyReady) {
+        alert("🗝️API 키🗝️가 연결되지 않았습니다.");
+        this.statusText = "올바른 🗝️API 키🗝️를 입력해주세요.";
+        this.render();
+        this.openApiKeyModal();
+    }
+};
+
+// Enter와 클릭 모두 같은 버튼 눌림 상태를 사용하며 화면 재생성 후에도 유지한다.
+HAEMA_CONSOLE.activateSend = function() {
+    const button = document.getElementById("sendBtn");
+    if (!button || button.disabled) return;
+    this.sendPressed = true;
+    button.classList.add("is-pressed");
+    clearTimeout(this.sendPressTimer);
+    this.sendPressTimer = setTimeout(() => {
+        this.sendPressed = false;
+        this.sendPressTimer = null;
+        document.getElementById("sendBtn")?.classList.remove("is-pressed");
+    }, 180);
+    return this.handleSend();
+};
+
+HAEMA_CONSOLE.handleSend = async function() {
+    if (this.sending) return;
+    if (!this.isStorageReady() || !this.isApiKeyReady()) {
+        this.handleInputAreaClick();
+        return;
+    }
     const input = document.getElementById("userInput");
     if (!input) return;
     const text = input.value.trim();
@@ -188,81 +527,77 @@ HAEMA_CONSOLE.handleSend = function() {
         this.render();
         return;
     }
-    localStorage.setItem("haema_input", text);
+    const message = { type: 'user', text, at: Date.now(), failed: false };
+    this.conversationHistory.push(message);
+    this.pendingConversationScroll = true;
     this.status = "working";
-    this.statusText = "🔍 해마 자극 분석 중...";
+    this.sending = true;
+    this.stopBackgroundStream();
+    this.statusText = "대화를 보내고 있어요";
+    this.activeMobilePanel = 'chat';
     this.render();
 
-    // 1. 회상 시뮬레이션 (기존 기능)
-    setTimeout(() => {
-        this.simulateRecall(text);
-    }, 500);
-
-    // 2. 새로운 JJum 생성 (입력된 텍스트에서 새 점 후보 감지)
-    // 간단히 첫 문장/구절을 JJum 이름으로 사용하여 생성
-    setTimeout(() => {
-        this.createJjumFromInput(text);
-    }, 800);
-};
-
-// ===== 입력 텍스트에서 새 JJum 생성 =====
-// 사용자가 입력한 텍스트에서 새로운 점(JJum) 후보를 생성하여 로컬 서버에 저장
-HAEMA_CONSOLE.createJjumFromInput = function(text) {
-    // 간단한 heuristics: 입력 텍스트에서 첫 번째 명사구/이름 추출
-    // 예: "오늘 내가 키우던 고양이 뇸뇸이가" → "뇸뇸이"
-    // 예: "성수 카페 갔었는데" → "성수 카페"
-
-    // 공백/조사 기준으로 첫 의미 있는 구절 추출
-    const words = text.split(/\s+/);
-    let candidateName = '';
-
-    // 2~4단어 범위에서 후보 추출 (너무 짧거나 길면 제외)
-    if (words.length >= 2 && words.length <= 6) {
-        // 마지막 1~2단어를 후보로 (이름/장소일 가능성 높음)
-        const lastWords = words.slice(-2).join(' ');
-        // 조사가 붙어있으면 제거
-        candidateName = lastWords.replace(/(이|가|은|는|을|를|에|에서|하고|와|과)$/, '').trim();
-    } else if (words.length === 1) {
-        candidateName = words[0];
-    }
-
-    // 후보가 유효하면 JJum 생성
-    if (candidateName && candidateName.length >= 1 && candidateName.length <= 30) {
-        // 기존 JJum과 중복 체크
-        const existing = this.allJJums.find(j =>
-            j.jjumName === candidateName ||
-            j.aliases?.some(a => a === candidateName)
-        );
-
-        if (!existing) {
-            // 새 JJum 생성 API 호출
-            fetch('/api/owners/demo/jjums', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jjumName: candidateName,
-                    aliases: [candidateName],
-                    type: '인물',
-                    tags: [],
-                    summary: text.slice(0, 100),
-                })
+    try {
+        const response = await fetch("/api/conversation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                ownerId: "demo",
+                turns: [{ role: "user", text: text, at: Date.now() }]
             })
-            .then(res => res.json())
-            .then(data => {
-                if (data.jjum) {
-                    this.allJJums.push(data.jjum);
-                    this.render();
-                    console.log('새 JJum 생성 완료:', data.jjum.jjumName);
-                    this.statusText = `✅ 새 점 생성: ${data.jjum.jjumName}`;
-                    this.render();
-                }
-            })
-            .catch(err => {
-                console.error('JJum 생성 실패:', err);
-            });
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            const error = new Error(payload.error || "대화 처리에 실패했습니다.");
+            error.code = payload.code || (response.status === 429 ? "USAGE_LIMIT" : "");
+            throw error;
         }
+
+        const hostPreview = payload.hostPreview && typeof payload.hostPreview === 'object' ? payload.hostPreview : {};
+        const candidates = payload.recall?.candidates || hostPreview.candidates || [];
+        this.recallResults = candidates.map(candidate => ({
+            ...(candidate.jjum || candidate),
+            recallReason: candidate.reasons
+        }));
+        this.answerGuide = hostPreview.guide || payload.answerGuide || payload.recall?.answerGuide || null;
+        const resultSnapshot = {
+            candidates: this.recallResults.map((jjum, index) => ({
+                jjumId: jjum.jjumId || '',
+                name: jjum.jjumName || candidates[index]?.jjumName || '이름 없는 쩜',
+                summary: jjum.summary || '',
+                reasons: candidates[index]?.reasons || jjum.recallReason || [],
+                tags: jjum.jjtags || jjum.tags || [],
+                relations: (jjum.seons || candidates[index]?.relations || []).map(relation => ({
+                    targetId: relation.targetId || '',
+                    targetName: this.allJJums.find(item => item.jjumId === relation.targetId)?.jjumName || '',
+                    label: relation.label || ''
+                }))
+            })),
+            topics: Array.isArray(hostPreview.topics) ? hostPreview.topics : [],
+            newJJums: Array.isArray(hostPreview.newJJums) ? hostPreview.newJJums : Array.isArray(hostPreview.newJjums) ? hostPreview.newJjums : Array.isArray(payload.newJJums) ? payload.newJJums : [],
+            guide: hostPreview.guide || payload.answerGuide || payload.recall?.answerGuide || null,
+            at: Date.now()
+        };
+        await this.loadLocalServerData();
+        this.status = "resting";
+        this.statusText = "대화를 보냈어요";
+        this.conversationHistory.push({ type: 'result', ...resultSnapshot, count: resultSnapshot.candidates.length });
+        const currentInput = document.getElementById("userInput");
+        if (currentInput && currentInput.value.trim() === text) currentInput.value = "";
+        this.sending = false;
+        this.render();
+    } catch (error) {
+        message.failed = true;
+        message.error = error.code === 'USAGE_LIMIT' ? '사용량 한도를 확인해 주세요.' : '전송하지 못했어요. 연결 상태를 확인하고 다시 시도해 주세요.';
+        this.sending = false;
+        this.status = "error";
+        this.statusText = error.code === "USAGE_LIMIT"
+            ? "⚠️ API 사용량 한도 초과: 사용량·결제 상태를 확인하거나 다른 키/모델로 바꿔주세요."
+            : "⚠️ " + (error.message || "대화 처리에 실패했습니다.");
+        this.render();
     }
 };
+
 
 HAEMA_CONSOLE.handleClear = function() {
     const input = document.getElementById("userInput");
@@ -275,58 +610,21 @@ HAEMA_CONSOLE.handleClear = function() {
     this.render();
 };
 
-// ===== 실시간 타이핑 쓰로틀 (Throttle 500ms) =====
-// 타이핑 중에도 0.5초마다 백엔드 MCTS 시뮬레이션을 계속 호출하여
-// 최적의 쩜(JJum) TOP 1~3을 실시간으로 갱신
-// 해마 실시간 인지 쓰로틀: 논블로킹 백그라운드 스트리밍 + 실시간 쩜 생성 + 감정선 감지
+// 입력 표시만 제어한다. 실제 회상 요청은 전송 버튼 또는 Enter를 눌렀을 때 시작한다.
 HAEMA_CONSOLE.handleInput = function(inputValue) {
-    // 빈 입력값은 무시
+    this.lastInputValue = inputValue;
+    const indicator = document.getElementById('typingIndicator');
     if (!inputValue || !inputValue.trim()) {
-        this.recallResults = [];
-        this.answerGuide = null;
-        this.status = "resting";
-        this.statusText = "해마 쉬는 중...";
-        this.emotionContext = null;
-        this.stopBackgroundStream();
-        this.render();
+        if (this.typingTimer) clearTimeout(this.typingTimer);
+        if (indicator) indicator.classList.remove('is-visible');
         return;
     }
-    
-    // 타이핑 시작 시간 기록
-    if (!this.typingStartTime) {
-        this.typingStartTime = Date.now();
-    }
-    this.lastKeystrokeTime = Date.now();
-    this.lastInputValue = inputValue;
-    
-    // 상태 업데이트: 백그라운드 스트리밍 중
-    if (this.status !== "working") {
-        this.status = "working";
-        this.statusText = "🧠 해마 실시간 인지 중... (타이핑 호흡에 맞춰 배경 작업)";
-        this.render();
-    }
-    
-    // 1. 논블로킹 백그라운드 스트리밍: 0.5초 간격으로 스냅샷 전달
-    this.startBackgroundStream(inputValue);
-    
-    // 2. 실시간 키워드 감지 및 쩜 자동 생성 (입력 도중 키워드 포착)
-    this.detectAndCreateKeywords(inputValue);
-    
-    // 3. 망설임 및 감정선 감지 (입력 호흡 변화 캐치)
-    this.detectHesitationAndEmotion(inputValue);
-    
-    // 4. 연쇄적 쩜선 확장 (문장 완성 시 파생 정보 연결)
-    this.extendSeonsFromContext(inputValue);
-    
-    // 5. 다정한 대화 가이드 제공 (감정/맥락 기반 호스트 챗봇 가이드)
-    this.generateCompassionateGuide(inputValue);
-    
-    // 쓰로틀 타이머 설정 (0.5초)
-    if (this.throttleTimer) {
-        clearTimeout(this.throttleTimer);
-    }
-    this.throttleTimer = setTimeout(() => {
-        this.throttleTimer = null;
+    if (indicator) indicator.classList.add('is-visible');
+    if (this.typingTimer) clearTimeout(this.typingTimer);
+    this.typingTimer = setTimeout(() => {
+        const currentIndicator = document.getElementById('typingIndicator');
+        if (currentIndicator) currentIndicator.classList.remove('is-visible');
+        this.typingTimer = null;
     }, 500);
 };
 
@@ -336,23 +634,23 @@ HAEMA_CONSOLE.startBackgroundStream = function(inputValue) {
     if (this.backgroundStreamTimer) {
         return;
     }
-    
+
     // 백그라운드 작업: 현재 입력값으로 회상 시뮬레이션 (논블로킹)
     const streamSnapshot = () => {
         if (!inputValue || !inputValue.trim()) {
             this.stopBackgroundStream();
             return;
         }
-        
-        // 가벼운 회상 시뮬레이션 (메인 스레드 블로킹 방지)
-        setTimeout(() => {
+
+        // 가벼운 회상 시뮬레이션 (메인 스레드 블로킹 방지)_ 일단 주석처리
+       /* setTimeout(() => {
             this.simulateRecall(inputValue);
-        }, 0);
+        }, 0);*/
     };
-    
+
     // 즉시 첫 스냅샷
     streamSnapshot();
-    
+
     // 0.5초 간격으로 백그라운드 스트리밍
     this.backgroundStreamTimer = setInterval(streamSnapshot, 500);
 };
@@ -366,6 +664,247 @@ HAEMA_CONSOLE.stopBackgroundStream = function() {
 };
 
 HAEMA_CONSOLE.openCreateModal = function() {
+
+
+    // ===== 백그라운드 공감 스트림 (Background Empathy Stream) =====
+    // 타이핑 스냅샷을 백엔드 비동기 파이프라인으로 Fire-and-Forget 전송한다.
+    // Event Loop를 점유하지 않으며, UI 렌더링을 최우선 처리한다.
+    // 백엔드 연동 시: WebSocket/SSE를 통해 실제 이벤트 수신 가능
+    HAEMA_CONSOLE.streamSnapshot = function(inputValue) {
+        // 입력 검증: null, undefined, 공백 문자열 방어
+        if (inputValue === null || inputValue === undefined) {
+            console.warn('[HAEMA] streamSnapshot: 입력값이 null/undefined입니다.');
+            return;
+        }
+
+        const trimmed = typeof inputValue === 'string' ? inputValue.trim() : String(inputValue);
+        if (!trimmed) {
+            console.debug('[HAEMA] streamSnapshot: 빈 입력값 - 스냅샷 전송 생략');
+            return;
+        }
+
+        // 비동기 파이프라인: setTimeout 0으로 이벤트 루프에 양보
+        setTimeout(() => {
+            try {
+                // 백엔드 연동 지점: HAEMA_CONSOLE.streamSnapshot(inputValue)
+                // 현재는 simulateRecall을 비동기 컨텍스트에서 호출 (백엔드 연동 전)_ 일단 주석처리
+                /* if (typeof this.simulateRecall === 'function') {
+                    this.simulateRecall(trimmed);
+                } */
+
+                console.debug('[HAEMA] streamSnapshot: 스냅샷 전송 완료 -', trimmed.substring(0, 30) + (trimmed.length > 30 ? '...' : ''));
+            } catch (error) {
+                console.error('[HAEMA] streamSnapshot 오류:', error.message || error);
+                this.handleBackendError('snapshot', error);
+            }
+        }, 0);
+    };
+
+    // ===== JJum 데이터 스키마 검증 =====
+    // 백엔드에서 수신하는 JJum 데이터의 필수 필드 및 타입 검증
+    HAEMA_CONSOLE.validateJJumSchema = function(jjum) {
+        if (!jjum || typeof jjum !== 'object') {
+            return { valid: false, reason: 'JJum이 객체가 아닙니다.' };
+        }
+
+        // 필수 필드 검증
+        if (!jjum.jjumId || typeof jjum.jjumId !== 'string') {
+            return { valid: false, reason: 'jjumId가 없거나 문자열이 아닙니다.' };
+        }
+
+        if (!jjum.jjumName) {
+            return { valid: false, reason: 'jjumName이 없습니다.' };
+        }
+
+        // 선택적 필드 타입 검증 (있으면 검증)
+        if (jjum.jjumName && typeof jjum.jjumName !== 'string') {
+            return { valid: false, reason: 'jjumName이 문자열이 아닙니다.' };
+        }
+        if (jjum.type && typeof jjum.type !== 'string') {
+            return { valid: false, reason: 'type이 문자열이 아닙니다.' };
+        }
+        if (jjum.aliases && !Array.isArray(jjum.aliases)) {
+            return { valid: false, reason: 'aliases가 배열이 아닙니다.' };
+        }
+        if (jjum.tags && !Array.isArray(jjum.tags)) {
+            return { valid: false, reason: 'tags가 배열이 아닙니다.' };
+        }
+        if (jjum.facts && !Array.isArray(jjum.facts)) {
+            return { valid: false, reason: 'facts가 배열이 아닙니다.' };
+        }
+        if (jjum.seons && !Array.isArray(jjum.seons)) {
+            return { valid: false, reason: 'seons가 배열이 아닙니다.' };
+        }
+        if (jjum.mentionCount !== undefined && typeof jjum.mentionCount !== 'number') {
+            return { valid: false, reason: 'mentionCount가 숫자가 아닙니다.' };
+        }
+        if (jjum.firstSeen !== undefined && isNaN(Date.parse(jjum.firstSeen))) {
+            return { valid: false, reason: 'firstSeen이 유효한 날짜가 아닙니다.' };
+        }
+
+        return { valid: true };
+    };
+
+    // ===== 실시간 JJum 스트리밍 업데이트 =====
+    // 백엔드에서 스트리밍되어 오는 신규 JJum을 오른쪽 MAP/쩜 지도 패널에 실시간 드로우한다.
+    // 네트워크 지연, 빈 데이터, 중복 데이터, 스키마 위반 등 예외 상황을 처리한다.
+    HAEMA_CONSOLE.streamJJumUpdate = function(newJJum) {
+        try {
+            // 1. 기본 존재 검증
+            if (!newJJum || typeof newJJum !== 'object') {
+                console.warn('[HAEMA] streamJJumUpdate: 유효하지 않은 JJum 데이터 -', newJJum);
+                return;
+            }
+
+            // 2. 스키마 검증
+            const validation = this.validateJJumSchema(newJJum);
+            if (!validation.valid) {
+                console.warn('[HAEMA] streamJJumUpdate: 스키마 검증 실패 -', validation.reason);
+                return;
+            }
+
+            // 3. ID 추출 (jjumName 또는 jjumName 중 하나 사용)
+            const jjumId = newJJum.jjumId;
+            const displayName = newJJum.jjumName || '알 수 없음';
+
+            // 4. 중복 체크: 이미 존재하는 JJum이면 스킵
+            const existing = this.allJJums.find(j => j.jjumId === jjumId);
+            if (existing) {
+                console.debug('[HAEMA] streamJJumUpdate: 중복 JJum 스킵 -', displayName);
+                return;
+            }
+
+            // 5. 신규 JJum 구성 (백엔드 필드명 차이 대응)
+            const jjum = {
+                jjumId: jjumId,
+                jjumName: newJJum.jjumName || displayName,
+                type: newJJum.type || 'unknown',
+                tags: Array.isArray(newJJum.tags) ? newJJum.tags : [],
+                summary: newJJum.summary || '',
+                facts: Array.isArray(newJJum.facts) ? newJJum.facts : [],
+                events: Array.isArray(newJJum.events) ? newJJum.events : [],
+                seons: Array.isArray(newJJum.seons) ? newJJum.seons : [],
+                mentionCount: typeof newJJum.mentionCount === 'number' ? newJJum.mentionCount : 0,
+                firstSeen: newJJum.firstSeen || new Date().toISOString(),
+                lastMentioned: newJJum.lastMentioned || newJJum.firstSeen || new Date().toISOString(),
+                pinned: !!newJJum.pinned,
+                status: newJJum.status || 'active',
+                mergedFrom: Array.isArray(newJJum.mergedFrom) ? newJJum.mergedFrom : [],
+                editHistory: Array.isArray(newJJum.editHistory) ? newJJum.editHistory : [],
+                meta: typeof newJJum.meta === 'object' && newJJum.meta ? newJJum.meta : {},
+                ownerId: newJJum.ownerId || 'demo',
+                sourceService: newJJum.sourceService || 'unknown',
+                schemaVersion: newJJum.schemaVersion || 3
+            };
+
+            // 6. JJum 추가 및 스트리밍 표시
+            this.allJJums.push(jjum);
+            this.streamingJJums.add(jjumId);
+
+            // 7. 애니메이션 클래스 적용을 위해 재렌더링
+            this.render();
+
+            console.debug('[HAEMA] streamJJumUpdate: 신규 JJum 스트리밍 -', displayName, '(ID:', jjumId + ')');
+
+            // 8. 스트리밍 완료 표시 제거 (1.2초 후)
+            setTimeout(() => {
+                try {
+                    this.streamingJJums.delete(jjumId);
+                    this.render();
+                } catch (cleanupError) {
+                    console.warn('[HAEMA] streamJJumUpdate cleanup 오류:', cleanupError.message);
+                }
+            }, 1200);
+
+        } catch (error) {
+            console.error('[HAEMA] streamJJumUpdate 처리 중 오류:', error.message || error);
+            this.handleBackendError('streamJJumUpdate', error);
+        }
+    };
+
+    // ===== 백엔드 오류 처리 =====
+    // 네트워크 오류, 데이터 파싱 실패 등 백엔드 관련 오류를 통합 처리한다.
+    HAEMA_CONSOLE.handleBackendError = function(context, error) {
+        console.error('[HAEMA] 백엔드 오류 [' + context + ']:', error.message || error);
+
+        // UI에 오류 상태 표시 (선택 사항)
+        if (this.status !== 'error') {
+            this.status = 'error';
+            this.statusText = '백엔드 연결 오류... 🔄';
+            // 오류 상태는 잠시만 표시 (3초 후 복원)
+            setTimeout(() => {
+                if (this.status === 'error') {
+                    this.status = 'resting';
+                    this.statusText = '해마 쉬는 중...';
+                    this.render();
+                }
+            }, 3000);
+        }
+    };
+
+    // ===== 백엔드 이벤트 핸들러 설정 =====
+    // WebSocket 또는 SSE 연결 시 호출할 이벤트 핸들러 등록
+    // 실제 백엔드 연동 시 이 함수를 호출하여 이벤트 리스너를 설정한다.
+    HAEMA_CONSOLE.setupBackendHandlers = function(backendClient) {
+        if (!backendClient) {
+            console.warn('[HAEMA] setupBackendHandlers: backendClient가 없습니다.');
+            return;
+        }
+
+        // 스트리밍 JJum 수신 핸들러
+        if (typeof backendClient.onJJumStream === 'function') {
+            backendClient.onJJumStream((newJJum) => {
+                console.debug('[HAEMA] 백엔드 JJum 스트림 수신:', newJJum);
+                this.streamJJumUpdate(newJJum);
+            });
+        }
+
+        // 스냅샷 응답 핸들러 (백엔드가 처리한 결과 수신)
+        if (typeof backendClient.onSnapshotResponse === 'function') {
+            backendClient.onSnapshotResponse((response) => {
+                console.debug('[HAEMA] 백엔드 스냅샷 응답:', response);
+                if (response && response.recallResults) {
+                    this.recallResults = response.recallResults;
+                    this.render();
+                }
+            });
+        }
+
+        // 연결 상태 변경 핸들러
+        if (typeof backendClient.onConnectionChange === 'function') {
+            backendClient.onConnectionChange((connected) => {
+                this.backendConnected = connected;
+                console.debug('[HAEMA] 백엔드 연결 상태:', connected ? '연결됨' : '연결 끊김');
+                if (!connected) {
+                    this.status = 'resting';
+                    this.statusText = '백엔드 연결 대기 중... ⏳';
+                    this.render();
+                }
+            });
+        }
+
+        console.debug('[HAEMA] 백엔드 이벤트 핸들러 설정 완료');
+    };
+
+    // ===== 타이핑 멈춤 감지 & 감정 상태 업데이트 =====
+    // 사용자가 입력을 멈추었을 때 백엔드가 감지한 '망설임/불안' 감정 상태를 해마 상태 바에 업데이트한다.
+    HAEMA_CONSOLE.detectTypingStop = function() {
+        this.clearTypingStopTimer();
+
+        // 타이핑 멈춤 감지: 망설임/불안 감정 상태 레이블 업데이트
+        this.status = "working";
+        this.statusText = "해마 생각 중... 💭";
+        this.render();
+    };
+
+    // ===== 타이핑 멈춤 타이머 해제 =====
+    HAEMA_CONSOLE.clearTypingStopTimer = function() {
+        if (this.typingStopTimer) {
+            clearTimeout(this.typingStopTimer);
+            this.typingStopTimer = null;
+        }
+    };
+
     this.modalMode = "create";
     this.modalData = {
         jjumName: "",
@@ -385,14 +924,25 @@ HAEMA_CONSOLE.openCreateModal = function() {
 };
 
 HAEMA_CONSOLE.openApiKeyModal = function() {
+    // API 키 모달은 이제 haema-api-key-modal.js에서 담당한다.
+    // 여기서는 모드만 설정하고, 실제 콘텐츠 렌더링과 저장은 분리 파일에 맡긴다.
     this.modalMode = "apiKey";
     this.modalData = {
-        apiKey: localStorage.getItem("haema_api_key") || "",
+        apiKey: "",
         provider: localStorage.getItem("haema_api_provider") || "",
         model: localStorage.getItem("haema_api_model") || "",
         baseURL: localStorage.getItem("haema_api_base_url") || "",
     };
     this.render();
+
+    // render()로 인해 DOM이 재생성되므로, render() 이후에 이벤트 바인딩
+    // setTimeout을 사용하여 DOM이 완전히 렌더링된 후 이벤트 바인딩
+    setTimeout(() => {
+        if (typeof HAEMA_API_KEY_MODAL !== "undefined" && typeof HAEMA_API_KEY_MODAL.bindEvents === "function") {
+            HAEMA_API_KEY_MODAL.bindEvents();
+        }
+    }, 0);
+
     const overlay = document.getElementById("modalOverlay");
     if (overlay) {
         overlay.classList.add("active");
@@ -425,108 +975,86 @@ HAEMA_CONSOLE.closeModal = function() {
     this.modalData = null;
 };
 
-HAEMA_CONSOLE.saveModal = function() {
-HAEMA_CONSOLE.saveApiKeyModal = function() {
-    const provider = document.getElementById("modalApiProvider")?.value || "";
-    const model = document.getElementById("modalApiModel")?.value.trim() || "";
-    const apiKey = document.getElementById("modalApiKey")?.value || "";
-    const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim() || "";
-
-    if (!provider) {
-        alert("API 제공자를 선택해주세요!");
-        return;
-    }
-
-    // localStorage에 저장
-    localStorage.setItem("haema_api_provider", provider);
-    localStorage.setItem("haema_api_model", model);
-    localStorage.setItem("haema_api_key", apiKey);
-    localStorage.setItem("haema_api_base_url", baseURL);
-
-    console.log("API 키 설정 저장 완료:", { provider, model, apiKey: apiKey ? "(저장됨)" : "", baseURL });
-
-    this.closeModal();
-    this.render();
-};
+HAEMA_CONSOLE.saveModal = async function() {
     if (this.modalMode === "apiKey") {
-        this.saveApiKeyModal();
-        return;
-    }
-
-    const jjumName = document.getElementById("modalJjumName")?.value.trim();
-    const aliasesStr = document.getElementById("modalAliases")?.value.trim() || "";
-    const type = document.getElementById("modalType")?.value || "인물";
-    const tagsStr = document.getElementById("modalTags")?.value.trim() || "";
-    const summary = document.getElementById("modalSummary")?.value.trim() || "";
-    const factsStr = document.getElementById("modalFacts")?.value.trim() || "";
-    const seonsStr = document.getElementById("modalSeons")?.value.trim() || "";
-
-    if (!jjumName) {
-        alert("쩜 이름을 입력해주세요!");
-        return;
-    }
-
-    const aliases = aliasesStr.split(",").map(a => a.trim()).filter(a => a);
-    const tags = tagsStr.split(",").map(t => t.trim()).filter(t => t);
-    const facts = factsStr.split("\n").map(f => f.trim()).filter(f => f).map(f => ({
-        text: f,
-        addedAt: new Date().toISOString().split("T")[0],
-        source: "manual"
-    }));
-    const seons = seonsStr.split("\n").map(line => {
-        const parts = line.split("|").map(p => p.trim());
-        if (parts.length < 3) return null;
-        const target = this.allJJums.find(j => j.jjumName === parts[0] || j.aliases.includes(parts[0]));
-        if (!target) return null;
-        const weight = parseFloat(parts[2]);
-        if (isNaN(weight) || weight < 0 || weight > 1) return null;
-        return { targetId: target.jjumId, weight: weight, label: parts[1] || "연결" };
-    }).filter(t => t);
-
-    if (this.modalMode === "create") {
-        const newJjum = {
-            jjumId: "jjum_" + Date.now(),
-            jjumName: jjumName,
-            aliases: aliases,
-            type: type,
-            tags: tags,
-            summary: summary,
-            facts: facts,
-            seons: seons,
-            mentionCount: 0,
-            firstSeen: new Date().toISOString(),
-            lastMentioned: new Date().toISOString(),
-            recallCount: 0,
-            pinned: false,
-            status: "active",
-            ownerId: "demo_user",
-            sourceService: "haema_console",
-            schemaVersion: 3
-        };
-        this.allJJums.push(newJjum);
-    } else {
-        const idx = this.allJJums.findIndex(j => j.jjumId === this.modalData.jjumId);
-        if (idx !== -1) {
-            this.allJJums[idx] = {
-                ...this.allJJums[idx],
-                jjumName: jjumName,
-                aliases: aliases,
-                type: type,
-                tags: tags,
-                summary: summary,
-                facts: facts,
-                seons: seons,
-                lastMentioned: new Date().toISOString()
-            };
+        if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+            await HAEMA_API_KEY_MODAL.saveApiKeyModal();
+            await this.refreshApiStatus();
         }
+        return;
     }
-
-    this.closeModal();
-    this.render();
+    if (!this.isStorageReady()) {
+        alert("먼저 저장소를 연결해주세요.");
+        return;
+    }
+    const value = id => document.getElementById(id)?.value.trim() || "";
+    const jjumName = value("modalJJumName");
+    if (!jjumName) { alert("쩜 이름을 입력해주세요!"); return; }
+    const now = Date.now();
+    const existing = this.modalMode === "edit" ? this.modalData : null;
+    const facts = value("modalFacts").split("\n").filter(Boolean).map(text =>
+        existing?.facts?.find(fact => fact.text === text) || { text, addedAt: now, source: "user_edit" });
+    const originalSeons = (existing?.seons || []).map((seon, index) => ({ seon, line: this.formatSeonForEdit(seon, index), name: this.seonTargetForEdit(seon, index), used: false }));
+    const seons = [];
+    const seonLines = value("modalSeons").split("\n");
+    for (let index = 0; index < seonLines.length; index++) {
+        const line = seonLines[index].trim();
+        if (!line) continue;
+        // 수정하지 않은 쩜선은 화면 밖 대상·생략된 라벨·활성 시점을 포함해 그대로 보존한다.
+        const original = originalSeons.find(item => !item.used && item.line === line);
+        if (original) {
+            original.used = true;
+            seons.push(original.seon);
+            continue;
+        }
+        const parts = line.split("|").map(part => part.trim());
+        const [name, label, rawWeight] = parts;
+        const weight = Number(rawWeight);
+        let error = "";
+        if (parts.length !== 3 || !name || !rawWeight || !Number.isFinite(weight) || weight < 0 || weight > 1) {
+            error = "대상이름 | 연결라벨 | 가중치(0~1) 형식으로 입력해주세요.";
+        }
+        const namedTargets = this.allJJums.filter(jjum => jjum.jjumName === name || (jjum.aliases || []).includes(name));
+        const hiddenTarget = originalSeons.find(item => item.name === name && !this.allJJums.some(jjum => jjum.jjumId === item.seon.targetId));
+        const targetId = hiddenTarget?.seon.targetId || (namedTargets.length === 1 ? namedTargets[0].jjumId : "");
+        if (!error && !targetId) {
+            error = namedTargets.length > 1 ? "같은 이름의 쩜이 여러 개입니다. 구분할 수 있는 별칭을 입력해주세요." : "연결할 쩜을 찾을 수 없습니다. 대상이름 또는 별칭을 확인해주세요.";
+        }
+        if (error) {
+            alert("쩜선 " + (index + 1) + "번째 줄: " + error);
+            document.getElementById("modalSeons")?.focus();
+            return;
+        }
+        seons.push({ targetId, label: label || "연결", weight, lastActivated: now });
+    }
+    const payload = {
+        jjumName,
+        aliases: value("modalAliases").split(",").map(s => s.trim()).filter(Boolean),
+        type: value("modalType") || "unknown",
+        jjtags: value("modalTags").split(",").map(s => s.trim()).filter(Boolean),
+        summary: value("modalSummary"), facts, seons,
+    };
+    const saveBtn = document.getElementById("modalSave");
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        const endpoint = "/api/owners/demo/jjums" + (existing ? "/" + encodeURIComponent(existing.jjumId) : "");
+        const response = await fetch(endpoint, {
+            method: existing ? "PATCH" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "쩜 저장에 실패했습니다.");
+        this.closeModal();
+        await this.loadLocalServerData();
+    } catch (error) {
+        alert(error.message || "쩜 저장에 실패했습니다.");
+        if (saveBtn) saveBtn.disabled = false;
+    }
 };
 
-// ===== 시뮬레이션 로직 =====
-HAEMA_CONSOLE.simulateRecall = function(inputText) {
+// ===== 시뮬레이션 로직 ===== 일단 주석처리.
+/* HAEMA_CONSOLE.simulateRecall = function(inputText) {
     if (!inputText || !this.allJJums) {
         this.recallResults = [];
         this.render();
@@ -534,7 +1062,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
     }
 
     const words = inputText.split(/\s+/);
-    const scoredJjums = this.allJJums
+    const scoredJJums = this.allJJums
         .filter(jjum => jjum && jjum.jjumId)
         .map(jjum => {
         let score = 0;
@@ -575,8 +1103,8 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         };
     });
 
-    scoredJjums.sort((a, b) => b.simulationScore - a.simulationScore);
-    this.recallResults = scoredJjums.filter(j => j.simulationScore > 0).slice(0, 13);
+    scoredJJums.sort((a, b) => b.simulationScore - a.simulationScore);
+    this.recallResults = scoredJJums.filter(j => j.simulationScore > 0).slice(0, 13);
 
     this.status = "working";
     this.statusText = "✅ 회상 완료! " + this.recallResults.length + "개 쩜 발견";
@@ -588,7 +1116,7 @@ HAEMA_CONSOLE.simulateRecall = function(inputText) {
         hostPreview: this.generateHostPreview(inputText)
     };
     this.render();
-};
+};*/
 
 // ===== 유틸리티 함수 =====
 HAEMA_CONSOLE.escapeHtml = function(str) {
@@ -630,73 +1158,79 @@ HAEMA_CONSOLE.syntaxHighlight = function(json) {
         .replace(/: (true|false)/g, ': <span class="boolean">$1</span>');
 };
 
+HAEMA_CONSOLE.maskJJumName = function(value) {
+    const name = String(value || '');
+    const chars = Array.from(name);
+    if (chars.length <= 1) return '•';
+    return chars[0] + '•'.repeat(Math.min(chars.length - 1, 4));
+};
+
+HAEMA_CONSOLE.safeGuideForDisplay = function(value) {
+    if (Array.isArray(value)) return value.map(item => this.safeGuideForDisplay(item));
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.entries(value)
+        .filter(([key]) => !/^(score|simulationScore|preferenceScore)$/i.test(key))
+        .map(([key, item]) => [key, this.safeGuideForDisplay(item)]));
+};
+
+HAEMA_CONSOLE.renderConversationResult = function(item) {
+    const candidates = (item.candidates || []).map(candidate => {
+        const reasons = Array.isArray(candidate.reasons) ? candidate.reasons : candidate.reasons ? [candidate.reasons] : [];
+        const relations = Array.isArray(candidate.relations) ? candidate.relations : [];
+        return '<details class="result-jjum"><summary><span>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span><span class="result-score">—</span></summary>' +
+            '<div class="result-jjum-detail"><div class="result-full-name">' + this.escapeHtml(candidate.name) + '</div>' +
+            (candidate.summary ? '<p>' + this.escapeHtml(candidate.summary) + '</p>' : '') +
+            (reasons.length ? '<div class="result-detail-label">회상 근거</div><div class="history-jjum-list">' + reasons.map(reason => '<span class="history-jjum-chip">' + this.escapeHtml(typeof reason === 'string' ? reason : JSON.stringify(reason)) + '</span>').join('') + '</div>' : '') +
+            (relations.length ? '<div class="result-detail-label">쩜선 연결</div><div class="history-jjum-list">' + relations.map(relation => '<span class="history-jjum-chip">' + this.escapeHtml(relation.targetName || relation.label || '연결된 쩜') + '</span>').join('') + '</div>' : '') +
+            (candidate.tags?.length ? '<div class="history-jjum-list">' + candidate.tags.map(tag => '<span class="history-jjum-chip">' + this.escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
+            '</div></details>';
+    }).join('');
+    const topics = (item.topics || []).map(topic => {
+        const label = typeof topic === 'string' ? topic : topic?.name || topic?.topic || '';
+        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(label) + '</span>' : '';
+    }).join('');
+    const newJJums = (item.newJJums || []).map(jjum => {
+        const label = typeof jjum === 'string' ? jjum : jjum?.jjumName || jjum?.name || '';
+        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJJumName(label)) + '</span>' : '';
+    }).join('');
+    const guide = item.guide ? this.safeGuideForDisplay(item.guide) : null;
+    const guideHtml = guide ? '<details class="guide-detail"><summary>호스트 응답 가이드</summary><pre>' + this.escapeHtml(typeof guide === 'string' ? guide : JSON.stringify(guide, null, 2)) + '</pre></details>' : '';
+    return '<details class="haema-history-card"><summary><span class="haema-history-title">해마 회상 결과</span><span class="haema-history-count">쩜 ' + (item.count || candidates.length) + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
+        (candidates ? '<div class="history-detail-title">회상된 쩜 · 선호도 —</div><div class="history-results">' + candidates + '</div>' : '') +
+        (topics ? '<div class="history-detail-title">주제</div><div class="history-jjum-list">' + topics + '</div>' : '') +
+        (newJJums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJJums + '</div>' : '') +
+        guideHtml + '</div></details>';
+};
+
 HAEMA_CONSOLE.renderLeftPanel = function() {
     const inputValue = localStorage.getItem('haema_input') || '';
-    const jsonViewerContent = this.answerGuide ? this.syntaxHighlight(JSON.stringify(this.answerGuide, null, 2)) : '<span style="color: #6b6560;">전송하면 JSON 답변 가이드가 여기에 표시됩니다</span>';
-    const hostPreview = this.answerGuide && this.answerGuide.hostPreview ? this.answerGuide.hostPreview : '';
-    
-    return '<div class="panel">' +
-        '<div class="panel-header"><div class="panel-title"><span class="icon">💬</span> 사용자 입력 & 답변 가이드</div></div>' +
-        '<div class="panel-content">' +
-        '<div class="input-area">' +
-        '<textarea class="user-input" id="userInput" placeholder="사용자에게 받은 메시지나 자극을 입력하세요... (예: 친구랑 카페 갔었는데)">' + this.escapeHtml(inputValue) + '</textarea>' +
-        '<div class="action-buttons">' +
-        '<button class="btn btn-primary" id="sendBtn">🧠 해마 자극 전송</button>' +
-        '<button class="btn btn-secondary" id="clearBtn">🗑️ 지우기</button>' +
-        '</div>' +
-        '</div>' +
-        '<div class="output-section">' +
-        '<div class="section-label"><span>📋</span> JSON 답변 가이드</div>' +
-        '<div class="json-viewer" id="jsonViewer">' + jsonViewerContent + '</div>' +
-        (hostPreview ? '<div class="preview-card"><div class="preview-label">🤖 호스트 AI 예상 발화</div><div class="preview-text">' + this.escapeHtml(hostPreview) + '</div></div>' : '') +
-        '</div>' +
-        '</div>' +
-        '</div>';
+    const isInputDisabled = !this.isStorageReady() || !this.isApiKeyReady();
+    const disabledOverlay = isInputDisabled ? '<div class="input-disabled-overlay" title="저장소와 API 키를 모두 준비해 주세요" aria-label="저장소와 API 키를 모두 준비해 주세요"></div>' : '';
+    const storageLabel = '🪣 : ' + (this.storageConnected ? '연결✅' : '없음❌');
+    const apiLabel = '🗝️ : ' + (this.apiConfigured ? (this.apiKeyName || '설정✅') : '없음❌');
+    const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
+    const apiTitle = this.apiConfigured ? 'API 키 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'API 키 설정';
+    const storageBtn = '<button class="tool-button" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><img src="Resources/haema-design/10-storage-button.svg" width="103" height="26" alt=""><span>' + this.escapeHtml(storageLabel) + '</span></button>';
+    const apiBtn = '<button class="tool-button" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><img src="Resources/haema-design/09-api-key-button.svg" width="103" height="26" alt=""><span class="api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
+    const messages = this.conversationHistory.map(item => {
+        if (item.type === 'user') return '<div class="message-row user"><div class="message-bubble' + (item.failed ? ' message-error' : '') + '"><span class="message-meta">나 · ' + this.escapeHtml(new Date(item.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })) + '</span>' + this.escapeHtml(item.text) + (item.failed ? '<span class="message-meta">' + this.escapeHtml(item.error || '') + '</span>' : '') + '</div></div>';
+        if (item.type === 'result') return this.renderConversationResult(item);
+        return '';
+    }).join('');
+    const empty = this.conversationHistory.length ? '' : '<div class="conversation-empty"><span class="conversation-empty-mark">~</span><strong>해마와 대화를 시작해 보세요</strong><br>보낸 메시지는 이곳에 차곡차곡 쌓여요.</div>';
+    return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + storageBtn + apiBtn + '</div>' +
+        '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
+        '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + empty + messages + '</div>' +
+        '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
+        '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
+        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
-    if (this.recallResults.length === 0) {
-        return '<div class="recall-section">' +
-            '<div class="recall-header">' +
-            '<div class="section-label"><span>🔍</span> 실시간 회상 결과</div>' +
-            '<div class="recall-count">대기 중</div>' +
-            '</div>' +
-            '<div style="padding: 20px; text-align: center; color: var(--text-secondary); font-size: 13px; background: var(--bg-light); border-radius: 10px;">' +
-            '💬 메시지를 전송하면 해마가 관련 기억을 찾아드립니다' +
-            '</div>' +
-            '</div>';
-    }
-    
-    const top3 = this.recallResults.slice(0, 3);
-    const rankClasses = ['gold', 'silver', 'bronze'];
-    const rankLabels = ['🥇 TOP 1', '🥈 TOP 2', '🥉 TOP 3'];
-    
-    const cardsHtml = top3.map((jjum, idx) => {
-        const rankClass = rankClasses[idx] || '';
-        const tagsHtml = (jjum.tags || []).map(t => '<span class="h-tag">' + this.escapeHtml(t) + '</span>').join('');
-        return '<div class="rank-card ' + rankClass + '">' +
-            '<div class="rank-badge">' + (idx + 1) + '</div>' +
-            '<div class="rank-title">' + rankLabels[idx] + '</div>' +
-            '<div class="rank-name">' + this.escapeHtml(jjum.jjumName) + '</div>' +
-            '<div class="rank-stats">' +
-            '<div class="stat-item"><span class="stat-value">' + jjum.simulationScore.toFixed(2) + '</span><span class="stat-label">스코어</span></div>' +
-            '<div class="stat-item"><span class="stat-value">' + jjum.mentionCount + '</span><span class="stat-label">언급</span></div>' +
-            '<div class="stat-item"><span class="stat-value">' + jjum.recallCount + '</span><span class="stat-label">회상</span></div>' +
-            '</div>' +
-            (tagsHtml ? '<div style="margin-top: 8px;">' + tagsHtml + '</div>' : '') +
-            '</div>';
-    }).join('');
-    
-    const remaining = this.recallResults.length > 3 ? this.recallResults.length - 3 : 0;
-    
-    return '<div class="recall-section">' +
-        '<div class="recall-header">' +
-        '<div class="section-label"><span>🔍</span> 실시간 회상 결과</div>' +
-        '<div class="recall-count">' + this.recallResults.length + '개 발견' + (remaining > 0 ? ' (' + remaining + '개 더)' : '') + '</div>' +
-        '</div>' +
-        '<div class="top3-cards">' + cardsHtml + '</div>' +
-        (remaining > 0 ? '<div style="text-align: center; font-size: 12px; color: var(--text-secondary); padding: 8px;">↓ 아래 쩜 목록에서 전체 ' + this.recallResults.length + '개 확인</div>' : '') +
-        '</div>';
+    const count = this.recallResults.length;
+    if (!count) return '';
+    return '<div class="jjum-section-heading"><span class="section-title">이번 대화의 회상</span><span class="recall-count">' + (count ? count + '개' : '결과 대기') + '</span></div>' +
+        (count ? '<div class="recall-note">회상된 쩜은 아래 목록에서 확인할 수 있어요. 선호도는 기준이 정해지지 않아 <strong>—</strong>로 표시합니다.</div>' : '<div class="recall-note">메시지를 보내면 회상된 쩜이 여기에 표시됩니다.</div>');
 };
 
 HAEMA_CONSOLE.renderModal = function() {
@@ -734,77 +1268,34 @@ HAEMA_CONSOLE.renderModal = function() {
         '</div>';
 };
 
+HAEMA_CONSOLE.seonTargetForEdit = function(seon, index) {
+    const target = this.allJJums.find(jjum => jjum.jjumId === seon.targetId);
+    return target ? target.jjumName : '현재 목록에 없는 연결 ' + (index + 1);
+};
+
+HAEMA_CONSOLE.formatSeonForEdit = function(seon, index) {
+    return this.seonTargetForEdit(seon, index) + ' | ' + (seon.label || '연결') + ' | ' + seon.weight;
+};
+
 HAEMA_CONSOLE.renderModalContent = function() {
-    // API 키 설정 모달인 경우 API 제공자 선택 UI 반환
+    // API 키 설정 모달인 경우, 이제 haema-api-key-modal.js에서 콘텐츠를 생성한다.
     if (this.modalMode === "apiKey") {
-        const data = this.modalData || {};
-        const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
-        const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
-        const savedBaseUrl = data.baseURL || localStorage.getItem("haema_api_base_url") || "";
-        
-        return '<div class="form-group">' +
-            '<label class="form-label" for="modalApiProvider">API 제공자 (Provider)</label>' +
-            '<select class="form-select" id="modalApiProvider">' +
-            '<option value="">선택하세요</option>' +
-            '<optgroup label="주요 제공자">' +
-            '<option value="openai" ' + (savedProvider === 'openai' ? 'selected' : '') + '>OpenAI</option>' +
-            '<option value="anthropic" ' + (savedProvider === 'anthropic' ? 'selected' : '') + '>Anthropic</option>' +
-            '<option value="google" ' + (savedProvider === 'google' ? 'selected' : '') + '>Google Gemini</option>' +
-            '<option value="grok" ' + (savedProvider === 'grok' ? 'selected' : '') + '>Grok</option>' +
-            '<option value="deepseek" ' + (savedProvider === 'deepseek' ? 'selected' : '') + '>DeepSeek</option>' +
-            '</optgroup>' +
-            '<optgroup label="프록시/호환">' +
-            '<option value="openrouter" ' + (savedProvider === 'openrouter' ? 'selected' : '') + '>OpenRouter</option>' +
-            '<option value="litellm" ' + (savedProvider === 'litellm' ? 'selected' : '') + '>LiteLLM</option>' +
-           '<option value="ollama" ' + (savedProvider === 'ollama' ? 'selected' : '') + '>Ollama</option>' +
-            '<option value="aws-bedrock" ' + (savedProvider === 'aws-bedrock' ? 'selected' : '') + '>AWS Bedrock</option>' +
-            '<option value="openai-compatible" ' + (savedProvider === 'openai-compatible' ? 'selected' : '') + '>OpenAI Compatible</option>' +
-            '</optgroup>' +
-            '<optgroup label="기타">' +
-            '<option value="302ai" ' + (savedProvider === '302ai' ? 'selected' : '') + '>302.AI</option>' +
-            '<option value="abacus" ' + (savedProvider === 'abacus' ? 'selected' : '') + '>Abacus</option>' +
-            '<option value="custom" ' + (savedProvider === 'custom' ? 'selected' : '') + '>직접 입력 (Custom)</option>' +
-            '</optgroup>' +
-            '</select>' +
-            '<div class="form-hint">사용할 API 제공자를 선택하세요.</div>' +
-            '</div>' +
-            '<div class="form-group" id="modalModelGroup">' +
-            '<label class="form-label" for="modalApiModel">모델</label>' +
-            '<input class="form-input" id="modalApiModel" type="text" value="' + this.escapeHtml(savedModel) + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
-            '<div class="form-hint">사용할 모델 이름을 입력하세요.</div>' +
-            '</div>' +
-            '<div class="form-group">' +
-            '<label class="form-label" for="modalApiKey">API 키</label>' +
-            '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || localStorage.getItem("haema_api_key") || "") + '" placeholder="sk-...">' +
-            '<div class="form-hint">API 키를 입력하세요.</div>' +
-            '</div>' +
-            '<div class="form-group" id="modalBaseUrlGroup">' +
-            '<label class="form-label" for="modalApiBaseUrl">Base URL (선택사항)</label>' +
-            '<input class="form-input" id="modalApiBaseUrl" type="url" value="' + this.escapeHtml(savedBaseUrl) + '" placeholder="https://api.example.com/v1">' +
-            '<div class="form-hint">OpenAI 호환 API나 자체 서버의 Base URL입니다.</div>' +
-            '</div>';
+        if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
+            return HAEMA_API_KEY_MODAL.renderApiKeyModalContent(this.modalData || {});
+        }
     }
 
     // 쩜 생성/수정 모달인 경우 기존 폼 반환
     const data = this.modalData || {};
-    
-    // API 키 모달인 경우 provider select 렌더링
-    if (this.modalMode === 'apiKey') {
-        return this.renderApiKeyModalContent(data);
-    }
-    
+
     const aliasesStr = (data.aliases || []).join(', ');
-    const tagsStr = (data.tags || []).join(', ');
+    const tagsStr = (data.jjtags || data.tags || []).join(', ');
     const factsStr = (data.facts || []).map(f => f.text).join('\n');
-    const seonsStr = (data.seons || []).map(t => {
-        const target = this.allJJums.find(j => j.jjumId === t.targetId);
-        const targetName = target ? target.jjumName : '';
-        return targetName + ' | ' + (t.label || '연결') + ' | ' + t.weight;
-    }).join('\n');
-    
+    const seonsStr = (data.seons || []).map((seon, index) => this.formatSeonForEdit(seon, index)).join('\n');
+
     return '<div class="form-group">' +
-        '<label class="form-label" for="modalJjumName">쩜 이름 *</label>' +
-        '<input class="form-input" id="modalJjumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
+        '<label class="form-label" for="modalJJumName">쩜 이름 *</label>' +
+        '<input class="form-input" id="modalJJumName" type="text" value="' + this.escapeHtml(data.jjumName || '') + '" placeholder="예: 홍길동">' +
         '<div class="form-hint">쩜의 대표 이름입니다. 어떤 이름으로 불러도 이 쩜을 찾을 수 있습니다.</div>' +
         '</div>' +
         '<div class="form-group">' +
@@ -814,15 +1305,8 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalType">유형</label>' +
-        '<select class="form-select" id="modalType">' +
-        '<option value="인물"' + (data.type === '인물' ? ' selected' : '') + '>인물</option>' +
-        '<option value="장소"' + (data.type === '장소' ? ' selected' : '') + '>장소</option>' +
-        '<option value="조직"' + (data.type === '조직' ? ' selected' : '') + '>조직</option>' +
-        '<option value="사건"' + (data.type === '사건' ? ' selected' : '') + '>사건</option>' +
-        '<option value="개념"' + (data.type === '개념' ? ' selected' : '') + '>개념</option>' +
-        '<option value="사물"' + (data.type === '사물' ? ' selected' : '') + '>사물</option>' +
-        '<option value="기타"' + (!data.type || data.type === '기타' ? ' selected' : '') + '>기타</option>' +
-        '</select>' +
+        '<input class="form-input" id="modalType" type="text" list="modalTypeSuggestions" value="' + this.escapeHtml(data.type || '') + '">' +
+        '<datalist id="modalTypeSuggestions"><option value="인물"><option value="장소"><option value="조직"><option value="사건"><option value="개념"><option value="사물"><option value="기타"></datalist>' +
         '</div>' +
         '<div class="form-group">' +
         '<label class="form-label" for="modalTags">태그 (Tags) (쉼표로 구분)</label>' +
@@ -839,7 +1323,6 @@ HAEMA_CONSOLE.renderModalContent = function() {
         '<div class="form-hint">쩜에 대한 사실 정보를 한 줄에 하나씩 입력하세요.</div>' +
         '</div>' +
         '<div class="form-group">' +
-        '<div class="form-group">' +
         '<label class="form-label" for="modalSeons">쩜선 (Seons) - 연결된 쩜 (한 줄에 하나씩, 형식: 대상이름 | 연결라벨 | 가중치(0~1))</label>' +
         '<textarea class="form-textarea" id="modalSeons" rows="3" placeholder="예: 홍길동 | 친구 | 0.8&#10;김철수 | 동료 | 0.5">' + this.escapeHtml(seonsStr) + '</textarea>' +
         '<div class="form-hint">쩜과 다른 쩜을 연결하는 선입니다. 한 줄에 하나씩, 파이프(|)로 구분하세요.</div>' +
@@ -847,93 +1330,14 @@ HAEMA_CONSOLE.renderModalContent = function() {
     '</div>';
 };
 
-// ===== API 키 모달 콘텐츠 렌더링 =====
-HAEMA_CONSOLE.renderApiKeyModalContent = function(data) {
-    const providers = [
-        { value: 'openai', label: 'OpenAI ChatGPT Subscription' },
-        { value: 'deepseek', label: 'DeepSeek' },
-        { value: 'anthropic', label: 'Anthropic' },
-        { value: 'openrouter', label: 'OpenRouter' },
-        { value: 'grok', label: 'Grok' },
-        { value: 'ollama', label: 'Ollama' },
-        { value: 'aws-bedrock', label: 'AWS Bedrock' },
-        { value: 'openai-compatible', label: 'OpenAI Compatible' },
-        { value: 'litellm', label: 'LiteLLM' },
-        { value: 'google-gemini', label: 'Google Gemini' },
-        { value: '302ai', label: '302.AI' },
-        { value: 'abacus', label: 'Abacus' },
-        { value: 'abliteration', label: 'abliteration.ai' },
-        { value: 'abovedev', label: 'above.dev' },
-        { value: 'agenterouter', label: 'AgentRouter' },
-        { value: 'agnes-ai', label: 'Agnes AI' },
-        { value: 'aihub-mix', label: 'AI Hub Mix' },
-        { value: 'ai-router', label: 'AI-ROUTER' },
-        { value: 'ai-and', label: 'ai&' },
-        { value: 'aixy', label: 'Aixy' },
-        { value: 'aki-io', label: 'AKI.IO' },
-        { value: 'alibaba', label: 'Alibaba' },
-        { value: 'alibaba-china', label: 'Alibaba (China)' },
-        { value: 'alibaba-coding-plan', label: 'Alibaba Coding Plan' },
-        { value: 'alibaba-coding-plan-china', label: 'Alibaba Coding Plan (China)' },
-        { value: 'alibaba-qwen', label: 'Alibaba Qwen' },
-        { value: 'alibaba-qwen-code', label: 'Alibaba Qwen Code' },
-        { value: 'custom', label: 'Custom' }
-    ];
-    
-    const providerOptions = providers.map(p => 
-        '<option value="' + p.value + '"' + (data.provider === p.value ? ' selected' : '') + '>' + p.label + '</option>'
-    ).join('');
-    
-    return '<div class="form-group">' +
-        '<label class="form-label" for="modalProvider">API 제공자 (Provider) *</label>' +
-        '<select class="form-select" id="modalProvider">' +
-        providerOptions +
-        '</select>' +
-        '<div class="form-hint">사용할 AI API 제공자를 선택하세요.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalModel">모델 *</label>' +
-        '<input class="form-input" id="modalModel" type="text" value="' + this.escapeHtml(data.model || '') + '" placeholder="예: gpt-4o, claude-3-opus, gemini-pro">' +
-        '<div class="form-hint">사용할 모델 이름입니다.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalApiKey">API 키 *</label>' +
-        '<input class="form-input" id="modalApiKey" type="password" value="' + this.escapeHtml(data.apiKey || '') + '" placeholder="sk-...">' +
-        '<div class="form-hint">API 키를 입력하세요.</div>' +
-        '</div>' +
-        '<div class="form-group">' +
-        '<label class="form-label" for="modalBaseURL">Base URL (선택)</label>' +
-        '<input class="form-input" id="modalBaseURL" type="url" value="' + this.escapeHtml(data.baseURL || '') + '" placeholder="https://api.example.com/v1">' +
-        '<div class="form-hint">OpenAI 호환 제공자의 경우 baseURL을 입력하세요.</div>' +
-        '</div>';
-};
-};
-HAEMA_CONSOLE.generateHostPreview = function(inputText) {
-    const topRecall = this.recallResults.slice(0, 3);
-    if (topRecall.length === 0) {
-        return '음... 그 이야기는 잘 기억나지 않네요. 좀 더 자세히 말해줄 수 있나요?';
-    }
-    
-    const names = topRecall.map(j => j.jjumName);
-    const primary = names[0];
-    const secondary = names.length > 1 ? names[1] : null;
-    
-    const templates = [
-        '아, ' + primary + '요! 기억나요. ' + (secondary ? secondary + '도 같이 생각나네요.' : '그때 일이 떠오르는데요.'),
-        primary + ' 이야기 말이죠. ' + (topRecall[0].summary ? topRecall[0].summary + ' ' : '') + '맞아요, 그런 일이 있었죠.',
-        '네, ' + primary + '요. ' + (topRecall[0].facts && topRecall[0].facts.length > 0 ? topRecall[0].facts[0].text + ' 그리고...' : '그거요!') + ' 좀 더 얘기해 볼까요?'
-    ];
-    
-    const idx = Math.floor(Math.random() * templates.length);
-    return templates[idx];
-};
+//HAEMA_CONSOLE.generateHostPreview _삭제
 
 // ===== 쩜 토글 =====
-HAEMA_CONSOLE.toggleJjum = function(jjumId) {
-    if (this.selectedJjumId === jjumId) {
-        this.selectedJjumId = null;
+HAEMA_CONSOLE.toggleJJum = function(jjumId) {
+    if (this.selectedJJumId === jjumId) {
+        this.selectedJJumId = null;
     } else {
-        this.selectedJjumId = jjumId;
+        this.selectedJJumId = jjumId;
     }
     this.render();
 };
@@ -942,235 +1346,105 @@ HAEMA_CONSOLE.toggleJjum = function(jjumId) {
 HAEMA_CONSOLE.confirmDelete = function(jjumId) {
     const jjum = this.allJJums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
-    
-    if (confirm('정말 "' + jjum.jjumName + '" 쩜을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+
+    if (confirm('"' + jjum.jjumName + '" 쩜을 현재 목록에서 숨길까요? 파일은 보존되며 새로고침하면 다시 보입니다.')) {
         this.allJJums = this.allJJums.filter(j => j.jjumId !== jjumId);
-        if (this.selectedJjumId === jjumId) {
-            this.selectedJjumId = null;
+        if (this.selectedJJumId === jjumId) {
+            this.selectedJJumId = null;
         }
         this.render();
     }
 };
 
 // ===== 초기화 =====
-HAEMA_CONSOLE.init = function() {
+HAEMA_CONSOLE.init = async function() {
     this.render();
-    // 로컬 서버에서 JJum 데이터 로딩 시도
-    this.loadLocalServerData();
-    console.log("HAEMA_CONSOLE 초기화 완료");
+    await Promise.all([
+        this.refreshApiStatus(),
+        typeof HAEMA_STORAGE_MODAL !== "undefined" ? HAEMA_STORAGE_MODAL.autoConnect() : Promise.resolve(),
+    ]);
 };
 
-// ===== 로컬 서버 데이터 로딩 =====
-// 로컬 서버(local-server/haema/)에 저장된 JJum 데이터를 불러옴
-// 브라우저에서 직접 파일 시스템 접근은 불가능하므로,
-// 로컬 서버 API를 통해 데이터를 받아오는 방식으로 구현 예정
-// 현재는 fetch()로 로컬 서버 API 호출하는 구조만 잡아둠
-HAEMA_CONSOLE.loadLocalServerData = function() {
-    // 로컬 서버 API에서 데이터 로딩
-    // 서버 실행 전에는 실패해도 무시
-    fetch('/api/owners/demo/jjums')
-        .then(response => {
-            if (!response.ok) throw new Error('API 응답 오류');
-            return response.json();
-        })
-        .then(data => {
-            this.allJJums = data.jjums || [];
-            this.render();
-            console.log('로컬 서버 데이터 로딩 완료:', this.allJJums.length, '개 쩜');
-        })
-        .catch(err => {
-            // 로컬 서버가 실행되지 않았으면 조용히 무시
-            console.log('로컬 서버 미실행 — 데이터 로딩 건너뜀:', err.message);
-        });
+// 선택한 서버 저장소의 쩜을 읽고, 완료 후 다음 처리를 진행한다.
+HAEMA_CONSOLE.loadLocalServerData = async function() {
+    const response = await fetch('/api/owners/demo/jjums');
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || '저장소를 읽을 수 없습니다.');
+    this.allJJums = data.jjums || [];
+    this.render();
+    return this.allJJums;
 };
 
-// ===== 연쇄적 쩜선 확장 =====
-// 문장이 완성됨에 따라 파생 정보(예: 뇸뇸이_건강상태.jj)를 추가 점으로 연결하고
-// 쩜선으로 엮어 입체적인 기억 구조를 구축
-HAEMA_CONSOLE.extendSeonsFromContext = function(inputValue) {
-    if (!inputValue || !inputValue.trim()) return;
-    
-    const mentionedJjums = this.findMentionedJjums(inputValue);
-    
-    if (mentionedJjums.length >= 2) {
-        const sourceJjum = mentionedJjums[0];
-        for (let i = 1; i < mentionedJjums.length; i++) {
-            const targetJjum = mentionedJjums[i];
-            this.createSeonConnection(sourceJjum, targetJjum, inputValue);
-        }
-    }
-    
-    this.createDerivativeJjums(inputValue, mentionedJjums);
+// 쩜 목록 업데이트 함수
+HAEMA_CONSOLE.updateJJumList = function(jjums) {
+    this.allJJums = jjums || [];
+    this.render();
+    console.log('쩜 목록 업데이트 완료:', this.allJJums.length, '개 쩜');
 };
 
-HAEMA_CONSOLE.findMentionedJjums = function(inputValue) {
+// ===== 연쇄적 쩜선 확장 ===== 지움
+
+
+
+HAEMA_CONSOLE.findMentionedJJums = function(inputValue) {
     const lowerInput = inputValue.toLowerCase();
     const mentioned = [];
-    
+
     this.allJJums.forEach(jjum => {
         const name = (jjum.jjumName || '').toLowerCase();
         const aliases = (jjum.aliases || []).map(a => a.toLowerCase());
-        
+
         if (lowerInput.includes(name) || aliases.some(a => lowerInput.includes(a))) {
             mentioned.push(jjum);
         }
     });
-    
+
     return mentioned;
 };
 
-HAEMA_CONSOLE.createSeonConnection = function(sourceJjum, targetJjum, context) {
-    const existingSeon = sourceJjum.seons?.find(s => s.targetId === targetJjum.jjumId);
+HAEMA_CONSOLE.createSeonConnection = function(sourceJJum, targetJJum, context) {
+    const existingSeon = sourceJJum.seons?.find(s => s.targetId === targetJJum.jjumId);
     if (existingSeon) {
         existingSeon.weight = Math.min(1, (existingSeon.weight || 0.5) + 0.1);
         existingSeon.lastActivated = new Date().toISOString();
         return;
     }
-    
-    if (!sourceJjum.seons) {
-        sourceJjum.seons = [];
+
+    if (!sourceJJum.seons) {
+        sourceJJum.seons = [];
     }
-    sourceJjum.seons.push({
-        targetId: targetJjum.jjumId,
+    sourceJJum.seons.push({
+        targetId: targetJJum.jjumId,
         weight: 0.5,
-        label: this.inferSeonLabel(sourceJjum, targetJjum, context),
+        label: this.inferSeonLabel(sourceJJum, targetJJum, context),
         lastActivated: new Date().toISOString(),
     });
-    
-    this.statusText = `🔗 쩜선 연결: ${sourceJjum.jjumName || sourceJjum.jjumName} ↔ ${targetJjum.jjumName || targetJjum.jjumName}`;
+
+    this.statusText = `🔗 쩜선 연결: ${sourceJJum.jjumName} ↔ ${targetJJum.jjumName}`;
     this.render();
 };
 
-HAEMA_CONSOLE.inferSeonLabel = function(sourceJjum, targetJjum, context) {
-    const lowerContext = context.toLowerCase();
-    if (lowerContext.includes('건강') || lowerContext.includes('병원') || lowerContext.includes('상태')) return '건강상태';
-    if (lowerContext.includes('키우') || lowerContext.includes('내') || lowerContext.includes('나의')) return '소유/관계';
-    return '연결';
-};
+//HAEMA_CONSOLE.inferSeonLabel - 지움.
 
-HAEMA_CONSOLE.createDerivativeJjums = function(inputValue, mentionedJjums) {
-    const lowerInput = inputValue.toLowerCase();
-    
-    if (lowerInput.includes('건강') || lowerInput.includes('병원') || lowerInput.includes('상태') || lowerInput.includes('진료')) {
-        mentionedJjums.forEach(jjum => {
-            const baseName = jjum.jjumName || jjum.jjumName || '';
-            const derivativeName = `${baseName}_건강상태`;
-            
-            const existing = this.allJJums.find(j => 
-                j.jjumName === derivativeName || 
-                j.jjumName === derivativeName
-            );
-            
-            if (!existing) {
-                this.createKeywordJjum(derivativeName, `${baseName}의 건강 상태 관련 정보`);
-                
-                if (!jjum.seons) {
-                    jjum.seons = [];
-                }
-                const existingSeon = jjum.seons.find(s => s.label === '건강상태');
-                if (!existingSeon) {
-                    jjum.seons.push({
-                        targetId: derivativeName,
-                        weight: 0.7,
-                        label: '건강상태',
-                        lastActivated: new Date().toISOString(),
-                    });
-                }
-            }
-        });
-    }
-};
 
-// ===== 다정한 대화 가이드 제공 =====
-// 해마가 분석한 실시간 감정과 기억 맥락을 바탕으로,
-// 호스트 챗봇이 건넬 수 있는 최적의 위로와 다정한 대화 가이드를 도출
-HAEMA_CONSOLE.generateCompassionateGuide = function(inputValue) {
-    if (!inputValue || !inputValue.trim()) {
-        this.answerGuide = null;
-        return;
-    }
-    
-    const guide = {
-        input: inputValue,
-        timestamp: new Date().toISOString(),
-        recallCount: this.recallResults.length,
-        topRecall: this.recallResults.slice(0, 3).map(j => j.jjumName || j.jjumName),
-        emotionContext: this.emotionContext,
-        hostPreview: this.generateHostPreview(inputValue),
-    };
-    
-    this.answerGuide = guide;
-};
+//HAEMA_CONSOLE.createDerivativeJJums 지움.
 
-HAEMA_CONSOLE.generateHostPreview = function(inputText) {
-    const lowerInput = inputText.toLowerCase();
-    const guideParts = [];
-    
-    if (lowerInput.includes('걱정') || lowerInput.includes('불안') || lowerInput.includes('무서')) {
-        guideParts.push('💛 걱정되는 마음이 느껴져요. 천천히 이야기해 주세요.');
-    }
-    if (lowerInput.includes('병원') || lowerInput.includes('진료') || lowerInput.includes('건강')) {
-        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
-            guideParts.push('🐱 반려동물 건강 걱정이시군요. 병원 다녀오신 후 어떠셨나요?');
-            guideParts.push('💡 너무 가슴 아파할 수 있으니, 일단 위로나 건네보는 건 어떨까요?');
-        } else {
-            guideParts.push('🏥 병원/건강 관련 이야기시군요. 어떤 점이 가장 걱정되시나요?');
-        }
-    }
-    if (lowerInput.includes('슬픔') || lowerInput.includes('힘들') || lowerInput.includes('괴롭')) {
-        guideParts.push('💚 힘든 마음이 느껴져요. 제가 여기 있어요.');
-    }
-    if (lowerInput.includes('놀람') || lowerInput.includes('깜짝') || lowerInput.includes('갑자기')) {
-        guideParts.push('✨ 갑작스러운 일이 있었군요. 놀라고 당황스러우셨겠어요.');
-    }
-    
-    if (guideParts.length === 0) {
-        if (lowerInput.includes('고양이') || lowerInput.includes('강아지') || lowerInput.includes('뇸뇸')) {
-            guideParts.push('🐾 반려동물 이야기시군요! 어떤 아이인가요?');
-        } else {
-            guideParts.push('💛 말씀해 주신 내용 잘 들었어요. 더 나누고 싶은 이야기가 있으신가요?');
-        }
-    }
-    
-    return guideParts.join(' ');
-};
+// ===== 다정한 대화 가이드 제공 ===== 지움.
 
-// ===== API 키 저장 =====
-HAEMA_CONSOLE.saveApiKeyModal = function() {
-    const provider = document.getElementById("modalProvider")?.value;
-    const model = document.getElementById("modalModel")?.value.trim();
-    const apiKey = document.getElementById("modalApiKey")?.value;
-    const baseURL = document.getElementById("modalBaseURL")?.value.trim();
+//HAEMA_CONSOLE.generateHostPreview = 지움.
 
-    if (!provider) {
-        alert("API 제공자를 선택해주세요!");
-        return;
-    }
-    if (!model) {
-        alert("모델 이름을 입력해주세요!");
-        return;
-    }
-    if (!apiKey) {
-        alert("API 키를 입력해주세요!");
-        return;
-    }
-
-    const savedKey = localStorage.getItem("haema_api_key") || "";
-    const existingProvider = localStorage.getItem("haema_api_provider") || "";
-    const existingModel = localStorage.getItem("haema_api_model") || "";
-    const existingBaseURL = localStorage.getItem("haema_api_base_url") || "";
-
-    // 새 설정 저장
-    localStorage.setItem("haema_api_key", apiKey);
-    localStorage.setItem("haema_api_provider", provider);
-    localStorage.setItem("haema_api_model", model);
-    localStorage.setItem("haema_api_base_url", baseURL || "");
-
-    this.statusText = `✅ API 키 저장 완료: ${provider} / ${model}`;
-    this.render();
-    this.closeModal();
-};
 
 document.addEventListener("DOMContentLoaded", () => {
+    // API 키 모달 분리 파일에 콘솔 참조를 전달한다.
+    // 분리 파일에서 저장 완료 후 상태 텍스트 갱신이나 render() 호출 시 사용한다.
+    if (typeof HAEMA_API_KEY_MODAL !== "undefined" && typeof HAEMA_API_KEY_MODAL.setConsole === "function") {
+        HAEMA_API_KEY_MODAL.setConsole(HAEMA_CONSOLE);
+    }
+
+    // 저장소 모달 분리 파일에 콘솔 참조를 전달한다.
+    if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.setConsole === "function") {
+        HAEMA_STORAGE_MODAL.setConsole(HAEMA_CONSOLE);
+    }
+
     HAEMA_CONSOLE.init();
 });
