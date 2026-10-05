@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-10-05
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
 // @editedBy YAONG1230 2026-10-04
@@ -224,7 +225,7 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         }
         const tagsHtml = (jjum.jjtags || jjum.tags || []).map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
         const aliases = Array.isArray(jjum.aliases) ? jjum.aliases : [];
-        const aliasMaskedText = aliases.map(alias => this.escapeHtml(this.maskJjumName(alias))).join(' · ');
+        const aliasMaskedText = aliases.map(alias => this.escapeHtml(this.maskJJumName(alias))).join(' · ');
         const aliasFullText = aliases.map(alias => this.escapeHtml(alias)).join(' · ');
         const cardInfo = [this.escapeHtml(jjum.type || ''), (jjum.jjtags || jjum.tags || []).map(tag => this.escapeHtml(tag)).join(' · ')].filter(Boolean);
         const cardInfoMaskedText = [aliasMaskedText, ...cardInfo].filter(Boolean).join(' · ');
@@ -235,10 +236,10 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         const stateText = stateLabel ? '<span class="jjum-state-label">' + this.escapeHtml(stateLabel) + '</span>' : '';
         return '<article class="jjum-card state-' + state + (hasLightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + this.escapeHtml(String(jjum.jjumId)) + '">' +
             '<span class="jjum-card-art is-shape-mask" style="--card-shape:url(\'Resources/haema-design/irregular/' + cardShape + '\')" aria-hidden="true"></span>' +
-            '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + this.escapeHtml(this.maskJjumName(jjum.jjumName || '이름 없는 쩜')) + (isExpanded ? ' 닫기' : ' 펼치기') + '">' +
+            '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + (isExpanded ? ' 닫기' : ' 펼치기') + '">' +
                 '<span class="jjum-card-row">' +
                     '<span class="score-slot"><img src="Resources/haema-design/' + parts[0] + '" width="32" height="32" alt=""><span aria-label="' + (state === 'new' ? '새 쩜' : '선호도 미정') + '">' + (state === 'new' ? 'New' : '—') + '</span></span>' +
-                    '<span class="jjum-name"><img src="Resources/haema-design/' + parts[1] + '" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJjumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
+                    '<span class="jjum-name"><img src="Resources/haema-design/' + parts[1] + '" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
                     aliasSlotHtml +
                     '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/' + parts[3] + '" width="38.2605" height="22.9574" alt=""><span class="jjum-menu-dots" aria-hidden="true">...</span></span>' +
                 '</span>' +
@@ -420,7 +421,7 @@ HAEMA_CONSOLE.refreshApiStatus = async function() {
         const response = await fetch("/api/config/status");
         if (!response.ok) throw new Error("설정 상태를 확인할 수 없습니다.");
         const config = await response.json();
-    this.apiConfigured = config.configured === true;
+        this.apiConfigured = config.configured === true;
         localStorage.setItem("haema_api_configured", String(this.apiConfigured));
         if (this.apiConfigured) {
             localStorage.setItem("haema_api_provider", config.provider || "");
@@ -1157,7 +1158,7 @@ HAEMA_CONSOLE.syntaxHighlight = function(json) {
         .replace(/: (true|false)/g, ': <span class="boolean">$1</span>');
 };
 
-HAEMA_CONSOLE.maskJjumName = function(value) {
+HAEMA_CONSOLE.maskJJumName = function(value) {
     const name = String(value || '');
     const chars = Array.from(name);
     if (chars.length <= 1) return '•';
@@ -1176,7 +1177,7 @@ HAEMA_CONSOLE.renderConversationResult = function(item) {
     const candidates = (item.candidates || []).map(candidate => {
         const reasons = Array.isArray(candidate.reasons) ? candidate.reasons : candidate.reasons ? [candidate.reasons] : [];
         const relations = Array.isArray(candidate.relations) ? candidate.relations : [];
-        return '<details class="result-jjum"><summary><span>' + this.escapeHtml(this.maskJjumName(candidate.name)) + '</span><span class="result-score">—</span></summary>' +
+        return '<details class="result-jjum"><summary><span>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span><span class="result-score">—</span></summary>' +
             '<div class="result-jjum-detail"><div class="result-full-name">' + this.escapeHtml(candidate.name) + '</div>' +
             (candidate.summary ? '<p>' + this.escapeHtml(candidate.summary) + '</p>' : '') +
             (reasons.length ? '<div class="result-detail-label">회상 근거</div><div class="history-jjum-list">' + reasons.map(reason => '<span class="history-jjum-chip">' + this.escapeHtml(typeof reason === 'string' ? reason : JSON.stringify(reason)) + '</span>').join('') + '</div>' : '') +
@@ -1188,16 +1189,16 @@ HAEMA_CONSOLE.renderConversationResult = function(item) {
         const label = typeof topic === 'string' ? topic : topic?.name || topic?.topic || '';
         return label ? '<span class="history-jjum-chip">' + this.escapeHtml(label) + '</span>' : '';
     }).join('');
-    const newJjums = (item.newJJums || []).map(jjum => {
+    const newJJums = (item.newJJums || []).map(jjum => {
         const label = typeof jjum === 'string' ? jjum : jjum?.jjumName || jjum?.name || '';
-        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJjumName(label)) + '</span>' : '';
+        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJJumName(label)) + '</span>' : '';
     }).join('');
     const guide = item.guide ? this.safeGuideForDisplay(item.guide) : null;
     const guideHtml = guide ? '<details class="guide-detail"><summary>호스트 응답 가이드</summary><pre>' + this.escapeHtml(typeof guide === 'string' ? guide : JSON.stringify(guide, null, 2)) + '</pre></details>' : '';
     return '<details class="haema-history-card"><summary><span class="haema-history-title">해마 회상 결과</span><span class="haema-history-count">쩜 ' + (item.count || candidates.length) + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
         (candidates ? '<div class="history-detail-title">회상된 쩜 · 선호도 —</div><div class="history-results">' + candidates + '</div>' : '') +
         (topics ? '<div class="history-detail-title">주제</div><div class="history-jjum-list">' + topics + '</div>' : '') +
-        (newJjums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJjums + '</div>' : '') +
+        (newJJums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJJums + '</div>' : '') +
         guideHtml + '</div></details>';
 };
 
