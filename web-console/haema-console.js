@@ -1,6 +1,7 @@
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
 // @editedBy YAONG1230 2026-10-04
+// @editedBy YAONG1230 2026-10-05
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -8,6 +9,7 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     allJJums: [],
+    cardShapeHistory: new Map(),
     streamingJJums: new Set(),
     selectedJJumId: null,
     storageConnected: false,
@@ -84,6 +86,7 @@ HAEMA_CONSOLE.render = function() {
     });
 
     this.attachEventListeners();
+    this.observeSeonLayout();
     if (this.modalMode && this.modalData) {
         const overlay = document.getElementById("modalOverlay");
         if (overlay) { overlay.classList.add("active"); overlay.style.display = "flex"; }
@@ -153,6 +156,7 @@ HAEMA_CONSOLE.renderRightPanel = function() {
     const emojis = this.getStatusEmojis();
     return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div><div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
+        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
         '<div class="haema-status-pill status-' + this.status + '"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>' +
         '</div><div class="haema-preview"><img src="Resources/haema-design/35-card-vector-h.svg" width="663.84" height="146.58" alt="해마 미리보기 말풍선"></div>' +
         '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></section>';
@@ -161,10 +165,23 @@ HAEMA_CONSOLE.renderRightPanel = function() {
 HAEMA_CONSOLE.renderJJumListSection = function() {
     // allJJums가 초기화되지 않았으면 빈 배열로 처리
     const jjums = this.allJJums || [];
-    const sortedJJums = jjums.slice().sort((a, b) => new Date(b.firstSeen) - new Date(a.firstSeen));
-    if (sortedJJums.length === 0) {
-        return "<div class=\"jjum-list-section\"><div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJJumBtn\">+ 새 쩜(JJum) 만들기</button></div><div class=\"empty-state\"><div class=\"empty-icon\">🧩</div><div class=\"empty-text\">저장된 쩜이 없습니다.<br>[+ 새 쩜 만들기] 버튼으로 쩜을 추가해보세요.</div></div></div>";
+    const visibleIds = new Set(jjums.map(jjum => jjum.jjumId));
+    for (const id of this.cardShapeHistory.keys()) {
+        if (!visibleIds.has(id)) this.cardShapeHistory.delete(id);
     }
+    const workingOrder = { new: 0, strong: 1, related: 2, candidate: 3 };
+    const sortedJJums = jjums.slice().sort((a, b) => {
+        if (this.status === 'working') {
+            const aOrder = workingOrder[String(a.displayStatus || a.visualStatus || '').toLowerCase()] ?? 4;
+            const bOrder = workingOrder[String(b.displayStatus || b.visualStatus || '').toLowerCase()] ?? 4;
+            if (aOrder !== bOrder) return aOrder - bOrder;
+        }
+        return new Date(b.firstSeen) - new Date(a.firstSeen);
+    });
+    if (sortedJJums.length === 0) {
+        return '<div class="jjum-list-section"><div class="empty-state"><img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마"><div class="empty-text">쩜이 없어요</div></div></div>';
+    }
+    const cardShapes = ['shape-15.svg', 'shape-22.svg', 'shape-42.svg'];
     const accordionHtml = sortedJJums.map(jjum => {
         const isExpanded = String(this.selectedJJumId || '') === String(jjum.jjumId || '');
         const displayState = String(jjum.displayStatus || jjum.visualStatus || '').toLowerCase();
@@ -179,8 +196,15 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         };
         const state = visualStates[displayState] ? displayState : 'general';
         const stateLabel = visualStates[state] ? visualStates[state][1] : '';
-        const cardAsset = visualStates[state] ? visualStates[state][2] : '34-card-vector-g.svg';
+        // 원본 비정형 윤곽을 매번 새로 선택한다. 쩜 ID나 상태에 모양을 고정하지 않는다.
+        const shapeChoices = cardShapes.filter(shape => shape !== this.cardShapeHistory.get(jjum.jjumId));
+        const cardShape = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
+        this.cardShapeHistory.set(jjum.jjumId, cardShape);
         const toggleAsset = 'card-toggle/' + (isExpanded ? 'collapse-' : 'expand-') + state + '.svg';
+        const hasLightParts = state === 'strong' || state === 'related';
+        const parts = hasLightParts
+            ? ['05-score-circle.svg', '03-jjum-name-pill.svg', '06-alias-pill.svg', '02-card-ellipsis.svg', '07-card-summary-background.svg']
+            : ['26-score-circle-alt.svg', '27-jjum-name-pill-alt.svg', '28-alias-pill-alt.svg', '29-card-ellipsis-alt.svg', '30-card-summary-a.svg'];
         let seonsHtml = "";
         if (jjum.seons && jjum.seons.length > 0) {
             seonsHtml = jjum.seons.map(t => {
@@ -206,19 +230,19 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         const cardInfoMaskedText = [aliasMaskedText, ...cardInfo].filter(Boolean).join(' · ');
         const cardInfoFullText = [aliasFullText, ...cardInfo].filter(Boolean).join(' · ');
         const aliasSlotHtml = cardInfoMaskedText
-            ? '<span class="jjum-alias"><img src="Resources/haema-design/28-alias-pill-alt.svg" width="262.498" height="24.1352" alt=""><span class="alias-masked">' + cardInfoMaskedText + '</span><span class="alias-full">' + cardInfoFullText + '</span></span>'
+            ? '<span class="jjum-alias"><img src="Resources/haema-design/' + parts[2] + '" width="262.498" height="24.1352" alt=""><span class="alias-masked">' + cardInfoMaskedText + '</span><span class="alias-full">' + cardInfoFullText + '</span></span>'
             : '<span class="jjum-alias jjum-alias-spacer" aria-hidden="true"></span>';
         const stateText = stateLabel ? '<span class="jjum-state-label">' + this.escapeHtml(stateLabel) + '</span>' : '';
-        return '<article class="jjum-card state-' + state + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + this.escapeHtml(String(jjum.jjumId)) + '">' +
-            '<img class="jjum-card-art" src="Resources/haema-design/' + cardAsset + '" width="596" height="106" alt="" aria-hidden="true">' +
+        return '<article class="jjum-card state-' + state + (hasLightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + this.escapeHtml(String(jjum.jjumId)) + '">' +
+            '<span class="jjum-card-art is-shape-mask" style="--card-shape:url(\'Resources/haema-design/irregular/' + cardShape + '\')" aria-hidden="true"></span>' +
             '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + this.escapeHtml(this.maskJjumName(jjum.jjumName || '이름 없는 쩜')) + (isExpanded ? ' 닫기' : ' 펼치기') + '">' +
                 '<span class="jjum-card-row">' +
-                    '<span class="score-slot"><img src="Resources/haema-design/26-score-circle-alt.svg" width="32" height="32" alt=""><span aria-label="선호도 미정">—</span></span>' +
-                    '<span class="jjum-name"><img src="Resources/haema-design/27-jjum-name-pill-alt.svg" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJjumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
+                    '<span class="score-slot"><img src="Resources/haema-design/' + parts[0] + '" width="32" height="32" alt=""><span aria-label="' + (state === 'new' ? '새 쩜' : '선호도 미정') + '">' + (state === 'new' ? 'New' : '—') + '</span></span>' +
+                    '<span class="jjum-name"><img src="Resources/haema-design/' + parts[1] + '" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJjumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
                     aliasSlotHtml +
-                    '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/29-card-ellipsis-alt.svg" width="38.2605" height="22.9574" alt=""><span class="jjum-menu-dots" aria-hidden="true">...</span></span>' +
+                    '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/' + parts[3] + '" width="38.2605" height="22.9574" alt=""><span class="jjum-menu-dots" aria-hidden="true">...</span></span>' +
                 '</span>' +
-                '<span class="jjum-summary-row"><span class="jjum-summary"><img src="Resources/haema-design/30-card-summary-a.svg" width="544" height="45" alt=""><span>' + this.escapeHtml(jjum.summary || '요약 없음') + '</span></span><span class="jjum-expand" aria-hidden="true"><img src="Resources/haema-design/' + toggleAsset + '" width="29.3827" height="17.0097" alt=""></span></span>' +
+                '<span class="jjum-summary-row"><span class="jjum-summary"><img src="Resources/haema-design/' + parts[4] + '" width="544" height="45" alt=""><span>' + this.escapeHtml(jjum.summary || '요약 없음') + '</span></span><span class="jjum-expand" aria-hidden="true"><img src="Resources/haema-design/' + toggleAsset + '" width="29.3827" height="17.0097" alt=""></span></span>' +
             '</button>' +
             '<div class="jjum-card-details">' +
                 '<div class="jjum-meta">' + stateText + this.escapeHtml(jjum.type || '기억') + ' · ' + this.escapeHtml(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
@@ -229,16 +253,70 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
                 '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div>' +
             '</div></article>';
     }).join("");
-    const connectorsHtml = sortedJJums.flatMap((jjum, sourceIndex) => (jjum.seons || []).map(relation => {
-        const targetIndex = sortedJJums.findIndex(item => item.jjumId === relation.targetId);
-        if (targetIndex < 0 || targetIndex === sourceIndex) return '';
-        return '<img class="seon-connector" src="Resources/haema-design/20-haema-status-detail.svg" width="61" height="220" alt="" aria-hidden="true" style="top:' + (Math.min(sourceIndex, targetIndex) * 118 + 20) + 'px">';
+    const connectorsHtml = sortedJJums.flatMap(jjum => (jjum.seons || []).map(relation => {
+        if (relation.targetId === jjum.jjumId || !sortedJJums.some(item => item.jjumId === relation.targetId)) return '';
+        return '<path data-source-id="' + this.escapeHtml(jjum.jjumId) + '" data-target-id="' + this.escapeHtml(relation.targetId) + '" vector-effect="non-scaling-stroke"></path>';
     })).join('');
     return "<div class=\"jjum-list-section\">" +
-        "<div class=\"create-btn-wrapper\"><button class=\"btn btn-create\" id=\"createJJumBtn\">+ 새 쩜(JJum) 만들기</button></div>" +
-        '<div class="jjum-section-heading"><span class="section-title">모든 쩜 <span class="recall-count">' + sortedJJums.length + '</span></span><span class="recall-count">최근 저장순</span></div>' +
-        '<div class="jjum-list">' + connectorsHtml + accordionHtml + '</div>' +
+        '<div class="jjum-list">' + (connectorsHtml ? '<svg class="seon-connections" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + connectorsHtml + '</svg>' : '') + accordionHtml + '</div>' +
     "</div>";
+};
+
+// 카드가 펼쳐지거나 화면 폭이 달라져도 실제 쩜의 위치를 따라가는 부드러운 곡선.
+HAEMA_CONSOLE.updateSeonLayout = function() {
+    const list = document.querySelector('.jjum-list');
+    const drawing = list?.querySelector('.seon-connections');
+    if (!drawing) return;
+    const listRect = list.getBoundingClientRect();
+    if (listRect.width <= 0 || listRect.height <= 0) return;
+    drawing.setAttribute('viewBox', '0 0 ' + listRect.width + ' ' + listRect.height);
+    const cards = new Map([...list.querySelectorAll('.jjum-card')].map(card => [card.dataset.jjumId, card]));
+    const routes = [];
+    drawing.querySelectorAll('path').forEach(path => {
+        const source = cards.get(path.dataset.sourceId)?.querySelector('.jjum-card-head');
+        const target = cards.get(path.dataset.targetId)?.querySelector('.jjum-card-head');
+        if (!source || !target) { path.removeAttribute('d'); return; }
+        const sourceRect = source.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const startX = sourceRect.right - listRect.left - 8;
+        const endX = targetRect.right - listRect.left - 8;
+        const startY = sourceRect.top - listRect.top + Math.min(24, sourceRect.height / 2);
+        const endY = targetRect.top - listRect.top + Math.min(24, targetRect.height / 2);
+        const anchorX = Math.max(startX, endX);
+        routes.push({ path, startX, startY, endX, endY, anchorX, span: Math.abs(endY - startY), room: Math.max(0, listRect.width - anchorX - 4) });
+    });
+    if (!routes.length) return;
+    routes.sort((a, b) => a.span - b.span);
+    const groups = [];
+    routes.forEach(route => {
+        const previous = groups[groups.length - 1];
+        if (previous && Math.abs(previous[0].span - route.span) < 0.01) previous.push(route);
+        else groups.push([route]);
+    });
+    const maxLane = Math.min(64, ...routes.map(route => route.room));
+    const minLane = Math.min(18, maxLane);
+    const lastGroup = groups[groups.length - 1];
+    const maxRank = groups.length - 1 + (lastGroup.length > 1 ? 0.08 : 0);
+    groups.forEach((group, groupIndex) => group.forEach((route, duplicateIndex) => {
+        // 짧은 연결부터 안쪽에 놓고, 같은 길이의 연결만 작은 간격으로 나눈다.
+        const duplicateOffset = group.length > 1 ? duplicateIndex / (group.length - 1) * 0.08 : 0;
+        const lane = groups.length === 1
+            ? Math.min(maxLane, minLane + duplicateIndex * 2)
+            : minLane + (maxLane - minLane) * (groupIndex + duplicateOffset) / maxRank;
+        const curveX = route.anchorX + lane * 4 / 3;
+        route.path.setAttribute('d', 'M ' + route.startX + ' ' + route.startY + ' C ' + curveX + ' ' + route.startY + ', ' + curveX + ' ' + route.endY + ', ' + route.endX + ' ' + route.endY);
+    }));
+};
+
+HAEMA_CONSOLE.observeSeonLayout = function() {
+    this.seonLayoutObserver?.disconnect();
+    const list = document.querySelector('.jjum-list');
+    if (!list) return;
+    this.updateSeonLayout();
+    if (typeof ResizeObserver === 'undefined') return;
+    this.seonLayoutObserver = new ResizeObserver(() => this.updateSeonLayout());
+    this.seonLayoutObserver.observe(list);
+    list.querySelectorAll('.jjum-card').forEach(card => this.seonLayoutObserver.observe(card));
 };
 
 // ===== 이벤트 리스너 =====
@@ -1143,12 +1221,13 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
         '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
         '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
-        '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
+        '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
         '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
     const count = this.recallResults.length;
+    if (!count) return '';
     return '<div class="jjum-section-heading"><span class="section-title">이번 대화의 회상</span><span class="recall-count">' + (count ? count + '개' : '결과 대기') + '</span></div>' +
         (count ? '<div class="recall-note">회상된 쩜은 아래 목록에서 확인할 수 있어요. 선호도는 기준이 정해지지 않아 <strong>—</strong>로 표시합니다.</div>' : '<div class="recall-note">메시지를 보내면 회상된 쩜이 여기에 표시됩니다.</div>');
 };

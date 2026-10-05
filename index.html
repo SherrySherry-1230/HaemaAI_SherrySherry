@@ -58,7 +58,7 @@
         .panel-left > :not(.chat-panel-art), .panel-right > :not(.right-panel-art) { position: relative; z-index: 1; }
         .chat-panel-art, .right-panel-art { position: absolute !important; z-index: 0 !important; inset: 38px 0 0; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; pointer-events: none; }
         .chat-panel-art img, .right-panel-art img { display: block; width: min(100%, 725.44px); height: auto; object-fit: contain; object-position: top center; }
-        .panel-left { padding: 12px 28px 16px 48px; }
+        .panel-left { padding: 12px 28px 24px 48px; }
         .panel-right { padding: 20px 20px 0 14px; }
         .conversation-toolbar { min-height: 46px; display: flex; justify-content: flex-end; align-items: flex-start; gap: 9px; flex: 0 0 auto; }
         .tool-button { position: relative; isolation: isolate; flex: 0 0 103px; width: 103px; min-width: 103px; height: 34px; padding: 4px 7px; display: flex; align-items: center; justify-content: center; overflow: visible; border: 0; background: transparent; color: #fff; font: 400 11px/1 Jua, Pretendard, sans-serif; cursor: pointer; white-space: nowrap; }
@@ -67,13 +67,15 @@
         .tool-button:hover { filter: brightness(1.04); }
         @media (min-width: 821px) {
             .panel { background: transparent; border-color: transparent; box-shadow: none; }
-            .panel-left { overflow: visible; }
+            .panel-left, .panel-right { overflow: visible; }
             .conversation-toolbar { position: relative; top: -21px; margin-right: 42px; }
-            .chat-panel-art { top: 30px; }
+            .chat-panel-art { inset: 29px -2px -1px 1px; }
+            .right-panel-art { inset: 36px -1px -2px; }
             .chat-panel-art img, .right-panel-art img { width: 100%; height: 100%; max-width: none; object-fit: fill; }
             .header-right .status-bar { display: none; }
-            .haema-status-pill { transform: translateY(-23px); }
-            .jjum-list-tools { transform: translateY(-23px); }
+            .haema-status-pill { transform: translateY(-25px); }
+            .jjum-list-tools { transform: translateY(-25px); }
+            .haema-scroll { border-radius: 0 0 55px 38px; }
         }
         .conversation-history { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 18px 9px 28px; display: flex; flex-direction: column; gap: 18px; scrollbar-color: #d4cbd1 transparent; scrollbar-width: thin; }
         .conversation-empty { margin: auto; padding: 24px 16px; max-width: 360px; text-align: center; color: #8a8582; font-size: 14px; line-height: 1.7; }
@@ -128,7 +130,7 @@
         .send-button.is-pressed:disabled { opacity: 1; }
         .input-disabled-overlay { position: absolute; inset: 0; z-index: 1; border-radius: inherit; cursor: pointer; }
         .input-area-disabled .user-input { pointer-events: none; }
-        .panel-heading { height: 31px; min-height: 31px; padding: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex: 0 0 auto; }
+        .panel-heading { height: 32px; min-height: 32px; padding: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex: 0 0 auto; }
         .panel-heading > div:has(.panel-title) { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .jjum-list-tools { min-width: 0; min-height: 26px; display: flex; align-items: center; gap: 12px; }
         .jjum-list-count { color: #737078; font: 400 11px/1.3 Jua, Pretendard, sans-serif; white-space: nowrap; }
@@ -140,7 +142,7 @@
         .haema-status-pill::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url("Resources/haema-design/17-haema-status-pill.svg") center / 100% 100% no-repeat; }
         .haema-status-pill.status-working .status-emojis { color: #84b37d; }
         .haema-status-pill.status-error .status-emojis { color: #b75c69; }
-        .haema-preview { width: calc(100% - 16px); min-height: 0; margin: 0 0 6px 16px; padding: 0; flex: 0 0 auto; display: block; background: transparent; box-shadow: none; }
+        .haema-preview { width: calc(100% - 16px); min-height: 0; margin: 0 0 4.4px 16px; padding: 0; flex: 0 0 auto; display: block; background: transparent; box-shadow: none; }
         .haema-preview img { display: block; width: min(100%, 663.84px); height: auto; object-fit: contain; object-position: left top; }
         .preview-copy { color: #554e46; font-size: 13px; line-height: 1.6; }
         .preview-copy strong { display: block; margin-bottom: 3px; color: var(--ink); font: 400 16px/1.3 Jua, Pretendard, sans-serif; }
@@ -151,18 +153,20 @@
         .jjum-list { position: relative; display: flex; flex-direction: column; gap: 2px; padding: 2px 60px 14px 0; }
         .seon-connections { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
         .seon-connector { position: absolute; z-index: 0; left: calc(100% - 75px); width: 61px; height: 220px; object-fit: contain; pointer-events: none; }
-        .seon-connections path { fill: none; stroke: #766984; stroke-width: 4; stroke-linecap: round; opacity: .85; }
-        .jjum-card { --card-color: var(--paper); position: relative; isolation: isolate; z-index: 1; width: min(100%, 596px); min-width: 0; min-height: 106px; border-radius: 17px; background: transparent; transition: transform .16s ease; }
+        .seon-connections path { fill: none; stroke: #766984; stroke-width: 3; stroke-linecap: round; opacity: .7; }
+        .jjum-card { --card-color: var(--paper); --card-shadow: rgba(66,54,59,.26); position: relative; isolation: isolate; z-index: 1; width: min(100%, 596px); min-width: 0; min-height: 106px; border-radius: 17px; background: transparent; transition: transform .16s ease; }
         .jjum-card.state-general { --card-color: #F7F3EA; }
         .jjum-card.state-new { --card-color: #A2ED99; }
         .jjum-card.state-candidate { --card-color: #FFE895; }
         .jjum-card.state-related { --card-color: #FFBC9D; }
         .jjum-card.state-strong { --card-color: #EB9BB0; }
-        .jjum-card.state-sent-strong { --card-color: #B8A9C9; }
-        .jjum-card.state-sent-related { --card-color: #CC987F; }
-        .jjum-card.state-sent-candidate { --card-color: #F4E2B2; }
+        .jjum-card.state-sent-strong { --card-shadow: #B8A9C9; }
+        .jjum-card.state-sent-related { --card-shadow: #CC987F; }
+        .jjum-card.state-sent-candidate { --card-shadow: #F4E2B2; }
         .jjum-card:hover { transform: translateY(-1px); }
         .jjum-card-art { position: absolute; z-index: -1; inset: 0 auto auto 0; display: block; width: 100%; height: 106px; object-fit: fill; pointer-events: none; }
+        .jjum-card-art.is-shape-mask { background: var(--card-color); -webkit-mask: var(--card-shape) center / 100% 100% no-repeat; mask: var(--card-shape) center / 100% 100% no-repeat; }
+        .jjum-card:has(.is-shape-mask) { filter: drop-shadow(2px 3px 1px var(--card-shadow)); }
         .jjum-card.is-expanded::before { content: ""; position: absolute; z-index: -1; inset: 80px 4px 0 0; border-radius: 0 0 15px 15px; background: var(--card-color); }
         .jjum-card-head { position: relative; z-index: 1; width: 100%; min-height: 106px; padding: 0 9px 12px; display: grid; grid-template-rows: 49px 45px; border: 0; background: transparent; text-align: left; cursor: pointer; }
         .jjum-card-row { width: min(100%, 530px); min-width: 0; display: grid; grid-template-columns: 32px minmax(0, 1fr) minmax(0, 1.9fr) 38.2605px; align-items: center; column-gap: 20px; }
@@ -219,7 +223,9 @@
         .card-action { min-height: 34px; flex: 1; border: 1px solid rgba(38,41,46,.25); border-radius: 10px; background: rgba(255,255,255,.44); cursor: pointer; font-size: 11px; }
         .create-btn-wrapper { padding: 4px 0 8px; }
         .btn-create { min-height: 36px; padding: 0 16px; border: 1px solid rgba(38,41,46,.23); border-radius: 999px; background: var(--logo-cream); cursor: pointer; font: 400 13px Jua, Pretendard, sans-serif; }
-        .empty-state { min-height: 125px; padding: 25px 16px; display: grid; place-items: center; border: 1px dashed #d9d0c8; border-radius: 18px; color: #85817e; text-align: center; font-size: 12px; line-height: 1.6; }
+        .jjum-list-section:has(.empty-state) { min-height: 100%; display: grid; place-items: center; }
+        .empty-state { width: 100%; min-height: 240px; padding: 28px 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--ink); text-align: center; font: 400 17px/1.6 Jua, Pretendard, sans-serif; }
+        .empty-haema { display: block; width: clamp(96px, 12vw, 160px); max-width: 56%; height: auto; object-fit: contain; }
         .mobile-tabs { display: none; }
         .recall-note { margin: 0 0 16px; padding: 11px 13px; border-radius: 12px; background: rgba(255,255,255,.6); color: #706b69; font-size: 11px; line-height: 1.55; }
         .card-actions { display: flex; gap: 8px; padding: 6px 0 4px; }
@@ -308,7 +314,7 @@
             .jjum-list-tools .btn-create { padding-inline: 8px; font-size: 10px; }
             .jjum-list-count { font-size: 10px; }
             .jjum-expand { width: 30px; height: 20px; }
-            .seon-connections path { stroke-width: 3; }
+            .seon-connections path { stroke-width: 2.5; }
             .seon-connector { left: auto; right: -16px; }
         }
         @media (max-width: 420px) {
