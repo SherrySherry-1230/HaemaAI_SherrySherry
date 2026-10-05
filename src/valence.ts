@@ -25,15 +25,16 @@ const NEGATIVE = new Set(['부정', 'negative']);
 
 const norm = (s: string): string => s.trim().toLowerCase();
 
-export function valenceOf(jjum: Pick<JJum, 'tags'>): Valence {
-  const tags = jjum.tags.map(norm);
+export function valenceOf(jjum: Pick<JJum, 'tags' | 'jjtags'>): Valence {
+  // v4 스키마: jjtags가 기본, tags는 하위 호환용
+  const tags = (jjum.jjtags || jjum.tags || []).map(norm);
   if (tags.some((t) => NEGATIVE.has(t))) return 'negative';
   if (tags.some((t) => POSITIVE.has(t))) return 'positive';
   if (tags.some((t) => NEUTRAL.has(t))) return 'neutral';
   return 'unknown';
 }
 
-export const isNegative = (jjum: Pick<JJum, 'tags'>): boolean => valenceOf(jjum) === 'negative';
+export const isNegative = (jjum: Pick<JJum, 'tags' | 'jjtags'>): boolean => valenceOf(jjum) === 'negative';
 
 /** 먼저 꺼내도 되는가 — 긍정·중립(표식 없음 포함)만 */
-export const canBringUpFirst = (jjum: Pick<JJum, 'tags'>): boolean => !isNegative(jjum);
+export const canBringUpFirst = (jjum: Pick<JJum, 'tags' | 'jjtags'>): boolean => !isNegative(jjum);
