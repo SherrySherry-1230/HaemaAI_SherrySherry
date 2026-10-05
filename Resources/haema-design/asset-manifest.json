@@ -476,5 +476,17 @@
     "verifiedVisualRole": "Haema preview panel, pale yellow with black orb",
     "nodeIdStatus": "unverified",
     "nodeIdNote": "Exact leaf node was not verified; role corrected from source asset gallery review."
+  },
+  {
+    "file": "crying-haema.png",
+    "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+    "nodeId": "97:462",
+    "exportedCopyNodeId": "149:1194",
+    "intrinsicWidth": "259",
+    "intrinsicHeight": "441",
+    "bytes": 75874,
+    "localFile": "Resources/haema-design/crying-haema.png",
+    "verifiedVisualRole": "Original crying Haema character for the empty JJum state",
+    "exportNote": "Copied to the Yaong review page and exported as PNG on 2026-10-05; the human original was not changed."
   }
 ]
