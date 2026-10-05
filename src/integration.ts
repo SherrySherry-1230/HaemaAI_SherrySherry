@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-24
+// @editedBy SherrySherry 2026-10-05
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
@@ -105,6 +105,9 @@ export async function summarizeJJums(
   for (const jjum of jjums) {
     try {
       const { summary } = await adapter.summarizeJJum(jjum, hint);
+      if (typeof summary !== 'string') {
+        throw new Error('AI summary must be a string');
+      }
       results.push({ ...jjum, summary });
     } catch (err) {
       // 요약 실패 시 중단하지 않고 초안 상태 그대로 저장 대상에 포함
