@@ -525,26 +525,26 @@ HAEMA_CONSOLE.updateInputAvailability = function() {
 };
 
 // ===== input-area 클릭 시 처리 =====
-HAEMA_CONSOLE.handleInputAreaClick = function() {
+HAEMA_CONSOLE.handleInputAreaClick = async function() {
     const storageReady = this.isStorageReady();
     const apiKeyReady = this.isApiKeyReady();
 
     if (!storageReady && !apiKeyReady) {
-        alert("🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요");
+        await HAEMA_DIALOG.alert("저장소와 API 키를 연결하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
         this.statusText = "🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요";
         this.render();
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
         }
     } else if (!storageReady) {
-        alert("🪣저장소🪣를 확인해 주세요");
+        await HAEMA_DIALOG.alert("기억을 보관할 저장 폴더를 먼저 연결해주세요.", { title: '저장소를 연결해주세요' });
         this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
         this.render();
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
         }
     } else if (!apiKeyReady) {
-        alert("🗝️API 키🗝️가 연결되지 않았습니다.");
+        await HAEMA_DIALOG.alert("API 키 연결을 확인한 뒤 다시 대화를 시작해주세요.", { title: 'API 연결을 확인해주세요', tone: 'error' });
         this.statusText = "올바른 🗝️API 키🗝️를 입력해주세요.";
         this.render();
         this.openApiKeyModal();
@@ -1052,12 +1052,16 @@ HAEMA_CONSOLE.saveModal = async function() {
         return;
     }
     if (!this.isStorageReady()) {
-        alert("먼저 저장소를 연결해주세요.");
+        await HAEMA_DIALOG.alert("먼저 저장소를 연결해주세요.", { title: '기억을 보관할 곳이 필요해요' });
         return;
     }
     const value = id => document.getElementById(id)?.value.trim() || "";
     const jjumName = value("modalJJumName");
-    if (!jjumName) { alert("쩜 이름을 입력해주세요!"); return; }
+    if (!jjumName) {
+        await HAEMA_DIALOG.alert("쩜 이름을 입력해주세요.", { title: '쩜 이름을 알려주세요' });
+        document.getElementById('modalJJumName')?.focus();
+        return;
+    }
     const now = Date.now();
     const existing = this.modalMode === "edit" ? this.modalData : null;
     const facts = value("modalFacts").split("\n").filter(Boolean).map(text =>
@@ -1089,7 +1093,7 @@ HAEMA_CONSOLE.saveModal = async function() {
             error = namedTargets.length > 1 ? "같은 이름의 쩜이 여러 개입니다. 구분할 수 있는 별칭을 입력해주세요." : "연결할 쩜을 찾을 수 없습니다. 대상이름 또는 별칭을 확인해주세요.";
         }
         if (error) {
-            alert("쩜선 " + (index + 1) + "번째 줄: " + error);
+            await HAEMA_DIALOG.alert("쩜선 " + (index + 1) + "번째 줄: " + error, { title: '쩜선을 확인해주세요' });
             document.getElementById("modalSeons")?.focus();
             return;
         }
@@ -1116,7 +1120,7 @@ HAEMA_CONSOLE.saveModal = async function() {
         this.closeModal();
         await this.loadLocalServerData();
     } catch (error) {
-        alert(error.message || "쩜 저장에 실패했습니다.");
+        await HAEMA_DIALOG.alert(error.message || "쩜 저장에 실패했습니다.", { title: '쩜을 저장하지 못했어요', tone: 'error' });
         if (saveBtn) saveBtn.disabled = false;
     }
 };
@@ -1428,11 +1432,11 @@ HAEMA_CONSOLE.toggleJJum = function(jjumId) {
 };
 
 // ===== 쩜 삭제 확인 =====
-HAEMA_CONSOLE.confirmDelete = function(jjumId) {
+HAEMA_CONSOLE.confirmDelete = async function(jjumId) {
     const jjum = this.allJJums.find(j => j.jjumId === jjumId);
     if (!jjum) return;
 
-    if (confirm('"' + jjum.jjumName + '" 쩜을 현재 목록에서 숨길까요? 파일은 보존되며 새로고침하면 다시 보입니다.')) {
+    if (await HAEMA_DIALOG.confirm('"' + jjum.jjumName + '" 쩜을 현재 목록에서 숨깁니다.\n파일은 보존되며 새로고침하면 다시 보입니다.', { title: '이 쩜을 잠시 숨길까요?', confirmText: '숨기기' })) {
         this.allJJums = this.allJJums.filter(j => j.jjumId !== jjumId);
         if (this.selectedJJumId === jjumId) {
             this.selectedJJumId = null;

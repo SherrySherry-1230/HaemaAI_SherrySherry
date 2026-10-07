@@ -1,5 +1,6 @@
 <!-- @editedBy YAONG1230 2026-10-03 -->
 <!-- @editedBy YAONG1230 2026-10-07: 실제 응답 미리보기 정렬 -->
+<!-- @editedBy YAONG1230 2026-10-07: 해마 캐릭터 확인·안내 모달 -->
 <!-- @editedBy SherrySherry 2026-10-05: 프론트 병합 및 콘솔 캐시 갱신 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -263,6 +264,22 @@
         .form-textarea { min-height: 82px; resize: vertical; }
         .form-hint { margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.5; }
         .modal-footer { min-height: 64px; padding: 12px 20px; display: flex; justify-content: flex-end; gap: 9px; border-top: 1px solid var(--line); }
+        .haema-dialog { position: fixed; width: min(420px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: auto; border: 1px solid var(--line); border-radius: 28px; background: var(--panel); color: var(--ink); box-shadow: 0 22px 70px rgba(38,41,46,.2); }
+        .haema-dialog::backdrop { background: rgba(38,41,46,.34); backdrop-filter: blur(4px); }
+        .haema-dialog-close { position: absolute; z-index: 1; top: 10px; right: 10px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 27px; cursor: pointer; }
+        .haema-dialog-close:hover { background: var(--paper); }
+        .haema-dialog-body { padding: 28px 28px 24px; text-align: center; }
+        .haema-dialog-character { display: grid; place-items: center; width: 144px; height: 144px; margin: 0 auto 18px; border-radius: 47% 53% 51% 49%; background: var(--logo-cream); }
+        .haema-dialog-character img { display: block; width: 128px; height: 128px; object-fit: contain; }
+        .haema-dialog[data-tone="error"] .haema-dialog-character { background: #fbedf1; }
+        .haema-dialog h2 { margin: 0 0 12px; font: 400 23px/1.4 Jua, Pretendard, sans-serif; }
+        .haema-dialog p { margin: 0; color: #615c61; font-size: 14px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+        .haema-dialog-actions { display: flex; gap: 10px; padding: 18px 24px 22px; border-top: 1px solid var(--line); background: var(--paper); }
+        .haema-dialog-actions .btn { flex: 1; min-width: 0; min-height: 44px; color: var(--ink); font: 400 15px/1.4 Jua, Pretendard, sans-serif; }
+        .haema-dialog-actions .btn-secondary { background: var(--panel); }
+        .haema-dialog button:focus-visible { outline: 3px solid #766984; outline-offset: 3px; }
+        .haema-modal-character { display: grid; place-items: center; margin: 0 auto 18px; }
+        .haema-modal-character img { display: block; object-fit: contain; }
         .btn-secondary, .btn-primary { min-height: 39px; padding: 0 15px; border: 1px solid rgba(38,41,46,.16); border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 650; }
         .btn-secondary { background: #fff; }
         .btn-primary { background: var(--logo-pink); }
@@ -374,10 +391,11 @@
 </head>
 <body>
     <div id="app"></div>
+    <script src="web-console/haema-dialog.js?v=1"></script>
     <script src="web-console/configStore.js?v=11"></script>
-    <script src="web-console/haema-api-key-modal.js?v=11"></script>
-    <script src="web-console/haema-console.js?v=15"></script>
+    <script src="web-console/haema-api-key-modal.js?v=12"></script>
+    <script src="web-console/haema-console.js?v=16"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
-    <script src="web-console/haema-storage-modal.js?v=11"></script>
+    <script src="web-console/haema-storage-modal.js?v=12"></script>
 </body>
 </html>
