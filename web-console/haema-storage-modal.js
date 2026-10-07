@@ -1,4 +1,5 @@
 // @editedBy SherrySherry 2026-09-24
+// @editedBy YAONG1230 2026-10-07
 // ============================================================
 // haema-storage-modal.js
 // 로컬 저장소(쩜통) 연결/생성 모달
@@ -219,7 +220,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 createBtn.textContent = "처리 중...";
                 await handleFolderSelect();
             } catch (error) {
-                alert("폴더 선택에 실패했습니다: " + error.message);
+                await HAEMA_DIALOG.alert("폴더 선택에 실패했습니다: " + error.message, { tone: 'error' });
             } finally {
                 createBtn.disabled = false;
                 createBtn.textContent = "생성 + 연결";
@@ -269,7 +270,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const storagePath = pathInput ? pathInput.value.trim() : "";
 
             if (!storagePath) {
-                alert("저장소 경로를 입력해주세요.");
+                await HAEMA_DIALOG.alert("저장소 경로를 입력해주세요.", { tone: 'warning' });
                 return;
             }
 
@@ -295,9 +296,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     error
                 );
 
-                alert(
+                await HAEMA_DIALOG.alert(
                     "저장소 초기화에 실패했습니다.\n\n" +
-                    error.message
+                    error.message,
+                    { tone: 'error' }
                 );
             } finally {
                 // 버튼 활성화
@@ -322,13 +324,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (!app) return;
 
         const modalHtml = [
-            '<div class="modal-overlay" id="existingStorageModalOverlay">',
+            '<div class="modal-overlay active" id="existingStorageModalOverlay">',
             '  <div class="modal" id="existingStorageModal">',
             '    <div class="modal-header">',
             '      <div class="modal-title">⚠️ 기존 저장소 발견</div>',
             '      <button class="modal-close" id="existingStorageModalClose">&times;</button>',
             '    </div>',
             '    <div class="modal-body">',
+            '      <div class="haema-modal-character"><img src="Resources/haema-emoji/haema-default.svg" width="104" height="104" alt="" aria-hidden="true"></div>',
             '      <p>이미 해당 위치에 [' + FOLDER_NAMES.longTerm + '] 폴더가 존재합니다.</p>',
             '      <p>기존 저장소를 연결하시겠습니까, 아니면 새로 만드시겠습니까?</p>',
             '      <div class="form-group">',
@@ -373,7 +376,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 overlay.remove();
                 closeModal();
             } catch (error) {
-                alert("기존 저장소 연결에 실패했습니다: " + error.message);
+                await HAEMA_DIALOG.alert("기존 저장소 연결에 실패했습니다: " + error.message, { tone: 'error' });
             }
         });
 
@@ -384,7 +387,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 overlay.remove();
                 closeModal();
             } catch (error) {
-                alert("새 저장소 생성에 실패했습니다: " + error.message);
+                await HAEMA_DIALOG.alert("새 저장소 생성에 실패했습니다: " + error.message, { tone: 'error' });
             }
         });
     }
