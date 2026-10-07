@@ -4,6 +4,7 @@
 // @editedBy YAONG1230 2026-10-04
 // @editedBy YAONG1230 2026-10-05
 // @editedBy YAONG1230 2026-10-07
+// @editedBy YAONG1230 2026-10-08
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -198,7 +199,8 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         }
         body += '<button class="haema-preview-details" id="previewDetailsBtn" type="button">' + (result.guide ? '응답 가이드 · 결과 보기' : '결과 보기') + '</button>';
     }
-    return '<div class="haema-preview" data-preview-state="' + state + '"><img src="Resources/haema-design/35-card-vector-h.svg" width="663.84" height="146.58" alt="" aria-hidden="true">' +
+    return '<div class="haema-preview" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
+        '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
         '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong><span class="haema-preview-status" role="status">' + status + '</span></div><div class="haema-preview-body">' + body + '</div></div></div>';
 };
 

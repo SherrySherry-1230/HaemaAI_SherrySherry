@@ -1,6 +1,7 @@
 <!-- @editedBy YAONG1230 2026-10-03 -->
 <!-- @editedBy YAONG1230 2026-10-07: 실제 응답 미리보기 정렬 -->
 <!-- @editedBy YAONG1230 2026-10-07: 해마 캐릭터 확인·안내 모달 -->
+<!-- @editedBy YAONG1230 2026-10-08: Figma 원형 해마 프로필 반영 -->
 <!-- @editedBy SherrySherry 2026-10-05: 프론트 병합 및 콘솔 캐시 갱신 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -149,8 +150,9 @@
         .haema-status-pill.status-working .status-emojis { color: #84b37d; }
         .haema-status-pill.status-error .status-emojis { color: #b75c69; }
         .haema-preview { position: relative; width: calc(100% - 16px); max-width: 663.84px; height: 146.58px; min-height: 146.58px; margin: 0 0 4.4px 16px; padding: 0; flex: 0 0 auto; background: transparent; box-shadow: none; }
-        .haema-preview > img { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
-        .haema-preview::before { content: ""; position: absolute; z-index: 1; left: 4.6%; top: 16%; width: 13.2%; height: 65%; border-radius: 50%; background: var(--logo-cream) url("Resources/haema-design/11-haema-logo.svg") center / contain no-repeat; pointer-events: none; }
+        .haema-preview-background { position: absolute; left: 1.8132%; top: -2.5px; width: 97.5786%; height: 146.164px; background: url("Resources/haema-design/haema-preview-background.svg") left top / 100% 100% no-repeat; pointer-events: none; }
+        .haema-preview-avatar { position: absolute; z-index: 1; left: 4.8231%; top: 65.58px; width: 12.4074%; aspect-ratio: 82.3647 / 82.36; transform: translateY(-50%); background: var(--sent-strong); -webkit-mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; pointer-events: none; }
+        .haema-preview-avatar img { position: absolute; left: -.3885%; top: -.3885%; width: 88.6302%; height: 160.272%; object-fit: cover; }
         .haema-preview-content { position: absolute; z-index: 2; inset: 17px 7% 20px 20%; min-width: 0; color: var(--ink); }
         .haema-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
         .haema-preview-title { min-width: 0; font: 400 15px/1.3 Jua, Pretendard, sans-serif; }
@@ -394,7 +396,7 @@
     <script src="web-console/haema-dialog.js?v=1"></script>
     <script src="web-console/configStore.js?v=11"></script>
     <script src="web-console/haema-api-key-modal.js?v=12"></script>
-    <script src="web-console/haema-console.js?v=16"></script>
+    <script src="web-console/haema-console.js?v=17"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=12"></script>
 </body>
