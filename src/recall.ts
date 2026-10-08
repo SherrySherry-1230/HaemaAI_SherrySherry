@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-24
+// @editedBy SherrySherry 2026-10-08
 /**
  * 회상 엔진 (2-a) — AI 없이 결정론적으로 동작한다.
  *
@@ -316,11 +316,22 @@ export async function recall(
         ordered.map((candidate) => candidate.jjum),
       );
       const decisionById = new Map(decisions.map((decision) => [decision.jjumId, decision]));
-      for (const candidate of ordered) {
+      // 적용할 결과를 모두 검증한 뒤 반영해야 오류 시 규칙 점수·근거가 그대로 남는다.
+      const updates = ordered.flatMap((candidate) => {
         const decision = decisionById.get(candidate.jjum.jjumId);
-        if (!decision) continue;
-        candidate.score = candidate.score * 0.4 + decision.score * 0.6;
-        candidate.reasons.push(`판단 엔진 회상 점수: ${decision.score.toFixed(2)}`);
+        if (!decision) return [];
+        if (!Number.isFinite(decision.score) || decision.score < 0 || decision.score > 1) {
+          throw new Error('Decision score must be a finite number from 0 to 1');
+        }
+        return [{
+          candidate,
+          score: candidate.score * 0.4 + decision.score * 0.6,
+          reason: `판단 엔진 회상 점수: ${decision.score.toFixed(2)}`,
+        }];
+      });
+      for (const { candidate, score, reason } of updates) {
+        candidate.score = score;
+        candidate.reasons.push(reason);
       }
       ordered.sort(
         (a, b) => b.score - a.score || a.hop - b.hop || b.jjum.mentionCount - a.jjum.mentionCount,
