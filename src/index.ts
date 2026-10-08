@@ -1,9 +1,14 @@
-// @editedBy SherrySherry 2026-09-24
+// @editedBy SherrySherry 2026-10-08
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export {
+  parseMentionCoefficientsCsv,
+  calculateMentionScore,
+  type MentionCoefficients,
+} from './mentionScore.ts';
 export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
 export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
