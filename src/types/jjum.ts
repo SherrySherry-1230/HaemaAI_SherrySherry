@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-22
+// @editedBy SherrySherry 2026-10-08
 /**
  * 쩜(JJum) 스키마 v4 — 단일 기준: docs/SCHEMA.md (2026-09-22 확정)
  * 쩜 = AI와 유저가 공유하는 생각·기억의 최소 단위. 쩜 사이 연관 = 쩜선(Seon),
@@ -76,6 +76,25 @@ export interface ResponseFeedback {
   responseId?: string;
 }
 
+/** 같은 쩜을 사용자 스스로 꺼냈는지, 호스트를 따라 언급했는지 구분한다. */
+export type MentionKind = 'initiated' | 'prompted' | 'host';
+
+/** 확정 발화의 처리 이력. 원문은 저장하지 않으며 식별자는 호스트 또는 준비 단계가 발급한다. */
+export interface JJumMention {
+  conversationId: string;
+  utteranceId: string;
+  role: 'user' | 'assistant';
+  kind: MentionKind;
+  occurredAt?: JJumTimestamp;
+  receivedAt: JJumTimestamp;
+  recordedAt: JJumTimestamp;
+  /** 같은 ID로 다른 내용을 재전송했는지 확인하는 해시이며, 발화 ID가 아니다. */
+  fingerprint: string;
+  counted: boolean;
+  /** 이후 추가된 이력 정보도 읽기·저장 과정에서 보존한다. */
+  [key: string]: unknown;
+}
+
 /** 현재 스키마 버전 */
 export const SCHEMA_VERSION = 4;
 
@@ -117,6 +136,8 @@ export interface JJum {
   // ═══ 통계 (정렬·선별·회상 우선순위의 재료) ═══
   /** 언급 횟수 — 인기순 정렬 키 */
   mentionCount: number;
+  /** 새로 처리한 발화의 이력만 저장한다. 과거 파일에는 없을 수 있다. */
+  mentionHistory?: JJumMention[];
   firstSeen: JJumTimestamp;
   /** 날짜순 정렬 키, 자동 정리 기준 */
   lastMentioned: JJumTimestamp;

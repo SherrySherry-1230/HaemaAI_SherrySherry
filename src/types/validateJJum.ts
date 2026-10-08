@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-22
+// @editedBy SherrySherry 2026-10-08
 /**
  * 쩜(JJum) 스키마 v4 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
@@ -16,6 +16,7 @@ import type {
   JJumEditEntry,
   JJumEvent,
   JJumFact,
+  JJumMention,
   Seon,
   JJumStatus,
 } from './jjum.ts';
@@ -27,6 +28,8 @@ export interface ValidationResult {
   errors: string[];
   /** ok=true일 때 정규화된 점 */
   jjum?: JJum;
+  /** 중복 방지 이력이 손상되면 저장 어댑터가 해당 소유자의 처리를 중단해야 한다. */
+  invalidMentionHistory?: boolean;
 }
 
 const STATUSES: JJumStatus[] = ['active', 'resting', 'archived', 'merged'];
@@ -48,6 +51,46 @@ function toStringArray(v: unknown): string[] {
   return v.filter(str);
 }
 
+function readMentionHistory(value: unknown): { history?: JJumMention[]; errors: string[] } {
+  if (!Array.isArray(value)) return { errors: ['mentionHistory: 배열이어야 함'] };
+  const history: JJumMention[] = [];
+  const errors: string[] = [];
+  const seen = new Set<string>();
+  const validId = (id: unknown): id is string => typeof id === 'string' && id.trim() !== '' && id.length <= 512;
+  const validTime = (time: unknown): time is number => typeof time === 'number' && Number.isFinite(time) && time >= 0;
+  for (let i = 0; i < value.length; i++) {
+    const entry: unknown = value[i];
+    const prefix = `mentionHistory[${i}]`;
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+      errors.push(`${prefix}: 객체여야 함`);
+      continue;
+    }
+    const item = entry as Record<string, unknown>;
+    if (!validId(item.conversationId) || !validId(item.utteranceId)) {
+      errors.push(`${prefix}: 대화·발화 ID 오류`);
+      continue;
+    }
+    const key = JSON.stringify([item.conversationId, item.utteranceId]);
+    if (seen.has(key)) errors.push(`${prefix}: 동일 대화·발화 중복`);
+    seen.add(key);
+    const validRoleKind = (item.role === 'assistant' && item.kind === 'host')
+      || (item.role === 'user' && (item.kind === 'initiated' || item.kind === 'prompted'));
+    if (!validRoleKind) errors.push(`${prefix}: 역할·언급 종류 오류`);
+    if (typeof item.counted !== 'boolean' || item.counted !== (item.kind === 'initiated')) {
+      errors.push(`${prefix}: 집계 여부 오류`);
+    }
+    if (!validTime(item.receivedAt) || !validTime(item.recordedAt)
+      || (item.occurredAt !== undefined && !validTime(item.occurredAt))) {
+      errors.push(`${prefix}: 시각 오류`);
+    }
+    if (typeof item.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(item.fingerprint)) {
+      errors.push(`${prefix}: 발화 변경 확인 해시 오류`);
+    }
+    history.push({ ...item } as JJumMention);
+  }
+  return errors.length > 0 ? { errors } : { history, errors };
+}
+
 export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): ValidationResult {
   const errors: string[] = [];
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
@@ -61,6 +104,11 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     }
   }
   if (errors.length > 0) return { ok: false, errors };
+
+  const mentions = d.mentionHistory === undefined ? undefined : readMentionHistory(d.mentionHistory);
+  if (mentions && mentions.errors.length > 0) {
+    return { ok: false, errors: mentions.errors, invalidMentionHistory: true };
+  }
 
   const facts: JJumFact[] = [];
   if (Array.isArray(d.facts)) {
@@ -148,6 +196,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
       : {}),
     seons,
     mentionCount: toNumber(d.mentionCount, 0),
+    ...(mentions ? { mentionHistory: mentions.history! } : {}),
     firstSeen: toNumber(d.firstSeen, now),
     lastMentioned: toNumber(d.lastMentioned, now),
     recallCount: toNumber(d.recallCount, 0),

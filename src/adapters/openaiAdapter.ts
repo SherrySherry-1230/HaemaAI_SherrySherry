@@ -62,9 +62,17 @@ export class OpenAIAdapter implements AIAdapter {
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {
-    const turnsText = req.turns
-      .map((t) => `${t.role}: ${t.text}`)
-      .join('\n');
+    const turnsText = JSON.stringify({
+      conversationId: req.conversationId,
+      turns: req.turns.map((turn) => ({
+        utteranceId: turn.utteranceId,
+        role: turn.role,
+        text: turn.text,
+        at: turn.at,
+        receivedAt: turn.receivedAt,
+        final: turn.final ?? true,
+      })),
+    });
     
     const knownNamesText = req.knownNames?.join(', ') || '없음';
     const hint = req.hint ? `\n\n추가 지시: ${req.hint}` : '';
@@ -81,18 +89,29 @@ export class OpenAIAdapter implements AIAdapter {
     "tags": ["태그1", "태그2"],
     "factTexts": ["사실1", "사실2"],
     "eventSummary": "사건 요약(해당 시)",
-    "relatedNames": ["관련 이름1", "관련 이름2"]
+    "relatedNames": ["관련 이름1", "관련 이름2"],
+    "mentions": [{"utteranceId": "제공된 발화 ID", "kind": "initiated"}]
   }
 ]
 
 규칙:
 - 근거 없는 내용은 만들지 마세요(기억 지어내기 금지)
+- 사용자와 호스트(assistant) 발화 모두 쩜과 관계의 근거가 될 수 있습니다
+- 각 초안의 mentions에는 근거가 되는 확정 발화의 utteranceId와 kind를 반환하세요
+- initiated는 사용자가 해당 쩜을 먼저 꺼낸 언급입니다. 생략된 '나'와 넓은 질문에 답하면서 처음 꺼낸 새로운 대상도 포함합니다
+- prompted는 호스트가 먼저 꺼낸 같은 쩜에 대한 사용자 답변입니다. 질문 뒤 답변이라는 이유만으로 새로운 대상까지 prompted로 분류하지 마세요
+- host는 assistant 발화의 근거입니다. user 발화에는 initiated 또는 prompted만, assistant 발화에는 host만 사용하세요
+- 제공된 대화 문맥 안에서만 선후 관계를 판단하세요. 없는 과거 발화나 외부 문맥을 추정하지 마세요
+- final:false인 발화는 문맥에만 사용하고 mentions에 넣지 마세요. final이 없으면 true로 봅니다
+- utteranceId는 제공된 값을 그대로 사용하세요. ID가 없는 발화에 임의 ID를 만들거나 순번을 ID로 쓰지 마세요
+- 같은 초안의 동일 발화 근거는 한 번만 반환하세요. 하나의 발화가 여러 쩜의 근거가 될 수 있습니다
+- 언급 횟수 N이나 증가량을 만들지 마세요. kind는 AI의 판단이며 실제 집계는 코어가 합니다
 - 이미 알고 있는 이름(knownNames)에도 새로운 사실이나 변화가 있으면 같은 이름 또는 별칭으로 초안을 내세요
 - 같은 대상을 한 응답에서 여러 초안으로 중복 출력하지 마세요
 - 사건은 하나의 사건으로 요약하세요
 - 함께 등장한 이름은 relatedNames에 포함하세요`;
 
-    const user = `대화 내용:
+    const user = `대화 내용(JSON):
 ${turnsText}
 
 이미 알고 있는 이름: ${knownNamesText}

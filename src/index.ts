@@ -17,12 +17,24 @@ export type {
   AIProvider,
   AITask,
   ConversationTurn,
+  DraftMention,
   CustomAICall,
   ExtractRequest,
   ExtractedDraft,
   MergeJudgement,
   RecallScore,
 } from './adapters/aiAdapter.ts';
+export {
+  prepareConversationRequest,
+  type PreparedConversationRequest,
+  type PreparedConversationTurn,
+  type ConversationReceipt,
+} from './conversationIdentity.ts';
+export {
+  processConversationToStorage,
+  ConversationProcessingError,
+  type ConversationProcessingResult,
+} from './integration.ts';
 export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
 export {
   LayaDecisionEngine,

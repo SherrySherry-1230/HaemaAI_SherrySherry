@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-05
+// @editedBy SherrySherry 2026-10-08
 /**
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
@@ -12,7 +12,7 @@
  * 넘기며, Haema는 hint를 해석하지 않는다 — 프롬프트에 그대로 전달할 뿐 (도메인 무지).
  */
 
-import type { JJum, JJumTimestamp, JJumId } from '../types/jjum.ts';
+import type { JJum, JJumTimestamp, JJumId, MentionKind } from '../types/jjum.ts';
 
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'custom';
 
@@ -43,9 +43,22 @@ export interface AIAdapterConfig {
 
 /** 호스트가 넘기는 대화 조각 — Haema는 내용을 해석하지 않고 AI에 전달만 한다 */
 export interface ConversationTurn {
+  /** 발화 식별자. 재전송할 때 같은 값을 유지한다. */
+  utteranceId?: string;
   role: 'user' | 'assistant';
   text: string;
+  /** 호스트가 기록한 원래 발화 시각. 없으면 임의로 만들지 않는다. */
   at?: JJumTimestamp;
+  /** 최초 요청 준비 시각. 재전송할 때 같은 값을 유지한다. */
+  receivedAt?: JJumTimestamp;
+  /** 미지정 시 true. false인 발화는 문맥에만 쓰고 저장·집계 근거로 쓰지 않는다. */
+  final?: boolean;
+}
+
+/** AI가 제시한 발화 근거. 실제 ID·역할·확정 여부는 저장 전에 코어가 검증한다. */
+export interface DraftMention {
+  utteranceId: string;
+  kind: MentionKind;
 }
 
 /** 대화에서 추출된 쩜(JJum) 초안 — 저장 전 단계 (병합·저장은 코어/호스트가 결정) */
@@ -60,10 +73,14 @@ export interface ExtractedDraft {
   eventSummary?: string;
   /** 함께 등장한 다른 이름들 — 꼬리 후보 */
   relatedNames?: string[];
+  /** 발화별 언급 근거. 저장 파이프라인에는 유효한 확정 발화 근거가 필요하다. */
+  mentions?: DraftMention[];
 }
 
 export interface ExtractRequest {
   ownerId: string;
+  /** 같은 대화의 재전송에서 유지하는 식별자. */
+  conversationId?: string;
   turns: ConversationTurn[];
   /** 이미 아는 이름들(canonical+별칭) — 중복 생성 억제용 참고 정보 */
   knownNames?: string[];

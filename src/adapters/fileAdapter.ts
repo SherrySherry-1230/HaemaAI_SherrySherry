@@ -12,7 +12,8 @@
  *   getLoadErrors()에 리포트 — 전체는 계속 동작한다.
  * - 인덱스가 유실·불일치하면 파일 스캔으로 찾아내고 인덱스를 자가 복구한다.
  *
- * 동시성: 단일 프로세스(로컬 콘솔·테스트) 사용 전제. 파일 잠금은 두지 않는다.
+ * 동시성: withOwnerLock에 참여하는 대화 처리만 같은 프로세스·저장 경로·소유자별로 직렬화한다.
+ * 직접 쓰기와 다른 프로세스의 파일 잠금, 여러 쩜의 일괄 트랜잭션은 제공하지 않는다.
  */
 
 import * as fs from 'node:fs';
@@ -65,6 +66,24 @@ function atomicWrite(filePath: string, content: string): void {
 }
 
 const SORT_KEYS: JJumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 'recallCount'];
+const ownerQueues = new Map<string, Promise<void>>();
+
+/** 아직 없는 저장 폴더도 기존 상위 폴더의 실제 경로를 기준으로 같은 큐를 사용한다. */
+function physicalDirectory(directory: string): string {
+  let existing = path.resolve(directory);
+  const pending: string[] = [];
+  for (;;) {
+    try {
+      return path.join(fs.realpathSync(existing), ...pending.reverse());
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      const parent = path.dirname(existing);
+      if (parent === existing) throw error;
+      pending.push(path.basename(existing));
+      existing = parent;
+    }
+  }
+}
 
 export class FileAdapter implements StorageAdapter {
   readonly storageRoot: string;
@@ -76,6 +95,22 @@ export class FileAdapter implements StorageAdapter {
     this.storageRoot = options?.storageRoot ?? options?.baseDir ?? path.join(process.cwd(), 'local-server', 'haema');
     this.memoryRoot = options?.memoryRoot;
     this.useLegacyStructure = options?.useLegacyStructure ?? false;
+  }
+
+  async withOwnerLock<T>(ownerId: string, run: () => Promise<T>): Promise<T> {
+    const key = JSON.stringify([physicalDirectory(this.baseDir), ownerId]);
+    const previous = ownerQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const queued = previous.then(() => gate);
+    ownerQueues.set(key, queued);
+    await previous;
+    try {
+      return await run();
+    } finally {
+      release();
+      if (ownerQueues.get(key) === queued) ownerQueues.delete(key);
+    }
   }
 
   /** 기존 구조 호환성을 위한 baseDir getter */
@@ -198,7 +233,11 @@ export class FileAdapter implements StorageAdapter {
 
   // ── 파일 입출력 ────────────────────────────────────────
 
-  private readJJumFile(filePath: string): { jjum?: JJum; error?: string } {
+  private readJJumFile(filePath: string): {
+    jjum?: JJum;
+    error?: string;
+    invalidMentionHistory?: { ownerId: string; jjumId: string };
+  } {
     let raw: string;
     try {
       raw = fs.readFileSync(filePath, 'utf-8');
@@ -213,7 +252,13 @@ export class FileAdapter implements StorageAdapter {
     }
     const result = validateJJum(data);
     if (!result.ok || !result.jjum) {
-      return { error: `스키마 검증 실패: ${result.errors.join(' / ')}` };
+      const identity = data as { ownerId: string; jjumId: string };
+      return {
+        error: `스키마 검증 실패: ${result.errors.join(' / ')}`,
+        ...(result.invalidMentionHistory ? {
+          invalidMentionHistory: { ownerId: identity.ownerId.trim(), jjumId: identity.jjumId.trim() },
+        } : {}),
+      };
     }
     return { jjum: result.jjum };
   }
@@ -253,9 +298,13 @@ export class FileAdapter implements StorageAdapter {
     }
     for (const entry of entries) {
       if (!entry.endsWith('.jj') || entry.startsWith('_')) continue;
-      const { jjum, error } = this.readJJumFile(path.join(dir, entry));
+      const { jjum, error, invalidMentionHistory } = this.readJJumFile(path.join(dir, entry));
       if (error) {
         this.loadErrors.push({ file: path.join(dir, entry), reason: error });
+        // 중복 방지 이력을 제외한 채 새 쩜을 만드는 것을 막는다. 다른 소유자의 처리는 계속한다.
+        if (invalidMentionHistory?.ownerId === ownerId) {
+          throw new Error(`Stored mentionHistory is invalid for JJum ${invalidMentionHistory.jjumId}: ${error}`);
+        }
         continue;
       }
       if (jjum) {
@@ -279,7 +328,7 @@ export class FileAdapter implements StorageAdapter {
     return { count: jjums.length, errors: this.getLoadErrors() };
   }
 
-  /** 실제 유효한 쩜 파일에서 소유자를 찾는다. 낡은 인덱스의 소유자는 노출하지 않는다. */
+  /** 실제 쩜 파일의 신원에서 소유자를 찾는다. 손상 이력도 빈 저장소로 오인하지 않게 소유자는 남긴다. */
   async listOwnerIds(): Promise<string[]> {
     const owners = new Set<string>();
     if (this.useLegacyStructure) {
@@ -288,15 +337,17 @@ export class FileAdapter implements StorageAdapter {
         if (!entry.isDirectory()) continue;
         for (const filename of fs.readdirSync(path.join(this.baseDir, entry.name))) {
           if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
-          const { jjum } = this.readJJumFile(path.join(this.baseDir, entry.name, filename));
-          if (jjum) owners.add(jjum.ownerId);
+          const { jjum, invalidMentionHistory } = this.readJJumFile(path.join(this.baseDir, entry.name, filename));
+          const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId;
+          if (ownerId) owners.add(ownerId);
         }
       }
     } else if (fs.existsSync(this.baseDir)) {
       for (const filename of fs.readdirSync(this.baseDir)) {
         if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
-        const { jjum } = this.readJJumFile(path.join(this.baseDir, filename));
-        if (jjum) owners.add(jjum.ownerId);
+        const { jjum, invalidMentionHistory } = this.readJJumFile(path.join(this.baseDir, filename));
+        const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId;
+        if (ownerId) owners.add(ownerId);
       }
     }
     return [...owners].sort();
@@ -323,6 +374,10 @@ export class FileAdapter implements StorageAdapter {
 
   async putJJum(ownerId: string, jjum: JJum): Promise<void> {
     const stored: JJum = { ...jjum, ownerId };
+    const validation = validateJJum(stored);
+    if (validation.invalidMentionHistory) {
+      throw new Error(`Cannot store invalid mentionHistory: ${validation.errors.join(' / ')}`);
+    }
     const index = this.loadIndex();
     const dir = this.ownerDir(ownerId);
     fs.mkdirSync(dir, { recursive: true });

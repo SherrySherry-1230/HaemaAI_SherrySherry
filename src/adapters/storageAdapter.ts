@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-05
+// @editedBy SherrySherry 2026-10-08
 /**
  * Haema 저장 어댑터 인터페이스 — 백엔드 교체 구조의 경계면.
  *
@@ -38,6 +38,9 @@ export interface JJumQuery {
  * (한 ownerId의 호출이 다른 ownerId의 점에 닿아서는 안 된다)
  */
 export interface StorageAdapter {
+  /** 참여하는 대화 처리끼리 owner별 직렬 실행한다. 다른 직접 쓰기·프로세스의 잠금은 아니다. */
+  withOwnerLock?<T>(ownerId: string, run: () => Promise<T>): Promise<T>;
+
   /** 단건 조회. 없으면 null */
   getJJum(ownerId: string, jjumId: JJumId): Promise<JJum | null>;
 
