@@ -37,7 +37,7 @@ export interface RecallOptions {
   /** 이야깃거리 '오래 언급 없음' 기준(일). 기본 14 */
   topicStaleDays?: number;
   now?: JJumTimestamp;
-  /** recallCount · 쩜선 lastActivated 갱신 여부. 기본 true */
+  /** recallCount · lastRecalled · 쩜선 lastActivated 갱신 여부. 기본 true */
   touch?: boolean;
   /** Optional fast decision layer. Errors or low-confidence results preserve rule scores. */
   decisionEngine?: RecallDecisionEngine;
@@ -360,12 +360,13 @@ export async function recall(
     staleDays: options.topicStaleDays,
   });
 
-  // ── 자극 반영: recallCount · 쩜선 lastActivated ──
+  // ── 자극 반영: recallCount · lastRecalled · 쩜선 lastActivated ──
   if (touch && candidates.length > 0) {
     const dirty = new Map<JJumId, JJum>();
     const included = new Set(candidates.map((c) => c.jjum.jjumId));
     for (const c of candidates) {
       c.jjum.recallCount += 1;
+      c.jjum.lastRecalled = now;
       dirty.set(c.jjum.jjumId, c.jjum);
     }
     for (const { source, tail } of adoptedTails.values()) {
