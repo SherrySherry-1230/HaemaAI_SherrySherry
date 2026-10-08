@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-10-08
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -36,7 +37,7 @@ questions = {}
 for candidate in request["candidates"]:
     questions[candidate["jjumId"]] = {
         "type": "score",
-        "instructions": "현재 대화에서 이 기억을 회상할 관련성과 유용성을 평가하세요.",
+        "instructions": "현재 대화에서 이 기억을 회상할 관련성과 유용성을 평가하세요. " + json.dumps(candidate, ensure_ascii=False),
         "criteria": ["무관함", "약간 관련", "관련 있음", "매우 관련 있고 지금 필요함"],
     }
 result = router.predict(request["state"], questions)
@@ -104,7 +105,7 @@ export class LayaDecisionEngine implements RecallDecisionEngine {
         aliases: jjum.aliases,
         summary: jjum.summary,
         facts: jjum.facts.map((fact) => fact.text),
-        tags: jjum.tags,
+        tags: jjum.jjtags,
       })),
     });
 

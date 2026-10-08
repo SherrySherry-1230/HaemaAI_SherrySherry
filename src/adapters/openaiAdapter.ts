@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-24
+// @editedBy SherrySherry 2026-10-08
 /**
  * OpenAI SDK 호환 어댑터 구현
  * OpenAI SDK를 사용하여 OpenAI 호환 API (Upstage Solar 등)를 호출한다.
@@ -182,14 +182,18 @@ ${hintText}
       .map((t) => `${t.role}: ${t.text}`)
       .join('\n');
     
-    const candidatesText = candidates
-      .map((c) => `- ${c.jjumName} (${c.type}): ${c.summary || c.facts[0]?.text || ''}`)
-      .join('\n');
+    const candidatesText = JSON.stringify(candidates.map((c) => ({
+      jjumId: c.jjumId,
+      jjumName: c.jjumName,
+      type: c.type,
+      content: c.summary || c.facts[0]?.text || '',
+    })));
     
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';
 
     const system = `당신은 현재 맥락에서 꺼낼 가치가 있는 기억을 점수화하는 AI입니다.
 후보 기억들을 0(무관)~1(지금 꺼낼 가치 높음) 사이로 점수화하세요.
+응답의 jjumId는 후보에 제공된 값을 그대로 사용하세요. 이름으로 ID를 추정하거나 새 ID를 만들지 마세요.
 
 출력 형식(JSON):
 [
