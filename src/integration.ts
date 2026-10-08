@@ -18,7 +18,16 @@ import type {
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
 import { upsertSeon } from './seons.ts';
-import type { JJum } from './types/jjum.ts';
+import type { JJum, JJumMention } from './types/jjum.ts';
+import {
+  prepareConversationRequest,
+  conversationReceipt,
+  utteranceFingerprint,
+  mentionKey,
+  withConversationLock,
+  type ConversationReceipt,
+  type PreparedConversationTurn,
+} from './conversationIdentity.ts';
 
 // ═══════════════════════════════════════════════════════════════════
 // 단계별 helper
@@ -133,17 +142,42 @@ export async function putJJums(
 // 통합 파이프라인
 // ═══════════════════════════════════════════════════════════════════
 
+export interface ConversationProcessingResult {
+  storedCount: number;
+  failedSummaries: number;
+  receipt: ConversationReceipt;
+}
+
+/** 준비된 발화 식별 정보를 보존하여 실패 후 같은 요청을 재시도할 수 있게 한다. */
+export class ConversationProcessingError extends Error {
+  readonly receipt: ConversationReceipt;
+
+  constructor(receipt: ConversationReceipt, cause: unknown) {
+    super('Conversation processing failed', { cause });
+    this.name = 'ConversationProcessingError';
+    this.receipt = receipt;
+  }
+}
+
+const isStringArray = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+
+/** 잘못된 초안 하나가 다른 정상 초안의 처리를 막지 않게 한다. */
+function isStorageDraft(value: unknown): value is ExtractedDraft {
+  if (typeof value !== 'object' || value === null) return false;
+  const draft = value as Record<string, unknown>;
+  return typeof draft.jjumName === 'string' && draft.jjumName.trim().length > 0
+    && typeof draft.type === 'string'
+    && isStringArray(draft.aliases) && isStringArray(draft.tags) && isStringArray(draft.factTexts)
+    && (draft.eventSummary === undefined || typeof draft.eventSummary === 'string')
+    && (draft.relatedNames === undefined || isStringArray(draft.relatedNames))
+    && Array.isArray(draft.mentions);
+}
+
 /**
- * 대화-추출-저장 통합 파이프라인.
- *
- * 1. extractJJums()     — 대화에서 쩜(JJum) 초안 추출
- * 2. createJJum()       — 초안을 실제 쩜(JJum) 구조로 변환
- * 3. summarizeJJum()    — 쩜 요약 보강 (실패해도 중단하지 않음)
- * 4. putJJums()         — 저장소(StorageAdapter)에 저장
- *
- * 요약 실패 시 해당 쩜은 보강되지 않은 초안 상태로 저장된다.
- *
- * @returns 저장된 쩜 개수 + 요약 실패 건수
+ * 확정 발화 근거가 있는 초안을 저장한다. 같은 발화의 재전송은 이력으로 확인한다.
+ * 쩜 내용·언급 이력을 먼저 저장하고, 모든 대상이 저장된 뒤 빠진 쩜선을 복구한다.
+ * 재시도에는 prepareConversationRequest()로 미리 준비한 동일 요청을 재사용해야 한다.
  */
 export async function processConversationToStorage(
   aiAdapter: AIAdapter,
@@ -153,97 +187,182 @@ export async function processConversationToStorage(
   options?: {
     sourceService?: string;
     summarizeHint?: string;
+    maxMentionHistoryEntries?: number;
   },
-): Promise<{ storedCount: number; failedSummaries: number }> {
+): Promise<ConversationProcessingResult> {
+  if (ownerId !== extractReq.ownerId) throw new Error('Conversation ownerId must match request ownerId');
   const now = extractReq.now ?? Date.now();
-  const current = await storageAdapter.listJJums(ownerId, { status: 'active' });
-  const knownNames = [...new Set([...current.flatMap((j) => [j.jjumName, ...j.aliases]), ...(extractReq.knownNames ?? [])])];
-  // 1. 추출
-  const drafts = await extractJJums(aiAdapter, { ...extractReq, ownerId, knownNames });
-
-  if (drafts.length === 0) {
-    return { storedCount: 0, failedSummaries: 0 };
-  }
-
-  // 2. 정확히 같은 대표 이름/별칭만 기존 쩜에 반영한다. 여러 쩜이 맞으면 추정하지 않는다.
-  const all = new Map(current.map((j) => [j.jjumId, j]));
-  const changed = new Map<string, JJum>();
-  const related = new Map<string, string[]>();
-  const normalize = (name: string): string => name.trim().toLowerCase();
-  const matches = (name: string): JJum[] => {
-    const key = normalize(name);
-    return [...all.values()].filter((j) => [j.jjumName, ...j.aliases].some((n) => normalize(n) === key));
-  };
-  for (const draft of drafts) {
-    if (!normalize(draft.jjumName)) continue;
-    const candidates = matches(draft.jjumName);
-    if (candidates.length > 1) continue;
-    const fresh = createJJumsFromDrafts(ownerId, [draft], options?.sourceService, now)[0];
-    const existing = candidates[0];
-    let jjum: JJum;
-    if (existing) {
-      const seenFacts = new Set(existing.facts.map((fact) => fact.text));
-      const facts = [...existing.facts];
-      for (const fact of fresh.facts) {
-        if (seenFacts.has(fact.text)) continue;
-        seenFacts.add(fact.text);
-        facts.push(fact);
+  const prepared = prepareConversationRequest({ ...extractReq, now });
+  const receipt = conversationReceipt(prepared);
+  try {
+    const limit = options?.maxMentionHistoryEntries ?? 10_000;
+    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Invalid mention history limit');
+    return await withConversationLock(storageAdapter, ownerId, async () => {
+      const stored = await storageAdapter.listJJums(ownerId);
+      const turns = new Map(prepared.turns.map((turn) => [turn.utteranceId, turn]));
+      // 비활성 쩜의 기록도 확인하여 같은 ID로 확정 발화를 바꾸지 못하게 한다.
+      for (const jjum of stored) {
+        for (const mention of jjum.mentionHistory ?? []) {
+          if (mention.conversationId !== prepared.conversationId) continue;
+          const turn = turns.get(mention.utteranceId);
+          if (turn && (mention.fingerprint !== utteranceFingerprint(turn)
+            || mention.role !== turn.role || mention.occurredAt !== turn.at)) {
+            throw new Error('Stored utterance identity conflict');
+          }
+        }
       }
-      const events = [...existing.events, ...fresh.events];
-      jjum = {
-        ...existing,
-        aliases: [...new Set([...existing.aliases, ...fresh.aliases])],
-        jjtags: [...new Set([...existing.jjtags, ...fresh.jjtags])],
-        type: existing.type === 'unknown' ? fresh.type : existing.type,
-        facts,
-        events,
-        mentionCount: existing.mentionCount + 1,
-        lastMentioned: now,
-        editHistory: [...existing.editHistory, { date: now, action: 'conversation_update', by: 'ai' }],
+      const current = stored.filter((jjum) => jjum.status === 'active');
+      const inactive = stored.filter((jjum) => jjum.status !== 'active');
+      const knownNames = [...new Set([
+        ...current.flatMap((jjum) => [jjum.jjumName, ...jjum.aliases]),
+        ...(prepared.knownNames ?? []),
+      ])];
+      const drafts = await extractJJums(aiAdapter, { ...prepared, knownNames });
+      if (!Array.isArray(drafts)) throw new Error('AI drafts must be an array');
+      const all = new Map(current.map((jjum) => [jjum.jjumId, jjum]));
+      const changed = new Map<string, JJum>();
+      const created = new Set<string>();
+      const related = new Map<string, string[]>();
+      const persisted = new Map(stored.map((jjum) => [jjum.jjumId,
+        new Set((jjum.mentionHistory ?? []).map((mention) => mentionKey(mention.conversationId, mention.utteranceId))),
+      ]));
+      const normalize = (name: string): string => name.trim().toLowerCase();
+      const matches = (name: string): JJum[] => {
+        const key = normalize(name);
+        return [...all.values()].filter((jjum) =>
+          [jjum.jjumName, ...jjum.aliases].some((candidate) => normalize(candidate) === key));
       };
-    } else {
-      jjum = fresh;
-    }
-    all.set(jjum.jjumId, jjum);
-    changed.set(jjum.jjumId, jjum);
-    related.set(jjum.jjumId, [...(related.get(jjum.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
-  }
-
-  // 초안 사이의 이름도 해결한다. 불명확하거나 없는 이름은 가짜 targetId로 저장하지 않는다.
-  for (const [sourceId, names] of related) {
-    const source = all.get(sourceId)!;
-    for (const name of names) {
-      const targets = matches(name);
-      if (targets.length !== 1 || targets[0].jjumId === sourceId) continue;
-      const target = targets[0];
-      if (!source.seons.some((s) => s.targetId === target.jjumId && !s.label)) {
-        upsertSeon(source, target.jjumId, 1, undefined, now);
+      for (const draft of drafts) {
+        if (!isStorageDraft(draft)) continue;
+        const candidates = matches(draft.jjumName);
+        if (candidates.length > 1) continue;
+        const existing = candidates[0];
+        const previousKeys = existing ? persisted.get(existing.jjumId) : undefined;
+        const evidence = new Map<string, { turn: PreparedConversationTurn; kind: JJumMention['kind'] }>();
+        const conflictingKinds = new Set<string>();
+        for (const mention of draft.mentions!) {
+          if (typeof mention !== 'object' || mention === null) continue;
+          const turn = turns.get(mention.utteranceId);
+          if (!turn?.final) continue;
+          if (!(turn.role === 'assistant' ? mention.kind === 'host'
+            : mention.kind === 'initiated' || mention.kind === 'prompted')) continue;
+          const previous = evidence.get(turn.utteranceId);
+          if (previous && previous.kind !== mention.kind) conflictingKinds.add(turn.utteranceId);
+          evidence.set(turn.utteranceId, { turn, kind: mention.kind });
+        }
+        if (evidence.size === 0) continue;
+        // 비활성 쩜에 이미 반영된 발화는 새 쩜으로 복제하거나 상태를 되살리지 않는다.
+        const inactiveReplay = inactive.some((jjum) =>
+          [jjum.jjumName, ...jjum.aliases].some((name) => normalize(name) === normalize(draft.jjumName))
+          && [...evidence.keys()].every((utteranceId) =>
+            persisted.get(jjum.jjumId)?.has(mentionKey(prepared.conversationId, utteranceId))));
+        if (inactiveReplay) continue;
+        for (const utteranceId of conflictingKinds) {
+          if (!previousKeys?.has(mentionKey(prepared.conversationId, utteranceId))) {
+            throw new Error('Conflicting mention kinds');
+          }
+        }
+        const fullReplay = existing && [...evidence.keys()].every((utteranceId) =>
+          previousKeys?.has(mentionKey(prepared.conversationId, utteranceId)));
+        if (fullReplay) {
+          related.set(existing.jjumId, [...(related.get(existing.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
+          continue;
+        }
+        const fresh = createJJumsFromDrafts(ownerId, [draft], options?.sourceService, now)[0];
+        let jjum: JJum;
+        if (existing) {
+          const seenFacts = new Set(existing.facts.map((fact) => fact.text));
+          const facts = [...existing.facts];
+          for (const fact of fresh.facts) {
+            if (seenFacts.has(fact.text)) continue;
+            seenFacts.add(fact.text);
+            facts.push(fact);
+          }
+          jjum = {
+            ...existing,
+            aliases: [...new Set([...existing.aliases, ...fresh.aliases])],
+            jjtags: [...new Set([...existing.jjtags, ...fresh.jjtags])],
+            type: existing.type === 'unknown' ? fresh.type : existing.type,
+            facts,
+            events: [...existing.events, ...fresh.events],
+            editHistory: [...existing.editHistory, { date: now, action: 'conversation_update', by: 'ai' }],
+          };
+        } else {
+          jjum = fresh;
+          created.add(jjum.jjumId);
+        }
+        const history = [...(jjum.mentionHistory ?? [])];
+        const byKey = new Map(history.map((mention) => [mentionKey(mention.conversationId, mention.utteranceId), mention]));
+        for (const { turn, kind } of evidence.values()) {
+          const key = mentionKey(prepared.conversationId, turn.utteranceId);
+          const previous = byKey.get(key);
+          if (previous) {
+            if (!previousKeys?.has(key) && previous.kind !== kind) throw new Error('Conflicting mention kinds');
+            continue;
+          }
+          const mention: JJumMention = {
+            conversationId: prepared.conversationId, utteranceId: turn.utteranceId,
+            role: turn.role, kind,
+            ...(turn.at === undefined ? {} : { occurredAt: turn.at }),
+            receivedAt: turn.receivedAt, recordedAt: now,
+            fingerprint: utteranceFingerprint(turn), counted: kind === 'initiated',
+          };
+          history.push(mention);
+          byKey.set(key, mention);
+          if (!created.has(jjum.jjumId) && mention.counted) jjum.mentionCount += 1;
+          if (turn.role === 'user') jjum.lastMentioned = Math.max(jjum.lastMentioned, turn.at ?? turn.receivedAt);
+        }
+        jjum.mentionHistory = history;
+        if (created.has(jjum.jjumId)) jjum.mentionCount = Math.max(1, history.filter((mention) => mention.counted).length);
+        all.set(jjum.jjumId, jjum);
+        changed.set(jjum.jjumId, jjum);
+        related.set(jjum.jjumId, [...(related.get(jjum.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
       }
-      if (!target.seons.some((s) => s.targetId === sourceId && !s.label)) {
-        upsertSeon(target, sourceId, 1, undefined, now);
+
+      // 전체 변경의 이력 상한을 저장 전에 확인하고 기존 이력은 잘라내지 않는다.
+      for (const jjum of changed.values()) {
+        const length = jjum.mentionHistory?.length ?? 0;
+        if (length > limit && length > (persisted.get(jjum.jjumId)?.size ?? 0)) {
+          throw new Error('Mention history limit exceeded');
+        }
       }
-      changed.set(target.jjumId, target);
-    }
+      const content = [...changed.values()];
+      const summarized = await summarizeJJums(aiAdapter, content, options?.summarizeHint);
+      const failedSummaries = summarized.filter((jjum, index) => jjum === content[index]).length;
+      const savedIds = new Set<string>();
+      if (summarized.length > 0) {
+        await putJJums(storageAdapter, ownerId, summarized);
+        for (const jjum of summarized) {
+          all.set(jjum.jjumId, jjum);
+          savedIds.add(jjum.jjumId);
+        }
+      }
+
+      // 이 단계에 도달하면 모든 새 쩜이 저장되어 임시 ID를 가리키는 쩜선이 남지 않는다.
+      const connections = new Map<string, JJum>();
+      const connect = (sourceId: string, targetId: string): void => {
+        const source = all.get(sourceId)!;
+        if (source.seons.some((seon) => seon.targetId === targetId && !seon.label)) return;
+        const updated = { ...source, seons: [...source.seons] };
+        upsertSeon(updated, targetId, 1, undefined, now);
+        all.set(sourceId, updated);
+        connections.set(sourceId, updated);
+      };
+      for (const [sourceId, names] of related) {
+        for (const name of names) {
+          const targets = matches(name);
+          if (targets.length !== 1 || targets[0].jjumId === sourceId) continue;
+          connect(sourceId, targets[0].jjumId);
+          connect(targets[0].jjumId, sourceId);
+        }
+      }
+      if (connections.size > 0) {
+        await putJJums(storageAdapter, ownerId, [...connections.values()]);
+        for (const id of connections.keys()) savedIds.add(id);
+      }
+      return { storedCount: savedIds.size, failedSummaries, receipt };
+    });
+  } catch (cause) {
+    throw new ConversationProcessingError(receipt, cause);
   }
-  const jjums = [...changed.values()];
-
-  // 3. 요약 보강 (실패해도 계속 진행)
-  const summarized = await summarizeJJums(
-    aiAdapter,
-    jjums,
-    options?.summarizeHint,
-  );
-
-  // 요약 실패 건수 계산 (원본과 동일 참조인 항목)
-  const failedSummaries = summarized.filter(
-    (s, i) => s === jjums[i],
-  ).length;
-
-  // 4. 저장
-  await putJJums(storageAdapter, ownerId, summarized);
-
-  return {
-    storedCount: summarized.length,
-    failedSummaries,
-  };
 }
