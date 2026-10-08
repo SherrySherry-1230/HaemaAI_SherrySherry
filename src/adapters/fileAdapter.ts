@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-09-24
+// @editedBy SherrySherry 2026-10-08
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -220,7 +220,10 @@ export class FileAdapter implements StorageAdapter {
 
   /** jjumName 기반 파일명 결정 — 다른 점과 충돌하면 jjumId 앞 8자리를 붙인다 */
   private filenameFor(jjum: JJum, oldFilename?: string): string {
-    const base = `${sanitize(jjum.jjumName)}.jj`;
+    const sanitizedName = sanitize(jjum.jjumName);
+    // '_'는 인덱스 등 내부 파일용이다. 쩜 이름은 유지하고 물리 파일명만 구분한다.
+    const stem = sanitizedName.startsWith('_') ? `jjum${sanitizedName}` : sanitizedName;
+    const base = `${stem}.jj`;
     const dir = this.ownerDir(jjum.ownerId);
     const available = (filename: string): boolean => {
       if (filename === oldFilename) return true;
@@ -230,7 +233,7 @@ export class FileAdapter implements StorageAdapter {
       return stored?.ownerId === jjum.ownerId && stored.jjumId === jjum.jjumId;
     };
     if (available(base)) return base;
-    const prefix = `${sanitize(jjum.jjumName)}_${sanitize(jjum.jjumId.slice(0, 8))}`;
+    const prefix = `${stem}_${sanitize(jjum.jjumId.slice(0, 8))}`;
     let filename = `${prefix}.jj`;
     for (let suffix = 2; !available(filename); suffix++) filename = `${prefix}_${suffix}.jj`;
     return filename;

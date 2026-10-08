@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-05
+// @editedBy SherrySherry 2026-10-08
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
@@ -183,7 +183,12 @@ export async function processConversationToStorage(
     let jjum: JJum;
     if (existing) {
       const seenFacts = new Set(existing.facts.map((fact) => fact.text));
-      const facts = [...existing.facts, ...fresh.facts.filter((fact) => !seenFacts.has(fact.text))];
+      const facts = [...existing.facts];
+      for (const fact of fresh.facts) {
+        if (seenFacts.has(fact.text)) continue;
+        seenFacts.add(fact.text);
+        facts.push(fact);
+      }
       const events = [...existing.events, ...fresh.events];
       jjum = {
         ...existing,
