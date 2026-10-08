@@ -1,5 +1,5 @@
 // @editedBy SherrySherry 2026-10-08
-/** CSV 타입 계수와 명시적으로 집계한 N으로 단일 타입의 언급 점수 항을 계산한다. */
+/** CSV 타입 계수와 명시적으로 집계한 N으로 언급 점수 항을 계산한다. */
 
 export interface MentionCoefficients {
   readonly typeId: number;
@@ -101,23 +101,38 @@ export function parseMentionCoefficientsCsv(csv: string): ReadonlyMap<number, Me
 }
 
 /**
- * M = alpha * log_beta(N). N은 호출자가 확인한 사용자 선행 언급 횟수(정수, 1 이상)다.
- * v4 mentionCount를 자동 대입하지 않으며, 발화 집계·복수 타입 평균·파워 합산·저장은 하지 않는다.
+ * M = alpha * log_beta(N). 복수 타입은 alpha의 산술평균과 beta의 최댓값을 쓴다.
+ * 같은 type_id는 한 번만 반영한다. 단일 ID 또는 하나 이상의 ID 배열을 받는다.
+ * N은 호출자가 확인한 사용자 선행 언급 횟수(정수, 1 이상)다.
+ * 단편 대화 단위의 집계·중복 방지·점수 누적은 호출자가 담당한다.
+ * 이 함수는 이어진 세션 전체를 다시 분석하거나 누적 점수를 저장하지 않는다.
+ * 이 언급 항은 매 발화 새로 계산하는 회상 점수와 별개다.
+ * v4 mentionCount를 자동 대입하지 않으며, 파워 합산·회상 점수 계산·저장은 하지 않는다.
  * N=1이면 언급 항은 0이다. 미정인 전체 파워 표시 규칙으로 반올림하거나 하한을 올리지 않는다.
  */
 export function calculateMentionScore(
   table: ReadonlyMap<number, MentionCoefficients>,
-  typeId: number,
+  typeIds: number | readonly number[],
   userInitiatedMentionCount: number,
 ): number {
-  if (!Number.isSafeInteger(typeId) || typeId < 1) throw new RangeError('typeId must be a positive safe integer');
   if (!Number.isSafeInteger(userInitiatedMentionCount) || userInitiatedMentionCount < 1) {
     throw new RangeError('N must be a positive safe integer');
   }
-  const coefficients = table.get(typeId);
-  if (!coefficients) throw new RangeError(`No mention coefficients for type_id ${typeId}`);
-  validateCoefficients(coefficients.alpha, coefficients.beta);
-  const score = coefficients.alpha * (Math.log(userInitiatedMentionCount) / Math.log(coefficients.beta));
+  const uniqueTypeIds = new Set(typeof typeIds === 'number' ? [typeIds] : typeIds);
+  if (uniqueTypeIds.size === 0) throw new RangeError('At least one type_id is required');
+  let alpha = 0;
+  let beta = 1;
+  let count = 0;
+  for (const typeId of uniqueTypeIds) {
+    if (!Number.isSafeInteger(typeId) || typeId < 1) throw new RangeError('typeId must be a positive safe integer');
+    const coefficients = table.get(typeId);
+    if (!coefficients) throw new RangeError(`No mention coefficients for type_id ${typeId}`);
+    validateCoefficients(coefficients.alpha, coefficients.beta);
+    // 양의 유한한 계수의 합이 수치 범위를 넘지 않도록 산술평균을 단계별로 구한다.
+    alpha += (coefficients.alpha - alpha) / ++count;
+    beta = Math.max(beta, coefficients.beta);
+  }
+  const score = alpha * (Math.log(userInitiatedMentionCount) / Math.log(beta));
   if (!Number.isFinite(score)) throw new RangeError('Mention score exceeds the finite numeric range');
   return score;
 }
