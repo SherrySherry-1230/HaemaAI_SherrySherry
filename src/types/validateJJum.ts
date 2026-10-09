@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * 쩜(JJum) 스키마 v4 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
@@ -17,6 +17,7 @@ import type {
   JJumEvent,
   JJumFact,
   JJumMention,
+  JJumMentionChunk,
   Seon,
   JJumStatus,
 } from './jjum.ts';
@@ -26,7 +27,7 @@ export interface ValidationResult {
   ok: boolean;
   /** 하드 실패 사유 + 살리면서 고친 항목 리포트 */
   errors: string[];
-  /** ok=true일 때 정규화된 점 */
+  /** ok=true일 때 정규화된 쩜 */
   jjum?: JJum;
   /** 중복 방지 이력이 손상되면 저장 어댑터가 해당 소유자의 처리를 중단해야 한다. */
   invalidMentionHistory?: boolean;
@@ -51,16 +52,19 @@ function toStringArray(v: unknown): string[] {
   return v.filter(str);
 }
 
-function readMentionHistory(value: unknown): { history?: JJumMention[]; errors: string[] } {
-  if (!Array.isArray(value)) return { errors: ['mentionHistory: 배열이어야 함'] };
+function readMentionHistory(
+  value: unknown,
+  field: string,
+  seen: Set<string>,
+): { history?: JJumMention[]; errors: string[] } {
+  if (!Array.isArray(value)) return { errors: [`${field}: 배열이어야 함`] };
   const history: JJumMention[] = [];
   const errors: string[] = [];
-  const seen = new Set<string>();
   const validId = (id: unknown): id is string => typeof id === 'string' && id.trim() !== '' && id.length <= 512;
   const validTime = (time: unknown): time is number => typeof time === 'number' && Number.isFinite(time) && time >= 0;
   for (let i = 0; i < value.length; i++) {
     const entry: unknown = value[i];
-    const prefix = `mentionHistory[${i}]`;
+    const prefix = `${field}[${i}]`;
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
       errors.push(`${prefix}: 객체여야 함`);
       continue;
@@ -91,10 +95,34 @@ function readMentionHistory(value: unknown): { history?: JJumMention[]; errors: 
   return errors.length > 0 ? { errors } : { history, errors };
 }
 
+function readMentionHistoryChunks(
+  value: unknown,
+  seen: Set<string>,
+): { chunks?: JJumMentionChunk[]; errors: string[] } {
+  if (!Array.isArray(value)) return { errors: ['mentionHistoryChunks: 배열이어야 함'] };
+  const chunks: JJumMentionChunk[] = [];
+  const errors: string[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const chunk: unknown = value[i];
+    const prefix = `mentionHistoryChunks[${i}]`;
+    if (typeof chunk !== 'object' || chunk === null || Array.isArray(chunk)) {
+      errors.push(`${prefix}: 객체여야 함`);
+      continue;
+    }
+    const item = chunk as Record<string, unknown>;
+    if (item.sequence !== i + 2) errors.push(`${prefix}: 묶음 번호는 2부터 연속이어야 함`);
+    const mentions = readMentionHistory(item.entries, `${prefix}.entries`, seen);
+    errors.push(...mentions.errors);
+    if (mentions.history?.length === 0) errors.push(`${prefix}.entries: 빈 묶음은 저장할 수 없음`);
+    if (mentions.history) chunks.push({ ...item, entries: mentions.history } as JJumMentionChunk);
+  }
+  return errors.length > 0 ? { errors } : { chunks, errors };
+}
+
 export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): ValidationResult {
   const errors: string[] = [];
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
-    return { ok: false, errors: ['점이 JSON 객체가 아님'] };
+    return { ok: false, errors: ['쩜이 JSON 객체가 아님'] };
   }
   const d = data as Record<string, unknown>;
 
@@ -105,9 +133,17 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
   }
   if (errors.length > 0) return { ok: false, errors };
 
-  const mentions = d.mentionHistory === undefined ? undefined : readMentionHistory(d.mentionHistory);
-  if (mentions && mentions.errors.length > 0) {
-    return { ok: false, errors: mentions.errors, invalidMentionHistory: true };
+  const seenMentions = new Set<string>();
+  const mentions = d.mentionHistory === undefined
+    ? undefined : readMentionHistory(d.mentionHistory, 'mentionHistory', seenMentions);
+  const mentionChunks = d.mentionHistoryChunks === undefined
+    ? undefined : readMentionHistoryChunks(d.mentionHistoryChunks, seenMentions);
+  const mentionErrors = [...(mentions?.errors ?? []), ...(mentionChunks?.errors ?? [])];
+  if (mentionChunks?.chunks?.length && !mentions?.history?.length) {
+    mentionErrors.push('mentionHistory: 후속 묶음이 있으면 비어 있지 않은 첫 묶음이 필요함');
+  }
+  if (mentionErrors.length > 0) {
+    return { ok: false, errors: mentionErrors, invalidMentionHistory: true };
   }
 
   const facts: JJumFact[] = [];
@@ -197,6 +233,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     seons,
     mentionCount: toNumber(d.mentionCount, 0),
     ...(mentions ? { mentionHistory: mentions.history! } : {}),
+    ...(mentionChunks ? { mentionHistoryChunks: mentionChunks.chunks! } : {}),
     firstSeen: toNumber(d.firstSeen, now),
     lastMentioned: toNumber(d.lastMentioned, now),
     recallCount: toNumber(d.recallCount, 0),

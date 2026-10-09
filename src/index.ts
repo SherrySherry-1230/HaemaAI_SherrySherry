@@ -1,9 +1,16 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export {
+  DEFAULT_MENTION_HISTORY_CHUNK_SIZE,
+  iterateMentionHistory,
+  appendMentionHistory,
+  getMentionHistoryGroups,
+  type MentionHistoryGroup,
+} from './mentionHistory.ts';
 export {
   parseMentionCoefficientsCsv,
   calculateMentionScore,

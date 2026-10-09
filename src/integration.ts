@@ -1,13 +1,10 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
  * 흐름: extractJJums → createJJum → summarizeJJum → putJJums
  *
- * 용어 규칙 (구용어 금지):
- * - HCell/Cell/Tail 사용 금지
- * - JJum / jjum / Seon 만 사용
- * - 점 → 쩜, 선 → 쩜선
+ * 쩜(JJum)의 내용·통계·연속 언급 기록과 쩜선(Seon)을 함께 보존한다.
  */
 
 import type {
@@ -18,6 +15,7 @@ import type {
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
 import { upsertSeon } from './seons.ts';
+import { appendMentionHistory, iterateMentionHistory, DEFAULT_MENTION_HISTORY_CHUNK_SIZE } from './mentionHistory.ts';
 import type { JJum, JJumMention } from './types/jjum.ts';
 import {
   prepareConversationRequest,
@@ -187,6 +185,7 @@ export async function processConversationToStorage(
   options?: {
     sourceService?: string;
     summarizeHint?: string;
+    /** 묶음 하나의 크기. 가득 차면 같은 쩜의 다음 묶음으로 이어 저장한다. */
     maxMentionHistoryEntries?: number;
   },
 ): Promise<ConversationProcessingResult> {
@@ -195,14 +194,14 @@ export async function processConversationToStorage(
   const prepared = prepareConversationRequest({ ...extractReq, now });
   const receipt = conversationReceipt(prepared);
   try {
-    const limit = options?.maxMentionHistoryEntries ?? 10_000;
-    if (!Number.isSafeInteger(limit) || limit < 1) throw new Error('Invalid mention history limit');
+    const chunkSize = options?.maxMentionHistoryEntries ?? DEFAULT_MENTION_HISTORY_CHUNK_SIZE;
+    if (!Number.isSafeInteger(chunkSize) || chunkSize < 1) throw new Error('Invalid mention history chunk size');
     return await withConversationLock(storageAdapter, ownerId, async () => {
       const stored = await storageAdapter.listJJums(ownerId);
       const turns = new Map(prepared.turns.map((turn) => [turn.utteranceId, turn]));
       // 비활성 쩜의 기록도 확인하여 같은 ID로 확정 발화를 바꾸지 못하게 한다.
       for (const jjum of stored) {
-        for (const mention of jjum.mentionHistory ?? []) {
+        for (const mention of iterateMentionHistory(jjum)) {
           if (mention.conversationId !== prepared.conversationId) continue;
           const turn = turns.get(mention.utteranceId);
           if (turn && (mention.fingerprint !== utteranceFingerprint(turn)
@@ -224,7 +223,7 @@ export async function processConversationToStorage(
       const created = new Set<string>();
       const related = new Map<string, string[]>();
       const persisted = new Map(stored.map((jjum) => [jjum.jjumId,
-        new Set((jjum.mentionHistory ?? []).map((mention) => mentionKey(mention.conversationId, mention.utteranceId))),
+        new Set(Array.from(iterateMentionHistory(jjum), (mention) => mentionKey(mention.conversationId, mention.utteranceId))),
       ]));
       const normalize = (name: string): string => name.trim().toLowerCase();
       const matches = (name: string): JJum[] => {
@@ -291,8 +290,9 @@ export async function processConversationToStorage(
           jjum = fresh;
           created.add(jjum.jjumId);
         }
-        const history = [...(jjum.mentionHistory ?? [])];
-        const byKey = new Map(history.map((mention) => [mentionKey(mention.conversationId, mention.utteranceId), mention]));
+        const additions: JJumMention[] = [];
+        const byKey = new Map(Array.from(iterateMentionHistory(jjum),
+          (mention) => [mentionKey(mention.conversationId, mention.utteranceId), mention] as const));
         for (const { turn, kind } of evidence.values()) {
           const key = mentionKey(prepared.conversationId, turn.utteranceId);
           const previous = byKey.get(key);
@@ -307,25 +307,18 @@ export async function processConversationToStorage(
             receivedAt: turn.receivedAt, recordedAt: now,
             fingerprint: utteranceFingerprint(turn), counted: kind === 'initiated',
           };
-          history.push(mention);
+          additions.push(mention);
           byKey.set(key, mention);
           if (!created.has(jjum.jjumId) && mention.counted) jjum.mentionCount += 1;
           if (turn.role === 'user') jjum.lastMentioned = Math.max(jjum.lastMentioned, turn.at ?? turn.receivedAt);
         }
-        jjum.mentionHistory = history;
-        if (created.has(jjum.jjumId)) jjum.mentionCount = Math.max(1, history.filter((mention) => mention.counted).length);
+        Object.assign(jjum, appendMentionHistory(jjum, additions, chunkSize));
+        if (created.has(jjum.jjumId)) jjum.mentionCount = Math.max(1, [...byKey.values()].filter((mention) => mention.counted).length);
         all.set(jjum.jjumId, jjum);
         changed.set(jjum.jjumId, jjum);
         related.set(jjum.jjumId, [...(related.get(jjum.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
       }
 
-      // 전체 변경의 이력 상한을 저장 전에 확인하고 기존 이력은 잘라내지 않는다.
-      for (const jjum of changed.values()) {
-        const length = jjum.mentionHistory?.length ?? 0;
-        if (length > limit && length > (persisted.get(jjum.jjumId)?.size ?? 0)) {
-          throw new Error('Mention history limit exceeded');
-        }
-      }
       const content = [...changed.values()];
       const summarized = await summarizeJJums(aiAdapter, content, options?.summarizeHint);
       const failedSummaries = summarized.filter((jjum, index) => jjum === content[index]).length;
