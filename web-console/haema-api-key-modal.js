@@ -1,4 +1,5 @@
 // @editedBy SherrySherry 2026-09-24
+// @editedBy YAONG1230 2026-10-07
 /**
  * haema-api-key-modal.js
  *
@@ -1019,19 +1020,19 @@ async function saveApiKeyModal() {
 
     // 입력 검증
     if (!name) {
-        alert("키 이름을 입력해주세요!");
+        await HAEMA_DIALOG.alert("키 이름을 입력해주세요!", { tone: 'warning' });
         return false;
     }
     if (!provider) {
-        alert("API 제공자를 선택해주세요!");
+        await HAEMA_DIALOG.alert("API 제공자를 선택해주세요!", { tone: 'warning' });
         return false;
     }
     if (!model) {
-        alert("모델을 선택해주세요!");
+        await HAEMA_DIALOG.alert("모델을 선택해주세요!", { tone: 'warning' });
         return false;
     }
     if (!apiKey) {
-        alert("API 키를 입력해주세요!");
+        await HAEMA_DIALOG.alert("API 키를 입력해주세요!", { tone: 'warning' });
         return false;
     }
 
@@ -1042,7 +1043,7 @@ async function saveApiKeyModal() {
     try {
         const validation = await validateProviderConnection(provider, apiKey, baseURL);
         if (!validation.ok) {
-            notifySaveResult(false, provider, model, false, validation.message);
+            await notifySaveResult(false, provider, model, false, validation.message);
             return false;
         }
 
@@ -1061,7 +1062,7 @@ async function saveApiKeyModal() {
         await persistApiKeyProfile(keyItem);
         const serverSaved = await saveToLocalServerEnv(keyItem);
         if (!serverSaved) {
-            notifySaveResult(false, provider, model, false, "로컬 서버에 API 설정을 저장하지 못했습니다.");
+            await notifySaveResult(false, provider, model, false, "로컬 서버에 API 설정을 저장하지 못했습니다.");
             return false;
         }
 
@@ -1081,11 +1082,11 @@ async function saveApiKeyModal() {
             };
         }
 
-        notifySaveResult(true, provider, model);
+        await notifySaveResult(true, provider, model);
         return true;
     } catch (error) {
         console.error("HAEMA_API_KEY_MODAL: API 설정 저장 실패", error);
-        notifySaveResult(false, provider, model, false, error.message || "API 설정을 저장하지 못했습니다.");
+        await notifySaveResult(false, provider, model, false, error.message || "API 설정을 저장하지 못했습니다.");
         return false;
     } finally {
         if (modalSaveButton) modalSaveButton.disabled = false;
@@ -1153,8 +1154,8 @@ async function saveToLocalServerEnv(keyItem) {
 // =========================================================
 // 12. 저장 결과 안내
 // =========================================================
-// 콘솔 참조가 있으면 상태 텍스트를 갱신하고, 없으면 alert로 안내한다.
-function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false, errorMessage = "") {
+// 상태 텍스트를 유지하고, 연결 실패는 캐릭터 알림으로도 안내한다.
+async function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false, errorMessage = "") {
     const message = !success
         ? `❌ API 연결 실패: ${errorMessage || "키 또는 Base URL을 확인해주세요."}`
         : serverSaveOnlyFailed
@@ -1163,14 +1164,15 @@ function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false
 
     if (consoleRef && typeof consoleRef.render === "function") {
         consoleRef.statusText = message;
-    } else {
-        alert(message);
+    } else if (success) {
+        await HAEMA_DIALOG.alert(message, { title: 'API 키를 저장했어요', tone: 'info' });
     }
+    if (!success) await HAEMA_DIALOG.alert(message, { title: 'API 연결을 확인해주세요', tone: 'error' });
 }
 
 async function refreshConsoleAfterProfileAction(message) {
     if (!consoleRef) {
-        alert(message);
+        await HAEMA_DIALOG.alert(message, { tone: 'info' });
         return;
     }
 
@@ -1368,7 +1370,7 @@ async function bindEvents() {
             const deleteBtn = event.target?.closest(".delete-key-btn");
             if (deleteBtn) {
                 const keyId = deleteBtn.getAttribute("data-key-id");
-                if (keyId && confirm("이 API 키를 삭제하시겠습니까?")) {
+                if (keyId && await HAEMA_DIALOG.confirm("이 API 키를 삭제하시겠습니까?", { title: 'API 키를 삭제할까요?', confirmText: '삭제하기', cancelText: '취소' })) {
                     await deleteKey(keyId);
                 }
             }
