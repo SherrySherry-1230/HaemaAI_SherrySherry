@@ -488,5 +488,53 @@
     "localFile": "Resources/haema-design/crying-haema.png",
     "verifiedVisualRole": "Original crying Haema character for the empty JJum state",
     "exportNote": "Copied to the Yaong review page and exported as PNG on 2026-10-05; the human original was not changed."
+  },
+  {
+    "slot": "Current pale-yellow preview bubble without the legacy black orb",
+    "parentNodeId": "31:87",
+    "sha256": "dfad3ad8eff5f397b2c14f078fe70c16cd8fdc77d80e8f70ae69be941535e3f9",
+    "bytes": 2302,
+    "verifiedAt": "2026-10-08",
+    "localFile": "Resources/haema-design/haema-preview-background.svg",
+    "file": "haema-preview-background.svg",
+    "editedBy": "YAONG1230",
+    "intrinsicHeight": 146.164,
+    "figmaRef": "img22",
+    "intrinsicWidth": 647.764,
+    "nodeId": "40:340",
+    "source": "Fresh get_design_context for human MacBook frame; original asset bytes retained",
+    "fileKey": "a3PU74yLzhQDHLN2WWzWG2"
+  },
+  {
+    "slot": "Circular mask for the Haema character profile",
+    "parentNodeId": "31:87",
+    "sha256": "aba4047dbd43233ffd68a73111a4d524ed76e7e9d186b249a60dfca76cc4fa7c",
+    "bytes": 598,
+    "verifiedAt": "2026-10-08",
+    "localFile": "Resources/haema-design/haema-preview-avatar-mask.svg",
+    "file": "haema-preview-avatar-mask.svg",
+    "editedBy": "YAONG1230",
+    "intrinsicHeight": 82.36,
+    "figmaRef": "imgFrame23",
+    "intrinsicWidth": 82.3647,
+    "nodeId": "114:1074",
+    "source": "Fresh get_design_context for human MacBook frame; original asset bytes retained",
+    "fileKey": "a3PU74yLzhQDHLN2WWzWG2"
+  },
+  {
+    "slot": "Original default Haema character bitmap inside the circular profile",
+    "parentNodeId": "31:87",
+    "sha256": "f91356aea49ad1f9765376860ea52ab45c35153037aae94660c1d93db9156257",
+    "bytes": 40174,
+    "verifiedAt": "2026-10-08",
+    "localFile": "Resources/haema-design/haema-preview-character.png",
+    "file": "haema-preview-character.png",
+    "editedBy": "YAONG1230",
+    "intrinsicHeight": 441,
+    "figmaRef": "imgDefaultHaema1",
+    "intrinsicWidth": 244,
+    "nodeId": "114:1075",
+    "source": "Fresh get_design_context for human MacBook frame; original asset bytes retained",
+    "fileKey": "a3PU74yLzhQDHLN2WWzWG2"
   }
 ]

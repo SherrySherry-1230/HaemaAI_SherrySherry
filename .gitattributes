@@ -1,0 +1,3 @@
+# Preserve the supplied Illustrator artwork and favicon source bytes.
+Resources/haema-emoji/*.ai binary
+Resources/favicon.svg -text whitespace=cr-at-eol
