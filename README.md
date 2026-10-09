@@ -1,4 +1,4 @@
-<!-- @editedBy SherrySherry 2026-10-08 -->
+<!-- @editedBy SherrySherry 2026-10-10 -->
 # 🦭 Haema — 호스트 챗봇의 해마
 
 > **An artificial hippocampus for the host chatbot.** 호스트가 대화 상대와 경험을 기억하고 연상하도록 돕는 범용 기억 모듈이다.
@@ -33,6 +33,8 @@ Haema는 호스트의 기억을 묶고 색인을 만들며, 현재 대화의 단
 Haema는 **기억을 만들고 넘겨주는 소프트웨어**다. 말하는 건 당신의 챗봇이 한다.
 
 대화를 저장할 때는 호스트의 안정적인 `conversationId`·`utteranceId`를 전달하거나 `prepareConversationRequest()`로 먼저 ID를 발급·보관한다. 같은 발화의 재시도는 같은 ID를 재사용한다. 사용자 언급의 원발화·수신·처리 시각과 역할별 집계 근거를 쩜의 `mentionHistory`에 남기며, 호스트 발언에 사용자 언급 증분을 주지 않는다. 자세한 입력·재시도·호환 범위는 [발화 식별과 언급 이력 API](docs/CONVERSATION_API.md)를 참고한다.
+
+이력 10,000개 이후에는 같은 쩜의 2·3·4번 기록 묶음으로 이어 저장한다. `mentionHistoryChunks`는 같은 `.jj` 파일 안의 연속 기록이며, 쩜 ID·누적 횟수·회상 대상을 나누거나 기존 이력을 삭제하지 않는다. 모든 묶음을 읽을 때는 `iterateMentionHistory()`, 이름과 묶음 번호를 표시할 때는 `getMentionHistoryGroups()`를 사용한다.
 
 ### 👀 이런 식으로 움직인다
 

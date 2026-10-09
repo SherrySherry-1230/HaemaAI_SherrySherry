@@ -1,7 +1,7 @@
-<!-- @editedBy SherrySherry 2026-10-08 -->
+<!-- @editedBy SherrySherry 2026-10-10 -->
 # 발화 식별과 언급 이력 API
 
-2026-10-08 구현. `schemaVersion=4` 파일에 선택 필드 `mentionHistory`를 추가한다. 과거 기억이나 언급 횟수를 이행·삭제하지 않는다. 발화 ID는 내용의 압축값이 아니라 개별 발화의 식별자다.
+2026-10-08 발화 이력 구현, 2026-10-10 연속 묶음 보강. `schemaVersion=4` 파일의 선택 필드 `mentionHistory`와 `mentionHistoryChunks`에 같은 쩜의 이력을 이어 보관한다. 과거 기억이나 언급 횟수를 일괄 이행·삭제하지 않는다. 발화 ID는 내용의 압축값이 아니라 개별 발화의 식별자다.
 
 ## 저장 전에 발화 ID를 준비한다
 
@@ -77,7 +77,7 @@ AI는 제공된 `turns` 안에서 선행 언급을 판단한다. 호출자가 �
 
 ## 쩜에 남는 기록과 횟수
 
-`mentionHistory`는 쩜의 `.jj` JSON 안에 다음 항목을 저장한다. `editHistory`, `facts`, `events`, `responseFeedback`를 대체하지 않는다.
+`mentionHistory`와 후속 묶음의 `entries`는 쩜의 `.jj` JSON 안에 다음 항목을 저장한다. `editHistory`, `facts`, `events`, `responseFeedback`를 대체하지 않는다.
 
 ```ts
 interface JJumMention {
@@ -112,11 +112,26 @@ interface JJumMention {
 - 같은 프로세스에서 FileAdapter의 같은 실제 저장 경로·사용자에 대한 통합 호출은 순서대로 처리한다. 다른 StorageAdapter는 선택 메서드 `withOwnerLock`을 제공하거나 같은 어댑터 객체의 기본 대기열을 사용한다. 다른 프로세스·다른 어댑터의 직접 쓰기·`patchJJum`·`recall` 등 별도 경로까지 트랜잭션으로 보호하지 않는다. 호스트는 그런 쓰기를 별도로 직렬화해야 한다.
 - 발급 ID를 처음 처리 전에 보관하지 않았고 응답까지 유실됐다면, 식별 정보 없는 새 요청이 재시도인지 확실히 알 수 없다. 쩜으로 저장된 근거가 없는 발화에 대한 전역 메시지 보관함도 만들지 않는다. 따라서 기억 이력이 없는 발화의 편집 충돌까지 영구 추적한다고 주장하지 않는다.
 
-## 크기 제한과 기존 파일 호환
+## 연속 기록 묶음과 기존 파일 호환
 
-통합 옵션 `maxMentionHistoryEntries`의 기본값은 쩜당 **10,000개**이며 양의 정수다. 요청으로 추가할 이력이 상한을 넘으면 저장 전에 오류를 반환한다. 기존 이력을 몰래 잘라 중복 방지 근거를 잃거나 횟수만 올리지 않는다. 호스트가 상한을 조정할 수 있지만, 별도 보관·압축·삭제 정책은 구현하지 않는다.
+통합 옵션 `maxMentionHistoryEntries`는 **묶음 하나의 크기**이며 기본값은 10,000, 허용값은 양의 안전한 정수다. 기존 옵션 이름을 유지하되 전체 이력의 저장 상한이라는 동작은 대체했다. 10,000개를 채우면 다음 새 기록부터 2번 묶음에 넣고, 이어서 3·4번으로 계속 보존한다. 수량 때문에 저장을 거부하거나 기존 기록을 삭제하지 않는다. 저장 장치 오류 등은 기존 처리 오류·receipt 계약으로 전달한다.
 
-과거 파일에 `mentionHistory`가 없으면 없는 상태 그대로 읽는다. 정상 이력의 추가 필드도 보존한다. 이력 형식이 손상된 해당 사용자의 저장소는 오류를 알려 처리 중단하며, 빈 이력으로 바꾸거나 같은 이름의 새 쩜을 만들어 중복 증가시키지 않는다. 다른 사용자의 손상 이력 때문에 현재 사용자의 기억을 섞거나 차단하지 않는다.
+```ts
+// 같은 JJum, 같은 jjumId의 단일 .jj 파일 내부
+mentionHistory?: JJumMention[]; // 첫 묶음
+mentionHistoryChunks?: Array<{
+  sequence: number;             // 2, 3, 4, ...
+  entries: JJumMention[];
+}>;
+```
+
+`getMentionHistoryGroups(jjum)`는 `{sequence, name, entries}`를 반환한다. `name`은 현재 쩜 이름, `이름2`, `이름3` 순의 표시값이며, 별도 쩜·검색 이름·별칭을 생성하지 않는다. 묶음의 신원은 부모 `jjumId`와 번호로 정한다. 쩜의 이름이 바뀌어도 번호와 기록은 그대로이며 표시값만 현재 이름을 따른다. `iterateMentionHistory(jjum)`는 첫 묶음부터 모든 항목을 저장 순서대로 순회한다. 직접 이력을 추가하는 어댑터에는 원본을 바꾸지 않는 `appendMentionHistory(jjum, additions, chunkSize?)`를 제공한다. 이 함수는 중복 키의 직접 추가를 거부하며, 통합 처리에서는 재전송을 먼저 제외한다.
+
+중복·발화 편집 검사는 **전체 묶음**을 대상으로 한다. host·prompted도 보관 공간을 사용하되 사용자 언급 증분은 0이다. `mentionCount`, 최초 시각, `recallCount`, 쩜선은 부모 쩜 한 곳에 유지하고, 새 묶음의 생성에 초기 횟수 1을 추가하지 않는다. 회상 후보도 같은 `jjumId` 하나다. 기존 언급 점수 함수에 부모의 누적 N을 직접 넣는 테스트를 수행했으며, 묶음별 점수를 더하지 않는 기준을 확인했다. 전체 파워의 저장 연결이나 보류 중인 회상·언급 매너 계산식을 새로 구현한 것은 아니다.
+
+모든 묶음과 누적 횟수를 같은 JJum payload에 저장하므로 FileAdapter는 하나의 파일 교체로 반영한다. **파일 내부의 논리적 분할**이며 별도 파일·페이지로 나누지는 않는다. 전체 기록이 늘면 파일 크기와 조회 비용도 늘어난다. 기존 저장 인터페이스와 단일 파일 교체의 보존 특성을 유지하기 위해 선택한 방식이다.
+
+과거 파일에 이력이 없으면 없는 상태 그대로 읽는다. 기존 묶음의 번호·추가 정보·발화 시각을 보존하며, 설정한 크기가 작아지거나 과거 묶음이 더 길어도 재분할하지 않고 다음 묶음에 추가한다. 이력을 빈 값으로 바꾸어 재집계하지 않는다. 후속 묶음의 번호 누락·빈 항목 배열·첫 묶음 부재/공백·묶음 간 중복이나 역할·ID·시각 손상은 해당 사용자의 처리 오류로 알린다. 다른 사용자의 손상 이력 때문에 현재 사용자의 기억을 섞거나 차단하지 않는다.
 
 이 호환성은 **새 코어가 기존 파일을 읽는 방향**이다. 새 필드를 모르는 옛 검증기는 저장할 때 이력을 버릴 수 있으므로 이력 쓰기에 참여하는 실행 환경은 함께 업데이트해야 한다. 실제 개인 파일을 일괄 변환하거나 과거 언급 기록을 만들어 넣지 않는다.
 
@@ -124,14 +139,15 @@ interface JJumMention {
 
 기존 `POST /api/conversation`과 별칭 경로는 `conversationId`와 `turns[].utteranceId/receivedAt/at/final`을 코어로 전달한다. 성공 응답은 `extraction.receipt`, 준비 이후 처리 실패 응답은 `receipt`를 포함한다. 입력 자체가 잘못되어 준비되지 않았거나 처리 전 설정·연결 검사가 실패한 경우에는 영수증이 없을 수 있다. 발화 식별·시각 형식 오류는 HTTP 400으로 반환한다.
 
-현재 콘솔 화면은 ID를 지속 보관하도록 수정하지 않았다. 안정적인 재시도가 필요한 호스트는 자체 ID를 제공하거나 위 준비 함수를 사용해야 한다. 이 경로는 저장 뒤 회상도 실행하므로, 언급 횟수의 중복 방지가 회상 횟수의 중복 방지까지 뜻하지 않는다. 재시도 시 회상 상태 갱신을 원하지 않으면 기존 `touch:false` 옵션을 사용한다.
+안정적인 재시도가 필요한 호스트는 자체 ID를 제공하거나 위 준비 함수를 사용하고, 전송 전에 보관한 ID·시각을 재사용해야 한다. 이 경로는 저장 뒤 회상도 실행하므로, 언급 횟수의 중복 방지가 회상 횟수의 중복 방지까지 뜻하지 않는다. 재시도 시 회상 상태 갱신을 원하지 않으면 기존 `touch:false` 옵션을 사용한다. 요청이 선택한 저장소 인스턴스를 추출·저장·회상까지 사용하며, 진행 중 저장소 선택이 바뀌어도 해당 요청을 다른 저장소로 넘기지 않는다.
 
 ## 로컬 검증
 
 기존 `npm test`와 `npm run typecheck`에 더해 아래 검사를 실행한다. 테스트 파일은 저장소의 기존 방침대로 Git에서 제외되므로 현재 로컬 환경에만 있다. `package.json`에 무시되는 새 경로를 추가하지 않았다.
 
 ```sh
-node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-identity.test.ts tests/provider-extraction.test.ts tests/mention-storage.test.ts tests/mention-history.test.ts
+node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-identity.test.ts tests/provider-extraction.test.ts tests/mention-storage.test.ts tests/mention-history.test.ts tests/mention-continuation.test.ts
+node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-http.test.ts
 ```
 
 가짜 SDK·합성 발화·임시 저장소로 검증하며, 실제 모델의 의미 판정 품질을 검증했다고 주장하지 않는다.
