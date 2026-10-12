@@ -25,6 +25,20 @@ export type FactSource = 'conversation' | 'user_edit' | 'batch';
 /** 편집 이력의 주체 */
 export type EditActor = 'user' | 'ai' | 'batch';
 
+/** 판단 근거 부족과 오류·충돌 의심을 구별하는 Laya 검토 판정. */
+export type LayaVerdict = '정상' | '이상함' | '정보 부족';
+
+interface LayaTagBase {
+  reason: string;
+  /** 시간대가 포함된 ISO 날짜·시각. 별도 검토 버전은 저장하지 않는다. */
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+/** 대기·실패는 판정이 아니며 이전 정상 판정을 이어받지 않는다. */
+export type LayaTag = (LayaTagBase & { state: 'reviewed'; verdict: LayaVerdict })
+  | (LayaTagBase & { state: 'pending' | 'failed'; verdict?: never });
+
 /**
  * 쩜 상태.
  * - `active`   : 살아있는 기억
@@ -66,6 +80,11 @@ export interface JJumEditEntry {
   action: string;
   field?: string;
   by: EditActor;
+  /** 새 대화 근거에 따라 무엇을 수정했는지 남기는 짧은 기록. */
+  memo?: string;
+  evidence?: { conversationId: string; utteranceIds: string[] };
+  reviewRequested?: boolean;
+  [key: string]: unknown;
 }
 
 /** 호스트 AI 답변에 대한 사용자 반응의 결과 */
@@ -166,6 +185,8 @@ export interface JJum {
   /** (status=merged일 때) 어디로 흡수됐는지 역참조 */
   mergedInto?: JJumId;
   editHistory: JJumEditEntry[];
+  /** 이전 파일에는 없을 수 있다. 누락을 정상 판정으로 간주하지 않는다. */
+  layaTag?: LayaTag;
   /** 호스트 AI 답변에 대한 사용자 반응의 간략 기록 */
   responseFeedback: ResponseFeedback[];
 

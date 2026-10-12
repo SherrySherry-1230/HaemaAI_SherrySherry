@@ -22,6 +22,7 @@ import type {
   JJumStatus,
 } from './jjum.ts';
 import { SCHEMA_VERSION } from './jjum.ts';
+import { isLayaTag, isLayaReviewText } from '../layaReview.ts';
 
 export interface ValidationResult {
   ok: boolean;
@@ -31,6 +32,8 @@ export interface ValidationResult {
   jjum?: JJum;
   /** 중복 방지 이력이 손상되면 저장 어댑터가 해당 소유자의 처리를 중단해야 한다. */
   invalidMentionHistory?: boolean;
+  /** 손상된 검토·수정 근거를 조용히 버리지 않고 해당 소유자의 처리를 중단한다. */
+  invalidLayaReview?: boolean;
 }
 
 const STATUSES: JJumStatus[] = ['active', 'resting', 'archived', 'merged'];
@@ -146,6 +149,43 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     return { ok: false, errors: mentionErrors, invalidMentionHistory: true };
   }
 
+  const reviewErrors: string[] = [];
+  if (d.layaTag !== undefined && !isLayaTag(d.layaTag)) {
+    reviewErrors.push('layaTag: 검토 상태·판정·이유·시간대 포함 시각 오류');
+  }
+  if (Array.isArray(d.editHistory)) {
+    const validId = (value: unknown): value is string =>
+      typeof value === 'string' && value.trim() !== '' && value.length <= 512;
+    for (let i = 0; i < d.editHistory.length; i++) {
+      const entry: unknown = d.editHistory[i];
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+      const item = entry as Record<string, unknown>;
+      const prefix = `editHistory[${i}]`;
+      if (item.memo !== undefined && !isLayaReviewText(item.memo)) reviewErrors.push(`${prefix}.memo: 짧은 수정 이유 필요`);
+      if (item.reviewRequested !== undefined && typeof item.reviewRequested !== 'boolean') {
+        reviewErrors.push(`${prefix}.reviewRequested: boolean이어야 함`);
+      }
+      if (item.evidence !== undefined) {
+        const evidence = item.evidence;
+        if (typeof evidence !== 'object' || evidence === null || Array.isArray(evidence)) {
+          reviewErrors.push(`${prefix}.evidence: 대화·발화 근거 객체 필요`);
+        } else {
+          const e = evidence as Record<string, unknown>;
+          if (!validId(e.conversationId) || !Array.isArray(e.utteranceIds)
+            || e.utteranceIds.length === 0 || !e.utteranceIds.every(validId)
+            || new Set(e.utteranceIds).size !== e.utteranceIds.length) {
+            reviewErrors.push(`${prefix}.evidence: 대화·발화 ID 오류`);
+          }
+        }
+      }
+      if ((item.memo !== undefined || item.evidence !== undefined || item.reviewRequested !== undefined)
+        && (!str(item.action) || item.action.trim() === '')) {
+        reviewErrors.push(`${prefix}.action: 수정 기록의 작업명 필요`);
+      }
+    }
+  }
+  if (reviewErrors.length > 0) return { ok: false, errors: reviewErrors, invalidLayaReview: true };
+
   const facts: JJumFact[] = [];
   if (Array.isArray(d.facts)) {
     for (const f of d.facts) {
@@ -201,6 +241,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
       if (typeof h === 'object' && h !== null && str((h as Record<string, unknown>).action)) {
         const hr = h as Record<string, unknown>;
         editHistory.push({
+          ...hr,
           date: toNumber(hr.date, now),
           action: hr.action as string,
           ...(str(hr.field) ? { field: hr.field as string } : {}),
@@ -243,6 +284,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     mergedFrom: toStringArray(d.mergedFrom),
     ...(str(d.mergedInto) ? { mergedInto: d.mergedInto as string } : {}),
     editHistory,
+    ...(isLayaTag(d.layaTag) ? { layaTag: { ...d.layaTag } } : {}),
     responseFeedback: Array.isArray(d.responseFeedback)
       ? d.responseFeedback
           .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)

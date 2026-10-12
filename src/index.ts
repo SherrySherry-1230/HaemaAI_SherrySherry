@@ -1,9 +1,19 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-12
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export {
+  reviewStoredJJum,
+  captureLayaReviewIntent,
+  pendingLayaTag,
+  layaContentSnapshot,
+  type LayaReviewEngine,
+  type LayaReviewRequest,
+  type LayaReviewResult,
+  type LayaReviewIntent,
+} from './layaReview.ts';
 export {
   DEFAULT_MENTION_HISTORY_CHUNK_SIZE,
   iterateMentionHistory,
