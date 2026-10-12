@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * Haema 저장 어댑터 인터페이스 — 백엔드 교체 구조의 경계면.
  *
@@ -13,7 +13,7 @@
  *   상호 변환은 어댑터 내부에서 처리한다.
  */
 
-import type { JJum, JJumId, JJumStatus } from '../types/jjum.ts';
+import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 
 /** 목록 조회 정렬 키 — 스키마 v3의 통계 필드 */
 export type JJumSortKey = 'mentionCount' | 'lastMentioned' | 'firstSeen' | 'recallCount';
@@ -38,8 +38,24 @@ export interface JJumQuery {
  * (한 ownerId의 호출이 다른 ownerId의 점에 닿아서는 안 된다)
  */
 export interface StorageAdapter {
+  /** 같은 실제 저장소를 가리키는 인스턴스끼리 공유하는 프로세스 내부 조정 범위. 저장하지 않는다. */
+  readonly coordinationScope?: object;
+
   /** 참여하는 대화 처리끼리 owner별 직렬 실행한다. 다른 직접 쓰기·프로세스의 잠금은 아니다. */
   withOwnerLock?<T>(ownerId: string, run: () => Promise<T>): Promise<T>;
+
+  /**
+   * 최신 내용과 대기 태그가 모두 같을 때 태그만 조건부 갱신한다.
+   * 구현체는 비교와 저장 사이의 직접 쓰기를 막고 최신 통계·다른 필드를 보존해야 한다.
+   * 미지원 어댑터의 검토 반영은 withOwnerLock에 참여하는 쓰기 사이에서만 보호된다.
+   */
+  compareAndSetLayaTag?(
+    ownerId: string,
+    jjumId: JJumId,
+    expectedSnapshot: string,
+    expectedTag: LayaTag,
+    newTag: LayaTag,
+  ): Promise<boolean>;
 
   /** 단건 조회. 없으면 null */
   getJJum(ownerId: string, jjumId: JJumId): Promise<JJum | null>;

@@ -1,7 +1,7 @@
 <!-- @editedBy SherrySherry 2026-10-10 -->
 <!-- @editedBy 사람사람 작성자 힘듦...  2026-09-22 -->
 # 쩜(JJum) 스키마 (v5 기획안)
-> v5의 미구현 기획과 현재 구현을 구분한다. 파일 검증의 기준은 v4이며, 2026-10-08 발화 식별·언급 이력은 v4 호환 선택 필드로 구현했다. 나머지 v5 항목은 저장 구조 확정이나 마이그레이션 완료를 뜻하지 않는다.
+> v5의 미구현 기획과 현재 구현을 구분한다. 파일 검증의 기준은 v4이며, 2026-10-08 발화 식별·언급 이력, 2026-10-10 연속 기록과 2026-10-12 Laya 검토는 v4 호환 선택 필드로 구현했다. 나머지 v5 항목은 저장 구조 확정이나 마이그레이션 완료를 뜻하지 않는다.
 > 회상 점수 경계·쩜파워·언급 적절성·이름 원칙은 기획팀이 합의한 기준이고, 계산식·계수·저장 방식은 검증 전 제안이다.
   > 해마태그 H-tag -> 쩜태그 JJ-tag로 교체
 > 확정: 2026-09-22 (기획팀) · 용어 전면 교체: 2026-09-13. 원문 출처: 마이풉 기획서 §2-1-1 "해마.AI".
@@ -85,6 +85,7 @@ status          enum        // active | resting | merged
 mergedFrom      string[]    // 흡수한 구 쩜 ID들 — 오병합 분리 복원용
 mergedInto      string?     // (status=merged일 때) 흡수된 대상 역참조
 editHistory     array       // [{ date, action, field, by }]  by: user | ai | batch
+layaTag         object?     // 2026-10-12 구현: 검토 상태·판정·이유·단일 타임스탬프. 아래 계약 참조.
 
 // ═══ 확장 소켓 ═══
 meta            map         // 서비스별 자유 확장. Haema는 내용을 해석하지 않는다 (도메인 무지)
@@ -98,6 +99,39 @@ responseFeedback[] array      // 호스트 AI 답변에 대한 유저 반응 및
 ➕sourceService   string      // "mypoopai" | "daengchong" | …
 schemaVersion   number      // 마이그레이션 대비
 ```
+
+## Laya 검토 기록 — 현재 v4 호환 구현
+
+`layaTag?: LayaTag`는 쩜의 `.jj` 파일 안에 최신 검토 상태를 보관한다. 일반 분류 표식인 `jjtags`와 별도 필드다. 새 쩜은 `pending`으로 시작하며, 기존 파일에 필드가 없으면 미검토로 그대로 읽는다. `schemaVersion=4`는 유지하고 검토용 버전 필드를 추가하지 않는다.
+
+```ts
+type LayaVerdict = '정상' | '이상함' | '정보 부족';
+type LayaTag = {
+  state: 'reviewed';
+  verdict: LayaVerdict;
+  reason: string;
+  timestamp: string;
+} | {
+  state: 'pending' | 'failed';
+  reason: string;
+  timestamp: string;
+};
+```
+
+| 항목 | 저장·검증 계약 |
+| --- | --- |
+| `state` | `reviewed`는 검토 완료, `pending`은 검토 대기, `failed`는 검토 실패다. |
+| `verdict` | `reviewed`에서만 필수다. 정상은 제공된 근거로 확인한 내용, 이상함은 오류·충돌 의심, 정보 부족은 판단 근거 부족이다. `pending/failed`에는 이 필드 자체가 없어야 한다. |
+| `reason` | 모든 상태에서 공백뿐인 문자열을 금지하며 문자열 길이 기준 최대 500이다. 완료 시 판정 이유, 대기·실패 시 처리 상태의 이유를 담는다. |
+| `timestamp` | 날짜·시각·시간대를 포함하는 유효한 ISO 문자열이다. 코어는 `2026-10-10T09:30:00.000+09:00`처럼 한국 시간으로 기록한다. 대기 전환 또는 검토 완료·실패 시각 하나를 저장한다. |
+
+실제 내용이 바뀌면 이전 판정 대신 `pending`을 저장한다. 언급 횟수·회상 횟수·발화 시각만 바뀌는 것은 내용 수정으로 보지 않는다. 완료된 결과의 `timestamp`는 검토를 마친 실제 시각이며 입력 발화의 과거 시각으로 덮어쓰지 않는다. 기존 `occurredAt/receivedAt/recordedAt`과 사실·사건·편집 이력의 시각은 유지한다.
+
+`editHistory` 항목에는 기존 `date/action/field?/by`와 함께 `memo?: string`, `evidence?: {conversationId: string, utteranceIds: string[]}`, `reviewRequested?: boolean`을 추가할 수 있다. `memo`는 공백뿐인 문자열을 금지하고 최대 500 길이로 제한한다. 대화 업데이트는 실제 수정 내용, 확정 발화 ID, 재검토 요청을 기록한다. 기존 사실의 `text/addedAt/source`를 보존하며 새 사실을 추가하므로 시간에 따른 변화와 충돌을 구분할 근거가 남는다.
+
+잘못된 판정·상태 조합, 이유·시각·업데이트 근거 형식 손상은 검증 오류다. FileAdapter는 해당 사용자의 처리를 중단하고 손상 파일을 정상·미검토로 바꾸거나 덮어쓰지 않는다. 다른 사용자의 처리는 별도로 유지한다. 새 필드를 모르는 옛 검증기가 이 필드를 버리지 않도록 쓰기에 참여하는 실행 환경을 함께 업데이트해야 한다.
+
+검토 결과 적용 전의 내용 비교와 내부 작업 식별, 같은 요청 재시도, Laya 선택형 판정 및 동시 쓰기 한계는 [Laya 검토와 쩜 업데이트](LAYA_REVIEW.md)를 따른다.
 
 ## 쩜 파워 — 4개 항의 합 (v5 기획)
 

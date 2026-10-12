@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
@@ -71,10 +71,14 @@ export interface ExtractedDraft {
   factTexts: string[];
   /** 이번 대화가 하나의 사건이면 그 요약 */
   eventSummary?: string;
-  /** 함께 등장한 다른 이름들 — 꼬리 후보 */
+  /** 함께 등장한 다른 이름들 — 쩜선 후보 */
   relatedNames?: string[];
   /** 발화별 언급 근거. 저장 파이프라인에는 유효한 확정 발화 근거가 필요하다. */
   mentions?: DraftMention[];
+  /** 새 확정 발화에 근거한 실제 내용 변경의 짧은 설명. */
+  updateMemo?: string;
+  /** 실제 내용 변경 뒤 Laya 재검토가 필요함을 제안한다. 단독 반복 검토는 만들지 않는다. */
+  requestLayaReview?: boolean;
 }
 
 export interface ExtractRequest {
@@ -84,6 +88,8 @@ export interface ExtractRequest {
   turns: ConversationTurn[];
   /** 이미 아는 이름들(canonical+별칭) — 중복 생성 억제용 참고 정보 */
   knownNames?: string[];
+  /** 코어가 같은 소유자의 저장소에서 실제 회상한 쩜. 기존 검토와 수정 근거 참고용. */
+  recalledJJums?: JJum[];
   /** 호스트의 서비스 특화 지시 — 해석 없이 프롬프트에 그대로 전달 */
   hint?: string;
   now?: JJumTimestamp;
