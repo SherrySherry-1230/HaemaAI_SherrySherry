@@ -6,6 +6,7 @@
 // @editedBy YAONG1230 2026-10-07
 // @editedBy YAONG1230 2026-10-08
 // @editedBy YAONG1230 2026-10-10
+// @editedBy YAONG1230 2026-10-14
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -202,6 +203,9 @@ HAEMA_CONSOLE.renderHostPreview = function() {
     if (state === 'loading') {
         status = '확인 중';
         body = '<p class="haema-preview-summary">이번 대화의 기억을 확인하고 있어요.</p>';
+    } else if (state === 'result-error') {
+        status = '전송 완료 · 결과 표시 확인 필요';
+        body = '<p class="haema-preview-summary">대화는 보냈지만 결과를 표시하지 못했어요. 기억 목록을 다시 확인해 주세요.</p>';
     } else if (state === 'error') {
         status = '전송 실패';
         body = '<p class="haema-preview-summary">이번 요청을 완료하지 못했어요. 연결 상태를 확인하고 다시 보내주세요.</p>';
@@ -608,14 +612,14 @@ HAEMA_CONSOLE.syncConversationPending = function() {
     try {
         if (!this.conversationSession) this.conversationSession = HAEMA_CONVERSATION_SESSION.create();
         const scope = this.getConversationScope();
-        if (!scope) return;
-        if (this.activeConversationScope && !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.activeConversationScope)) {
+        if (!scope || (this.activeConversationScope && !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.activeConversationScope))) {
             this.latestResult = null;
             this.previewState = 'idle';
             this.recallResults = [];
             this.answerGuide = null;
         }
         this.activeConversationScope = scope;
+        if (!scope) return;
         this.conversationSession.pending(scope).forEach(request => {
             const turn = request.turns[0];
             if (this.conversationHistory.some(item => item.request?.turns[0].utteranceId === turn.utteranceId && HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope))) return;
@@ -789,6 +793,12 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         let listRefreshed = true;
         try { await this.loadLocalServerData(); }
         catch { listRefreshed = false; }
+        if (listRefreshed) {
+            // Newly created relation targets become available only after refreshing the stored list.
+            resultSnapshot.candidates.forEach(candidate => candidate.relations.forEach(relation => {
+                relation.targetName = this.allJJums.find(item => item.jjumId === relation.targetId)?.jjumName || relation.targetName;
+            }));
+        }
         this.status = "resting";
         this.statusText = listRefreshed ? "대화를 보냈어요" : '대화는 보냈지만 기억 목록을 새로고침하지 못했어요.';
         message.notice = listRefreshed ? '' : this.statusText;
@@ -804,7 +814,7 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         this.render();
     } catch (error) {
         this.latestResult = null;
-        this.previewState = 'error';
+        this.previewState = accepted ? 'result-error' : 'error';
         this.recallResults = [];
         this.answerGuide = null;
         const errorText = error.name === 'TypeError' || error.name === 'SyntaxError'
@@ -823,6 +833,8 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
             : "⚠️ " + errorText;
         if (accepted) message.notice = this.statusText;
         await this.waitForConversationComposition();
+        const currentInput = document.getElementById("userInput");
+        if (accepted && !retry && !this.isComposing && message.draftVersion === this.draftVersion && currentInput && currentInput.value.trim() === text) currentInput.value = "";
         this.render();
     }
 };
@@ -1269,7 +1281,8 @@ HAEMA_CONSOLE.saveModal = async function() {
         await HAEMA_DIALOG.alert("먼저 저장소를 연결해주세요.", { title: '기억을 보관할 곳이 필요해요' });
         return;
     }
-    const value = id => document.getElementById(id)?.value.trim() || "";
+    const rawValue = id => document.getElementById(id)?.value || "";
+    const value = id => rawValue(id).trim();
     const jjumName = value("modalJJumName");
     if (!jjumName) {
         await HAEMA_DIALOG.alert("쩜 이름을 입력해주세요.", { title: '쩜 이름을 알려주세요' });
@@ -1278,8 +1291,18 @@ HAEMA_CONSOLE.saveModal = async function() {
     }
     const now = Date.now();
     const existing = this.modalMode === "edit" ? this.modalData : null;
-    const facts = value("modalFacts").split("\n").filter(Boolean).map(text =>
-        existing?.facts?.find(fact => fact.text === text) || { text, addedAt: now, source: "user_edit" });
+    // Preserve untouched structured data, including delimiters and per-fact metadata.
+    // Compare the values as the browser displays them in input/textarea controls.
+    const singleLineDisplay = values => (values || []).join(", ").replace(/[\r\n]/g, "");
+    const originalFactsDisplay = (existing?.facts || []).map(fact => fact.text).join("\n").replace(/\r\n?/g, "\n").replace(/^\n/, "");
+    const originalTags = existing?.jjtags || existing?.tags || [];
+    const aliases = existing && rawValue("modalAliases") === singleLineDisplay(existing.aliases)
+        ? existing.aliases || [] : value("modalAliases").split(",").map(s => s.trim()).filter(Boolean);
+    const jjtags = existing && rawValue("modalTags") === singleLineDisplay(originalTags)
+        ? originalTags : value("modalTags").split(",").map(s => s.trim()).filter(Boolean);
+    const facts = existing && rawValue("modalFacts") === originalFactsDisplay
+        ? existing.facts || [] : value("modalFacts").split("\n").filter(Boolean).map(text =>
+            existing?.facts?.find(fact => fact.text === text) || { text, addedAt: now, source: "user_edit" });
     const originalSeons = (existing?.seons || []).map((seon, index) => ({ seon, line: this.formatSeonForEdit(seon, index), name: this.seonTargetForEdit(seon, index), used: false }));
     const seons = [];
     const seonLines = value("modalSeons").split("\n");
@@ -1315,13 +1338,14 @@ HAEMA_CONSOLE.saveModal = async function() {
     }
     const payload = {
         jjumName,
-        aliases: value("modalAliases").split(",").map(s => s.trim()).filter(Boolean),
+        aliases,
         type: value("modalType") || "unknown",
-        jjtags: value("modalTags").split(",").map(s => s.trim()).filter(Boolean),
+        jjtags,
         summary: value("modalSummary"), facts, seons,
     };
     const saveBtn = document.getElementById("modalSave");
     if (saveBtn) saveBtn.disabled = true;
+    let saved = false;
     try {
         const endpoint = "/api/owners/demo/jjums" + (existing ? "/" + encodeURIComponent(existing.jjumId) : "");
         const response = await fetch(endpoint, {
@@ -1331,11 +1355,16 @@ HAEMA_CONSOLE.saveModal = async function() {
         });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "쩜 저장에 실패했습니다.");
+        saved = true;
         this.closeModal();
         await this.loadLocalServerData();
     } catch (error) {
-        await HAEMA_DIALOG.alert(error.message || "쩜 저장에 실패했습니다.", { title: '쩜을 저장하지 못했어요', tone: 'error' });
-        if (saveBtn) saveBtn.disabled = false;
+        if (saved) {
+            await HAEMA_DIALOG.alert('쩜은 저장했지만 기억 목록을 새로고침하지 못했어요. 저장소 연결을 확인하고 목록을 다시 불러와 주세요.', { title: '쩜은 저장했어요', tone: 'warning' });
+        } else {
+            await HAEMA_DIALOG.alert(error.message || "쩜 저장에 실패했습니다.", { title: '쩜을 저장하지 못했어요', tone: 'error' });
+            if (saveBtn) saveBtn.disabled = false;
+        }
     }
 };
 
