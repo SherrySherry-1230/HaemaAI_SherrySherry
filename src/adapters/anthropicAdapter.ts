@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-14
 /**
  * Anthropic 어댑터 구현
  * Anthropic SDK를 사용하여 Claude 시리즈를 호출한다.
@@ -133,12 +133,14 @@ ${hint}
 
     const response = await this.callAI('extract', system, user);
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(response);
-      return Array.isArray(parsed) ? parsed : [];
+      parsed = JSON.parse(response);
     } catch {
       throw new Error('Failed to parse AI response as JSON');
     }
+    if (!Array.isArray(parsed)) throw new Error('AI extraction response must be a JSON array');
+    return parsed;
   }
 
   async summarizeJJum(jjum: JJum, hint?: string): Promise<{ summary: string }> {

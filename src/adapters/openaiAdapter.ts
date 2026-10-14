@@ -144,12 +144,14 @@ ${hint}
 
     const response = await this.callAI('extract', system, user);
     
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(response);
-      return Array.isArray(parsed) ? parsed : [];
+      parsed = JSON.parse(response);
     } catch {
       throw new Error('Failed to parse AI response as JSON');
     }
+    if (!Array.isArray(parsed)) throw new Error('AI extraction response must be a JSON array');
+    return parsed;
   }
 
   async summarizeJJum(jjum: JJum, hint?: string): Promise<{ summary: string }> {

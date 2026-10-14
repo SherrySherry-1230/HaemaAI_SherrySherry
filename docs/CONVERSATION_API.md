@@ -1,4 +1,4 @@
-<!-- @editedBy SherrySherry 2026-10-12 -->
+<!-- @editedBy SherrySherry 2026-10-14 -->
 # 발화 식별과 언급 이력 API
 
 2026-10-08 발화 이력 구현, 2026-10-10 연속 묶음 보강. `schemaVersion=4` 파일의 선택 필드 `mentionHistory`와 `mentionHistoryChunks`에 같은 쩜의 이력을 이어 보관한다. 과거 기억이나 언급 횟수를 일괄 이행·삭제하지 않는다. 발화 ID는 내용의 압축값이 아니라 개별 발화의 식별자다.
@@ -65,6 +65,8 @@ try {
 | 결과·처리 오류 | `receipt` | `{conversationId, turns:[{utteranceId, receivedAt, final, at?}]}`. 정규화된 입력 순서이며 발화 원문은 포함하지 않는다. |
 
 OpenAI·Anthropic·Google·Groq 어댑터는 위 발화 필드를 JSON으로 전달하고 근거 발화 ID를 요청한다. AI가 새 ID나 횟수를 만들도록 맡기지 않는다. 사용자 본인을 암시하는 표현, 같은 대상의 별칭, 일반 질문에 답하며 새로 꺼낸 대상도 제공된 문맥으로 판단하도록 요청한다.
+
+추출 응답의 최상위 값은 JSON 배열이어야 한다. 정상 빈 배열 `[]`는 저장할 초안이 없는 성공 응답이다. JSON 문법 오류나 객체·`null`·숫자·문자열·불리언 응답은 추출 오류로 전달하며, 성공한 빈 배열로 바꾸지 않는다. 같은 OpenAI 호환 어댑터를 사용하는 Ollama·LM Studio에도 이 계약을 적용한다. 통합 저장은 이 오류가 발생하면 내용을 저장하지 않고 `ConversationProcessingError`와 준비된 `receipt`를 전달한다. 재시도할 때는 같은 대화·발화 ID를 유지한다. 배열 안의 필수 필드와 발화 근거 검증은 아래의 기존 규칙을 따른다.
 
 `kind`는 다음 세 값이다.
 
