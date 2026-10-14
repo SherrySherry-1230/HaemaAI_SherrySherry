@@ -1,10 +1,11 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-14
 /**
  * OpenAI SDK 호환 어댑터 구현
  * OpenAI SDK를 사용하여 OpenAI 호환 API (Upstage Solar 등)를 호출한다.
  */
 
 import OpenAI from 'openai';
+import { isLocalAIProvider, localAIBaseUrl, localAIResponseFormat } from './localProvider.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
@@ -26,13 +27,21 @@ export class OpenAIAdapter implements AIAdapter {
   constructor(config: AIAdapterConfig) {
     this.config = config;
     
-    if (!config.apiKey) {
+    const local = isLocalAIProvider(config.provider);
+    const apiKey = config.apiKey?.trim();
+    if (!apiKey && !local) {
       throw new Error('OpenAIAdapter requires apiKey in config');
     }
+    if (local && !config.model.trim()) throw new TypeError('로컬 AI 모델명이 필요합니다.');
 
     this.client = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseUrl || process.env.SOLAR_BASE_URL || 'https://api.upstage.ai/v1/solar',
+      // SDK 생성에만 사용하는 값이며, 키 없는 로컬 요청에서는 인증 헤더를 제거한다.
+      apiKey: apiKey || 'local-no-key',
+      baseURL: isLocalAIProvider(config.provider)
+        ? localAIBaseUrl(config.provider, config.baseUrl)
+        : config.baseUrl || process.env.SOLAR_BASE_URL || 'https://api.upstage.ai/v1/solar',
+      ...(local ? { timeout: 120_000, maxRetries: 0 } : {}),
+      ...(local && !apiKey ? { defaultHeaders: { Authorization: null } } : {}),
     });
   }
 
@@ -51,6 +60,9 @@ export class OpenAIAdapter implements AIAdapter {
           { role: 'user', content: user },
         ],
         temperature: 0.7,
+        ...(isLocalAIProvider(this.config.provider)
+          ? { response_format: localAIResponseFormat(task) }
+          : {}),
       });
 
       const content = response.choices[0]?.message?.content;
