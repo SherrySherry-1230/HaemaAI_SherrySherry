@@ -1,4 +1,4 @@
-<!-- @editedBy SherrySherry 2026-10-10 -->
+<!-- @editedBy SherrySherry 2026-10-14 -->
 # 🦭 Haema — 호스트 챗봇의 해마
 
 > **An artificial hippocampus for the host chatbot.** 호스트가 대화 상대와 경험을 기억하고 연상하도록 돕는 범용 기억 모듈이다.
@@ -70,3 +70,8 @@ Apps Script는 gid=0의 실제 타입 행만 UTF-8 BOM CSV로 내보내며, 제�
 
 
 
+
+## 해마.ai 로컬 AI 연결
+
+Ollama·LM Studio의 OpenAI 호환 서버를 기억 추출·요약에 연결할 수 있습니다.
+로컬 서버는 API 키 없이 사용할 수 있고, 인증을 켠 서버는 토큰을 지정합니다.

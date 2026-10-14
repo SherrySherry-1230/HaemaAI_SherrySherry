@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-14
 /**
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
@@ -14,7 +14,7 @@
 
 import type { JJum, JJumTimestamp, JJumId, MentionKind } from '../types/jjum.ts';
 
-export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'custom';
+export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'ollama' | 'lmstudio' | 'custom';
 
 /** 작업 종류 — 작업별로 모델을 분리 지정할 수 있다 (예: 추출은 경량, 판정은 상위) */
 export type AITask = 'extract' | 'summarize' | 'judgeMerge' | 'scoreRecall';
@@ -31,7 +31,7 @@ export interface AIAdapterConfig {
   provider: AIProvider;
   /** 기본 모델 (작업별 지정이 없을 때 사용) */
   model: string;
-  /** 메모리에서만 사용 — 저장·로깅 금지. provider='custom'이면 생략 가능 */
+  /** 메모리에서만 사용 — 저장·로깅 금지. custom·ollama·lmstudio는 생략 가능 */
   apiKey?: string;
   /** OpenAI 호환/Anthropic 엔드포인트를 덮어쓸 때 사용 */
   baseUrl?: string;
