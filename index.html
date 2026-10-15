@@ -196,7 +196,7 @@
         .token-meter-delta { color: #76618c; }
         .token-meter-divider { color: var(--muted); font-weight: 400; }
         .token-meter-track { position: relative; height: 26px; overflow: hidden; background: rgba(118,105,132,.12); -webkit-mask: var(--token-shape) center / 100% 100% no-repeat; mask: var(--token-shape) center / 100% 100% no-repeat; }
-        .token-meter-liquid { position: absolute; inset: 0; display: flex; }
+        .token-meter-liquid { position: absolute; inset: 0 15% 0 0; display: flex; }
         .token-meter-glass { position: absolute; inset: 0; background: url("Resources/haema-design/token-meter/glass-overlay.svg") center / 100% 100% no-repeat; pointer-events: none; }
         .token-shape-1 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-01.svg"); }
         .token-shape-2 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-02.svg"); }
@@ -210,7 +210,6 @@
         .token-kind-output.is-current { background: #927aaf; }
         .token-kind-other.is-current { background: #938a80; }
         .token-meter-segment.is-new-start { box-shadow: inset 2px 0 var(--panel); }
-        .token-meter-unavailable { display: block; width: 100%; height: 100%; background: repeating-linear-gradient(120deg, transparent 0 6px, rgba(118,105,132,.1) 6px 9px); }
         .token-meter-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px; margin-top: 6px; color: #615c61; font-size: 10px; line-height: 1.4; }
         .token-meter-key { display: inline-flex; align-items: center; gap: 4px; }
         .token-meter-key::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--logo-pink); }
@@ -466,7 +465,7 @@
     <script src="web-console/haema-api-key-modal.js?v=13"></script>
     <script src="web-console/haema-conversation-session.js?v=1"></script>
     <script src="web-console/haema-token-usage.js?v=1"></script>
-    <script src="web-console/haema-token-meter.js?v=2"></script>
+    <script src="web-console/haema-token-meter.js?v=3"></script>
     <script src="web-console/haema-console.js?v=22"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=12"></script>
