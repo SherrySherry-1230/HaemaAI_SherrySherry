@@ -7,6 +7,7 @@
 // @editedBy YAONG1230 2026-10-08
 // @editedBy YAONG1230 2026-10-10
 // @editedBy YAONG1230 2026-10-14
+// @editedBy YAONG1230 2026-10-16: 로컬 AI 연결 안내와 모델 선택 보존
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -68,10 +69,15 @@ HAEMA_CONSOLE.render = function() {
     const selection = userInput ? [userInput.selectionStart, userInput.selectionEnd, userInput.selectionDirection] : null;
     const scrollPositions = [...document.querySelectorAll('[data-scroll-key]')].map(node => [node.dataset.scrollKey, node.scrollTop, node.scrollLeft]);
     const storageOverlay = document.getElementById('storageModalOverlay');
-    const modalDrafts = [...document.querySelectorAll('.modal-overlay.active input, .modal-overlay.active textarea, .modal-overlay.active select')]
-        .filter(node => node.id).map(node => [node.id, node.value, node.selectionStart, node.selectionEnd]);
+    const sameModal = this.renderedModalMode === this.modalMode && this.renderedModalData === this.modalData;
+    const modalDrafts = (sameModal ? [...document.querySelectorAll('.modal-overlay.active input, .modal-overlay.active textarea, .modal-overlay.active select')] : [])
+        .filter(node => node.id).map(node => [node.id,
+            node.id === 'modalApiModel' ? node.value || node.dataset.selectedModel || '' : node.value,
+            node.selectionStart, node.selectionEnd]);
 
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
+    this.renderedModalMode = this.modalMode;
+    this.renderedModalData = this.modalData;
     if (storageOverlay) app.appendChild(storageOverlay);
 
     // 입력창 값 복원
@@ -96,6 +102,7 @@ HAEMA_CONSOLE.render = function() {
         const node = document.getElementById(id);
         if (node) {
             node.value = value;
+            if (id === 'modalApiModel') node.dataset.selectedModel = value;
             if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end);
             if (id === activeElementId) node.focus();
         }
@@ -567,8 +574,8 @@ HAEMA_CONSOLE.handleInputAreaClick = async function() {
     const apiKeyReady = this.isApiKeyReady();
 
     if (!storageReady && !apiKeyReady) {
-        await HAEMA_DIALOG.alert("저장소와 API 키를 연결하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
-        this.statusText = "🪣저장소🪣와 🗝️API 키🗝️를 모두 준비해 주세요";
+        await HAEMA_DIALOG.alert("저장소와 AI 연결을 설정하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
+        this.statusText = "🪣저장소🪣와 🗝️AI 연결🗝️을 모두 준비해 주세요";
         this.render();
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
@@ -581,8 +588,8 @@ HAEMA_CONSOLE.handleInputAreaClick = async function() {
             HAEMA_STORAGE_MODAL.open();
         }
     } else if (!apiKeyReady) {
-        await HAEMA_DIALOG.alert("API 키 연결을 확인한 뒤 다시 대화를 시작해주세요.", { title: 'API 연결을 확인해주세요', tone: 'error' });
-        this.statusText = "올바른 🗝️API 키🗝️를 입력해주세요.";
+        await HAEMA_DIALOG.alert("사용할 AI와 모델의 연결 설정을 확인해주세요.", { title: 'AI 연결을 확인해주세요', tone: 'error' });
+        this.statusText = "🗝️AI 연결🗝️ 설정을 확인해주세요.";
         this.render();
         this.openApiKeyModal();
     }
@@ -1537,11 +1544,11 @@ HAEMA_CONSOLE.renderConversationResult = function(item) {
 HAEMA_CONSOLE.renderLeftPanel = function() {
     const inputValue = localStorage.getItem('haema_input') || '';
     const isInputDisabled = !this.isStorageReady() || !this.isApiKeyReady();
-    const disabledOverlay = isInputDisabled ? '<div class="input-disabled-overlay" title="저장소와 API 키를 모두 준비해 주세요" aria-label="저장소와 API 키를 모두 준비해 주세요"></div>' : '';
+    const disabledOverlay = isInputDisabled ? '<div class="input-disabled-overlay" title="저장소와 AI 연결을 모두 준비해 주세요" aria-label="저장소와 AI 연결을 모두 준비해 주세요"></div>' : '';
     const storageLabel = '🪣 : ' + (this.storageConnected ? '연결✅' : '없음❌');
     const apiLabel = '🗝️ : ' + (this.apiConfigured ? (this.apiKeyName || '설정✅') : '없음❌');
     const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
-    const apiTitle = this.apiConfigured ? 'API 키 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'API 키 설정';
+    const apiTitle = this.apiConfigured ? 'AI 연결 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'AI 연결 설정';
     const storageBtn = '<button class="tool-button" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><img src="Resources/haema-design/10-storage-button.svg" width="103" height="26" alt=""><span>' + this.escapeHtml(storageLabel) + '</span></button>';
     const apiBtn = '<button class="tool-button" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><img src="Resources/haema-design/09-api-key-button.svg" width="103" height="26" alt=""><span class="api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
     this.syncConversationPending();
@@ -1587,7 +1594,7 @@ HAEMA_CONSOLE.renderModal = function() {
         titlePrefix = '✏️ ';
         saveText = '💾 저장';
     } else if (this.modalMode === 'apiKey') {
-        modeText = '🔑 API 키 설정';
+        modeText = 'AI 연결 설정';
         titlePrefix = '🔑 ';
         saveText = '💾 저장';
     }

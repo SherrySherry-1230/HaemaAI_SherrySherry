@@ -1,4 +1,5 @@
 // @editedBy SherrySherry 2026-09-13
+// @editedBy YAONG1230 2026-10-16: 브라우저 설정의 LM Studio 제공자 표기
 /** Haema 로컬 콘솔 키 저장소 — 브라우저용
 
  * 타입 정의는 configStore.ts를 참고한다. 여기서는 브라우저에서 바로 쓸 수 있게
@@ -8,7 +9,7 @@
  */
 
 /**
- * @typedef {('openai'|'anthropic'|'google'|'custom'|'openrouter'|'ollama'|'aws-bedrock'|'openai-compatible'|'litellm'|'google-gemini'|'302ai'|'abacus'|'abliteration'|'abovedev'|'agenterouter'|'agnes-ai'|'aihub-mix'|'ai-router'|'ai-and'|'aixy'|'aki-io'|'alibaba'|'alibaba-china'|'alibaba-coding-plan'|'alibaba-coding-plan-china'|'alibaba-qwen'|'alibaba-qwen-code'|'deepseek'|'grok'|'openai-chatgpt-subscription')} ProviderKind
+ * @typedef {('openai'|'anthropic'|'google'|'custom'|'openrouter'|'ollama'|'lmstudio'|'aws-bedrock'|'openai-compatible'|'litellm'|'google-gemini'|'302ai'|'abacus'|'abliteration'|'abovedev'|'agenterouter'|'agnes-ai'|'aihub-mix'|'ai-router'|'ai-and'|'aixy'|'aki-io'|'alibaba'|'alibaba-china'|'alibaba-coding-plan'|'alibaba-coding-plan-china'|'alibaba-qwen'|'alibaba-qwen-code'|'deepseek'|'grok'|'openai-chatgpt-subscription')} ProviderKind
  */
 
 /**

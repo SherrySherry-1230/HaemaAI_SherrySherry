@@ -5,6 +5,7 @@
 <!-- @editedBy YAONG1230 2026-10-09: 해마 화이트 색상 통일 -->
 <!-- @editedBy YAONG1230 2026-10-10: 대화 재시도와 폼 모달 접근성 -->
 <!-- @editedBy YAONG1230 2026-10-14: 편집 원문 보존과 저장 결과 안내 -->
+<!-- @editedBy YAONG1230 2026-10-16: 로컬 AI 연결 설정 -->
 <!-- @editedBy SherrySherry 2026-10-05: 프론트 병합 및 콘솔 캐시 갱신 -->
 <!DOCTYPE html>
 <html lang="ko">
@@ -297,6 +298,23 @@
         .btn-secondary, .btn-primary { min-height: 39px; padding: 0 15px; border: 1px solid rgba(38,41,46,.16); border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 650; }
         .btn-secondary { background: var(--haema-white); }
         .btn-primary { background: var(--logo-pink); }
+        #modalRefreshModels, .saved-key-actions .btn { min-height: 32px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--haema-white); color: var(--ink); font: 500 12px/1.5 Pretendard, sans-serif; cursor: pointer; }
+        #modalRefreshModels { margin-top: 8px; }
+        #modalRefreshModels:hover, .saved-key-actions .btn:hover { background: var(--logo-cream); }
+        #modalRefreshModels:disabled, .saved-key-actions .btn:disabled { opacity: .55; cursor: wait; }
+        .saved-keys-list { display: grid; gap: 10px; }
+        .saved-keys-empty { padding: 14px; border: 1px dashed var(--line); border-radius: 12px; color: var(--muted); font-size: 12px; }
+        .saved-key-item { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--haema-white); }
+        .saved-key-item.selected { border-color: var(--logo-pink); background: var(--paper); }
+        .saved-key-main { display: grid; grid-template-columns: 8px minmax(0, 1fr); align-items: start; gap: 5px 8px; }
+        .saved-key-dot { width: 7px; height: 7px; margin-top: 6px; border-radius: 50%; background: var(--line); }
+        .saved-key-item.selected .saved-key-dot { background: var(--logo-pink); }
+        .saved-key-info { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 5px 10px; min-width: 0; }
+        .saved-key-name { color: var(--ink); font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+        .saved-key-provider { color: var(--muted); font-size: 11px; }
+        .saved-key-model { grid-column: 1 / -1; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+        .saved-key-value { grid-column: 2; color: var(--muted); font-size: 11px; }
+        .saved-key-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
         .folder-list { display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
         .folder-item { overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
         .tag-input-wrapper { min-height: 42px; padding: 7px; display: flex; flex-wrap: wrap; gap: 6px; border: 1px solid #d8d0c9; border-radius: 11px; background: #fffdfa; }
@@ -406,10 +424,10 @@
 <body>
     <div id="app"></div>
     <script src="web-console/haema-dialog.js?v=1"></script>
-    <script src="web-console/configStore.js?v=11"></script>
-    <script src="web-console/haema-api-key-modal.js?v=12"></script>
+    <script src="web-console/configStore.js?v=12"></script>
+    <script src="web-console/haema-api-key-modal.js?v=13"></script>
     <script src="web-console/haema-conversation-session.js?v=1"></script>
-    <script src="web-console/haema-console.js?v=19"></script>
+    <script src="web-console/haema-console.js?v=20"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=12"></script>
 </body>
