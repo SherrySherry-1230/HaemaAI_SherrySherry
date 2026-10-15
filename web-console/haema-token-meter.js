@@ -47,7 +47,7 @@
         const hasValue = known(total?.totalKnown);
         const bar = hasValue ? segments.map(segment => '<span class="token-meter-segment token-kind-' + segment.kind +
             (segment.current ? ' is-current' : '') + (segment === firstCurrent ? ' is-new-start' : '') + '" style="width:' + (segment.tokens / (total.totalKnown || 1) * 100) +
-            '%" title="' + escape(segmentLabel(segment)) + '"></span>').join('') : '<span class="token-meter-unavailable"></span>';
+            '%" title="' + escape(segmentLabel(segment)) + '"></span>').join('') : '';
         const note = failed ? '사용량 기록을 확인하지 못했어요. 기존 기록은 보존돼요.' :
             !hasTurns ? '대화를 보내면 발화별 사용량을 확인할 수 있어요.' :
             summary.complete ? '' : known(summary.totalKnown) ? '확인된 사용량만 표시해요. 미집계 발화가 있어요.' :
@@ -55,7 +55,7 @@
         const component = kind => '<span class="token-meter-key token-key-' + kind + '">' + labels[kind] + '</span>';
         const legend = component('input') + component('output') +
             (segments.some(segment => segment.kind === 'other') ? '<span class="token-meter-key token-key-other">미분류</span>' : '') + '<span class="token-meter-current-key">진한색 · 이번 발화</span>';
-        const explanation = 'AI가 보고한 토큰 사용량입니다. 모델마다 토큰 분할 방식이 달라 동일 문장도 수치가 다를 수 있어요. 누적에는 이 대화의 확인된 호출만 포함되며 비용이나 절감률을 뜻하지 않아요.';
+        const explanation = '해마가 실행한 AI 호출의 토큰 사용량이며 호스트 AI의 답변 생성 사용량은 제외해요. 모델마다 토큰 분할 방식이 달라 동일 문장도 수치가 다를 수 있어요. 막대는 입력·출력 비중을 보여주며 오른쪽 여백은 대화 한도나 남은 사용량을 뜻하지 않아요. 숫자는 확인된 누적 사용량이며 비용이나 절감률을 뜻하지 않아요.';
         return '<section class="token-meter" aria-label="대화 토큰 사용량"><div class="token-meter-heading token-meter-summary"><span class="token-meter-label">대화 누적 <span class="token-meter-unit" tabindex="0" title="' + explanation + '">tokens ⓘ</span></span>' +
             '<strong class="token-meter-value' + (longValue ? ' is-long' : '') + '" aria-label="' + escape('이번 발화 ' + delta + ' 토큰, 대화 누적 ' + cumulative + ' 토큰') + '"><span class="token-meter-delta">' + escape(delta) + '</span><span class="token-meter-total"><span class="token-meter-divider"> / </span>' + escape(cumulative) + '</span></strong></div>' +
             '<div class="token-meter-track token-shape-1" role="img" aria-label="' + escape('대화 누적 ' + cumulative + ' 토큰. ' + segments.map(segmentLabel).join(', ')) + '"><div class="token-meter-liquid" data-token-total="' + (hasValue ? total.totalKnown : '') + '" data-token-conversation="' + escape(summary?.conversationId || '') + '">' + bar + '</div><span class="token-meter-glass" aria-hidden="true"></span></div>' +
