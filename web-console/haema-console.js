@@ -8,6 +8,7 @@
 // @editedBy YAONG1230 2026-10-10
 // @editedBy YAONG1230 2026-10-14
 // @editedBy YAONG1230 2026-10-16: 로컬 AI 연결 안내와 모델 선택 보존
+// @editedBy YAONG1230 2026-10-16: 발화별 토큰 계량 표시와 프론트 수신 경계
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -37,6 +38,8 @@ HAEMA_CONSOLE = {
     conversationHistory: [],
     conversationOwnerId: 'demo',
     conversationSession: null,
+    tokenUsage: null,
+    tokenUsageError: null,
     conversationSessionError: '',
     conversationPersistenceBlocked: false,
     activeConversationScope: null,
@@ -232,9 +235,10 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         }
         body += '<button class="haema-preview-details" id="previewDetailsBtn" type="button">' + (result.guide ? '응답 가이드 · 결과 보기' : '결과 보기') + '</button>';
     }
-    return '<div class="haema-preview" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
+    const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), state === 'loading') : '';
+    return '<div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong><span class="haema-preview-status" role="status">' + status + '</span></div><div class="haema-preview-body">' + body + '</div></div></div>';
+        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong><span class="haema-preview-status" role="status">' + status + '</span></div><div class="haema-preview-body">' + body + '</div>' + meter + '</div></div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {
@@ -615,6 +619,35 @@ HAEMA_CONSOLE.getConversationScope = function() {
     return this.storageConnected && storageRoot ? { ownerId: this.conversationOwnerId, storageRoot } : null;
 };
 
+HAEMA_CONSOLE.getTokenUsageStore = function() {
+    if (!this.tokenUsage && typeof HAEMA_TOKEN_USAGE !== 'undefined') this.tokenUsage = HAEMA_TOKEN_USAGE.create();
+    return this.tokenUsage;
+};
+
+HAEMA_CONSOLE.readTokenUsage = function() {
+    const scope = this.getConversationScope();
+    if (!scope) return { ok: true, turnCount: 0, latest: null };
+    if (this.tokenUsageError && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.tokenUsageError.scope)) return { ok: false, error: this.tokenUsageError.error };
+    return this.getTokenUsageStore()?.current(scope) || { ok: true, turnCount: 0, latest: null };
+};
+
+HAEMA_CONSOLE.trackTokenTurn = function(action, scope, request) {
+    const outcome = this.getTokenUsageStore()?.[action](scope, request);
+    if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
+    else if (outcome?.ok) this.tokenUsageError = null;
+    return outcome;
+};
+
+// Frontend integration boundary. The current conversation API does not expose usage.
+// A future adapter must supply normalized, identifiable observed calls; do not guess payload fields.
+HAEMA_CONSOLE.receiveTokenUsage = function(scope, request, measurement) {
+    const outcome = this.getTokenUsageStore()?.record(scope, request, measurement);
+    if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
+    else if (outcome?.ok) this.tokenUsageError = null;
+    if (HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) this.render();
+    return outcome;
+};
+
 HAEMA_CONSOLE.syncConversationPending = function() {
     try {
         if (!this.conversationSession) this.conversationSession = HAEMA_CONVERSATION_SESSION.create();
@@ -731,12 +764,16 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
     this.render();
 
     let accepted = false;
+    let tokenTurnStarted = false;
     try {
         if (!alreadyVerified) await this.verifyConversationScope(message.scope);
         if (!HAEMA_CONVERSATION_SESSION.sameScope(message.scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 전송을 멈췄어요.');
         this.conversationSession.savePending(message.scope, request);
         this.conversationSessionError = '';
         this.conversationPersistenceBlocked = false;
+        this.trackTokenTurn('begin', message.scope, request);
+        tokenTurnStarted = true;
+        this.render();
         const response = await fetch("/api/conversation", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -757,6 +794,7 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         message.acknowledged = true;
         message.failed = false;
         message.error = '';
+        this.trackTokenTurn('accept', message.scope, request);
         try { this.conversationSession.complete(message.scope, request.turns[0].utteranceId); }
         catch (error) {
             this.conversationSessionError = '대화는 보냈지만 이 탭의 전송 기록을 정리하지 못했어요. 새 전송을 멈추고 기존 기록을 유지했습니다.';
@@ -780,6 +818,8 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         }));
         this.answerGuide = hostPreview.guide || payload.answerGuide || payload.recall?.answerGuide || null;
         const resultSnapshot = {
+            conversationId: request.conversationId,
+            utteranceId: request.turns[0].utteranceId,
             candidates: this.recallResults.map((jjum, index) => ({
                 jjumId: jjum.jjumId || '',
                 name: jjum.jjumName || candidates[index]?.jjumName || '이름 없는 쩜',
@@ -820,6 +860,7 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         await this.waitForConversationComposition();
         this.render();
     } catch (error) {
+        if (tokenTurnStarted) this.trackTokenTurn('fail', message.scope, request);
         this.latestResult = null;
         this.previewState = accepted ? 'result-error' : 'error';
         this.recallResults = [];
@@ -1534,7 +1575,9 @@ HAEMA_CONSOLE.renderConversationResult = function(item) {
         return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJJumName(label)) + '</span>' : '';
     }).join('');
     const guideHtml = item.guide ? '<details class="guide-detail"><summary>호스트 응답 가이드</summary><div class="response-guide-content">' + this.renderResponseGuide(item.guide) + '</div></details>' : '';
-    return '<details class="haema-history-card" data-result-at="' + this.escapeHtml(String(item.at || '')) + '"><summary><span class="haema-history-title">해마 회상 결과</span><span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
+    const usageBadge = item.conversationId && item.utteranceId && typeof HAEMA_TOKEN_METER !== 'undefined'
+        ? HAEMA_TOKEN_METER.badge(this.getTokenUsageStore()?.turn(item.scope, item.conversationId, item.utteranceId)) : '';
+    return '<details class="haema-history-card" data-result-at="' + this.escapeHtml(String(item.at || '')) + '"><summary><span class="haema-history-title">해마 회상 결과' + usageBadge + '</span><span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
         (candidates ? '<div class="history-detail-title">회상된 쩜 · 회상 점수 —</div><div class="history-results">' + candidates + '</div>' : '<p class="recall-note">이번 대화에서 회상된 쩜이 없어요.</p>') +
         (topics ? '<div class="history-detail-title">주제</div><div class="history-jjum-list">' + topics + '</div>' : '') +
         (newJJums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJJums + '</div>' : '') +

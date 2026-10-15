@@ -1,0 +1,44 @@
+{
+  "editedBy": "YAONG1230 2026-10-16",
+  "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+  "frame": "71:651",
+  "figmaOriginalModified": false,
+  "assets": [
+    {
+      "sourceNode": "71:654",
+      "sourceFile": "bar-01.svg",
+      "maskFile": "bar-mask-01.svg",
+      "sourceSha256": "d3a7d2e1abc2247fc826ac7a66c99ccc1e0c7c6446f98fbbf134d96149382396",
+      "width": "262.498",
+      "height": "24.1352",
+      "adaptation": "Opaque fill added to the copied closed paths for a data-bar mask; path coordinates and source file unchanged."
+    },
+    {
+      "sourceNode": "71:677",
+      "sourceFile": "bar-02.svg",
+      "maskFile": "bar-mask-02.svg",
+      "sourceSha256": "7bcae7ac341b758beb36fe52dffba40b31c504f7d36b4492761e7ea022ae1300",
+      "width": "262.426",
+      "height": "23.9144",
+      "adaptation": "Opaque fill added to the copied closed paths for a data-bar mask; path coordinates and source file unchanged."
+    },
+    {
+      "sourceNode": "71:685",
+      "sourceFile": "bar-03.svg",
+      "maskFile": "bar-mask-03.svg",
+      "sourceSha256": "2ef03202d2cbd0aac4ff80cbfd3a6adeb31905eb5d5024ed22a8e99267c0adab",
+      "width": "262.504",
+      "height": "23.9218",
+      "adaptation": "Opaque fill added to the copied closed paths for a data-bar mask; path coordinates and source file unchanged."
+    },
+    {
+      "sourceNode": "71:672",
+      "sourceFile": "bar-04.svg",
+      "maskFile": "bar-mask-04.svg",
+      "sourceSha256": "f9d70c469fdfca2355c06164c581a0b0c39d464b99b37c6d6ffdaa3834ca0049",
+      "width": "262.426",
+      "height": "23.5244",
+      "adaptation": "Opaque fill added to the copied closed paths for a data-bar mask; path coordinates and source file unchanged."
+    }
+  ]
+}
