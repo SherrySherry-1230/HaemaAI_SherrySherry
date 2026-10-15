@@ -1,0 +1,2 @@
+# @editedBy YAONG1230 2026-10-16: Preserve original Figma export bytes on every OS.
+*.svg -text

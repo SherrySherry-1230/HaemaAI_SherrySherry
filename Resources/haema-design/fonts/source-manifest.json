@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "editedBy": "YAONG1230",
+  "downloadedAtUtc": "2026-10-15T22:26:13.1421261Z",
+  "officialHomepage": "https://www.cookierunfont.com/",
+  "officialCss": "https://www.cookierunfont.com/css/index.7e6250e1.css",
+  "fontFamily": "CookieRun",
+  "face": "Black",
+  "copyrightHolder": "Devsisters Corp.",
+  "files": [
+    {
+      "file": "CookieRunWebBlack.woff2",
+      "sourceUrl": "https://www.cookierunfont.com/fonts/CookieRunWebBlack.316f77d8.woff2",
+      "mediaType": "font/woff2",
+      "bytes": 796184,
+      "sha256": "1f0a6d490ca1274db4da8ad9101ef0ddc962eee9334730ae5651ffd3d02a9785",
+      "originalBytesPreserved": true
+    },
+    {
+      "file": "CookieRun-License-ko-en.pdf",
+      "sourceUrl": "https://www.cookierunfont.com/static/download/License_ko_en.pdf",
+      "mediaType": "application/pdf",
+      "bytes": 2388643,
+      "sha256": "2cdbab3f1ad82f462f5938ffa6922b535f50f4d86d407f854155c3e13925ea2e",
+      "originalBytesPreserved": true
+    }
+  ],
+  "license": {
+    "document": "CookieRun-License-ko-en.pdf",
+    "publishedRevision": "2024.05",
+    "summaryLanguage": "ko",
+    "summaryIsNotLicense": true,
+    "allowed": "개인·기업의 비게임 분야 온·오프라인 및 상업적 사용. 저작권 안내와 라이선스 전문을 포함하여 소프트웨어에 임베딩·번들·재배포 가능.",
+    "requirements": [
+      "배포된 폰트 원본 형태를 그대로 유지합니다. 이 디렉터리의 WOFF2는 변환·수정·서브셋을 하지 않았습니다.",
+      "재배포 시 동봉한 저작권 안내 및 한국어·영어 라이선스 PDF 전문을 함께 유지합니다."
+    ],
+    "restrictions": [
+      "폰트 자체의 유료 판매 또는 재판매 금지.",
+      "임의 수정·개작한 폰트 재배포 금지.",
+      "게임산업군의 상업적·비상업적 모든 사용 금지. 게임 관련 마케팅 및 판매·증정용 상품 포함.",
+      "쿠키런 IP 딩벳 U+E000~U+E009는 상업적 사용 금지이며 임의 수정·개작 금지."
+    ],
+    "additionalTerms": "폰트를 사용한 창작물은 쿠키런 및 데브시스터즈 프로모션에 활용될 수 있으며, 원치 않는 사용자는 데브시스터즈에 요청할 수 있습니다."
+  },
+  "notes": [
+    "The WOFF2 URL is declared by the official CookieRun website stylesheet for CookieRunBlack.",
+    "Files are saved under stable local names without changing their bytes.",
+    "Figma CookieRun OTF Black and this official web Black face have not been compared for exact internal version or glyph-outline identity.",
+    "Noto Sans KR is not bundled in this directory."
+  ]
+}
