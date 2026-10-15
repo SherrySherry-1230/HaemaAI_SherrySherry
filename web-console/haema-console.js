@@ -79,6 +79,10 @@ HAEMA_CONSOLE.render = function() {
             node.selectionStart, node.selectionEnd]);
 
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
+    if (typeof HAEMA_TOKEN_METER !== 'undefined' && typeof HAEMA_TOKEN_METER.animate === 'function') {
+        const scope = this.getConversationScope();
+        HAEMA_TOKEN_METER.animate(app, scope ? JSON.stringify([scope.ownerId, scope.storageRoot]) : '');
+    }
     this.renderedModalMode = this.modalMode;
     this.renderedModalData = this.modalData;
     if (storageOverlay) app.appendChild(storageOverlay);
@@ -191,13 +195,21 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 };
 
 HAEMA_CONSOLE.renderRightPanel = function() {
-    const emojis = this.getStatusEmojis();
-    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div><div class="panel-heading">' +
+    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
         '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
-        '<div class="haema-status-pill status-' + this.status + '"><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>' +
         '</div>' + this.renderHostPreview() +
         '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></section>';
+};
+
+HAEMA_CONSOLE.renderTransmissionStatus = function() {
+    let label = this.statusText;
+    if (label === '대화를 보내고 있어요') label = '전송 중';
+    else if (label === '대화를 보냈어요') label = '전송 완료';
+    else if (label === '대화는 보냈지만 결과를 표시하지 못했어요. 기억 목록을 다시 확인해 주세요.') label = '전송 완료 · 확인 필요';
+    const detail = label === this.statusText ? label : label + ' · ' + this.statusText;
+    return '<div class="top-state-area" data-figma-frame="top_State_Area"><div class="haema-status-pill status-' + this.status + '" role="status" aria-live="polite" aria-atomic="true" aria-label="' + this.escapeHtml(detail) + '" title="' + this.escapeHtml(detail) + '">' +
+        '<span class="status-emojis" aria-hidden="true">' + this.getStatusEmojis() + '</span><span class="status-text">' + this.escapeHtml(label) + '</span></div></div>';
 };
 
 HAEMA_CONSOLE.getTopicName = function(topic) {
@@ -208,22 +220,17 @@ HAEMA_CONSOLE.getTopicName = function(topic) {
 HAEMA_CONSOLE.renderHostPreview = function() {
     const state = this.previewState;
     const result = state === 'success' ? this.latestResult : null;
-    let status = '대기 중';
     let body = '<p class="haema-preview-summary">대화를 보내면 호스트에게 전달할 기억을 확인할 수 있어요.</p>';
     if (state === 'loading') {
-        status = '확인 중';
         body = '<p class="haema-preview-summary">이번 대화의 기억을 확인하고 있어요.</p>';
     } else if (state === 'result-error') {
-        status = '전송 완료 · 결과 표시 확인 필요';
         body = '<p class="haema-preview-summary">대화는 보냈지만 결과를 표시하지 못했어요. 기억 목록을 다시 확인해 주세요.</p>';
     } else if (state === 'error') {
-        status = '전송 실패';
         body = '<p class="haema-preview-summary">이번 요청을 완료하지 못했어요. 연결 상태를 확인하고 다시 보내주세요.</p>';
     } else if (result) {
         const candidates = result.candidates || [];
         const topics = (result.topics || []).map(topic => this.getTopicName(topic)).filter(Boolean);
         const newCount = (result.newJJums || []).length;
-        status = '전송 완료';
         body = '<p class="haema-preview-summary">' + (candidates.length ? '회상된 쩜 ' + candidates.length + '개' : '이번 대화에서 회상된 쩜이 없어요.') + (newCount ? ' · 새 쩜 ' + newCount + '개' : '') + '</p>';
         if (candidates.length) {
             body += '<div class="haema-preview-chips">' + candidates.slice(0, 3).map(candidate =>
@@ -238,7 +245,7 @@ HAEMA_CONSOLE.renderHostPreview = function() {
     const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), state === 'loading') : '';
     return '<div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong><span class="haema-preview-status" role="status">' + status + '</span></div><div class="haema-preview-body">' + body + '</div>' + meter + '</div></div>';
+        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong></div><div class="haema-preview-body">' + body + '</div>' + meter + '</div></div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {

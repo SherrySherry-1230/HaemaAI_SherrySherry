@@ -87,7 +87,7 @@
             .right-panel-art { inset: 36px -1px -2px; }
             .chat-panel-art img, .right-panel-art img { width: 100%; height: 100%; max-width: none; object-fit: fill; }
             .header-right .status-bar { display: none; }
-            .haema-status-pill { transform: translateY(-25px); }
+            .panel-right > .top-state-area { position: absolute; top: -26px; left: -1px; width: min(calc(100% + 2px), 725.44px); }
             .jjum-list-tools { transform: translateY(-25px); }
             .haema-scroll { border-radius: 0 0 55px 38px; }
         }
@@ -159,7 +159,8 @@
         .jjum-list-tools .btn-create { min-height: 26px; padding: 0 10px; font-size: 11px; }
         .panel-title { margin: 6px 0 0; font: 400 clamp(18px, 1.7vw, 25px)/1.2 Jua, Pretendard, sans-serif; color: var(--ink); }
         .panel-caption { margin-top: 5px; color: var(--muted); font-size: 11px; }
-        .haema-status-pill { position: relative; isolation: isolate; width: 162px; min-width: 0; height: 26px; margin-top: 3px; padding: 5px 8px; display: flex; align-items: center; gap: 5px; overflow: hidden; background: transparent; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; }
+        .top-state-area { display: flex; flex-direction: row; justify-content: flex-end; align-items: flex-end; padding: 10px 42px 14px 10px; gap: 10px; height: 62px; min-height: 62px; flex: none; align-self: stretch; pointer-events: none; }
+        .haema-status-pill { position: relative; isolation: isolate; width: 162px; max-width: 100%; min-width: 0; height: 24px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; overflow: hidden; background: transparent; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; pointer-events: auto; }
         .haema-status-pill::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url("Resources/haema-design/17-haema-status-pill.svg") center / 100% 100% no-repeat; }
         .haema-status-pill.status-working .status-emojis { color: #84b37d; }
         .haema-status-pill.status-error .status-emojis { color: #b75c69; }
@@ -170,9 +171,6 @@
         .haema-preview-content { position: absolute; z-index: 2; inset: 17px 7% 20px 20%; min-width: 0; color: var(--ink); }
         .haema-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
         .haema-preview-title { min-width: 0; font: 400 15px/1.3 Jua, Pretendard, sans-serif; }
-        .haema-preview-status { flex: 0 0 auto; padding: 3px 7px; border-radius: 9px; background: rgba(118,105,132,.09); color: #766984; font-size: 10px; line-height: 1.2; }
-        .haema-preview[data-preview-state="loading"] .haema-preview-status { background: #e4efd3; color: #4b6450; }
-        .haema-preview[data-preview-state="error"] .haema-preview-status { background: #f6dfda; color: #884f55; }
         .haema-preview-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; min-width: 0; }
         .haema-preview-summary { grid-column: 1 / -1; margin: 0; color: #615c61; font-size: 11px; line-height: 1.45; }
         .haema-preview-chips { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; min-width: 0; }
@@ -182,25 +180,44 @@
         .haema-preview-details { grid-column: 2; padding: 3px 8px; border: 1px solid rgba(118,105,132,.25); border-radius: 10px; background: var(--panel); color: #64576e; font-size: 10px; line-height: 1.4; white-space: nowrap; cursor: pointer; }
         .haema-preview-details:hover { background: #f0e7ec; }
         .haema-preview.has-token-meter { height: 252px; min-height: 252px; }
+        .haema-preview.has-token-meter:has(.token-meter-value.is-long) { height: 276px; min-height: 276px; }
         .has-token-meter .haema-preview-background { height: calc(100% - 3px); }
         .has-token-meter .haema-preview-content { display: flex; flex-direction: column; bottom: 36px; }
         .has-token-meter .haema-preview-body { flex: 0 0 auto; }
-        .token-meter { display: grid; grid-template-columns: 54px minmax(30px, 1fr) minmax(68px, auto); gap: 4px 8px; margin-top: auto; padding-top: 9px; border-top: 1px solid rgba(118,105,132,.15); font-size: 11px; font-variant-numeric: tabular-nums; }
-        .token-meter-heading { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; font-weight: 650; }
+        .token-meter { margin-top: auto; padding-top: 9px; border-top: 1px solid rgba(118,105,132,.15); font-size: 11px; font-variant-numeric: tabular-nums; }
+        .token-meter-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-weight: 650; }
         .token-meter-unit { color: var(--muted); font-size: 10px; font-weight: 400; cursor: help; }
         .token-meter-unit:focus-visible { outline: 2px solid var(--sent-strong); outline-offset: 3px; }
-        .token-meter-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; gap: 8px; }
+        .token-meter-summary { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 5px; }
         .token-meter-label { white-space: nowrap; color: #615c61; }
-        .token-meter-value { text-align: right; font-size: 12px; overflow-wrap: anywhere; }
-        .token-meter-track { display: block; height: 18px; overflow: hidden; background: rgba(118,105,132,.12); -webkit-mask: var(--token-shape) center / 100% 100% no-repeat; mask: var(--token-shape) center / 100% 100% no-repeat; }
+        .token-meter-value { display: flex; flex-wrap: wrap; justify-content: flex-end; column-gap: 4px; min-width: 0; text-align: right; font-size: 13px; }
+        .token-meter-value.is-long { font-size: 12px; }
+        .token-meter-delta, .token-meter-total { white-space: nowrap; }
+        .token-meter-delta { color: #76618c; }
+        .token-meter-divider { color: var(--muted); font-weight: 400; }
+        .token-meter-track { position: relative; height: 26px; overflow: hidden; background: rgba(118,105,132,.12); -webkit-mask: var(--token-shape) center / 100% 100% no-repeat; mask: var(--token-shape) center / 100% 100% no-repeat; }
+        .token-meter-liquid { position: absolute; inset: 0; display: flex; }
+        .token-meter-glass { position: absolute; inset: 0; background: url("Resources/haema-design/token-meter/glass-overlay.svg") center / 100% 100% no-repeat; pointer-events: none; }
         .token-shape-1 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-01.svg"); }
         .token-shape-2 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-02.svg"); }
         .token-shape-3 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-03.svg"); }
         .token-shape-4 { --token-shape: url("Resources/haema-design/token-meter/bar-mask-04.svg"); }
-        .token-meter-fill { display: block; height: 100%; background: var(--logo-pink); }
-        .token-meter-fill.is-cumulative { background: var(--sent-strong); }
-        .token-meter-unavailable { display: block; height: 100%; background: repeating-linear-gradient(120deg, transparent 0 6px, rgba(118,105,132,.1) 6px 9px); }
-        .token-meter-note { grid-column: 1 / -1; margin: 1px 0 0; color: #615c61; font-size: 10px; line-height: 1.4; }
+        .token-meter-segment { display: block; flex: 0 0 auto; height: 100%; }
+        .token-kind-input { background: #f3ced9; }
+        .token-kind-output { background: #d4c8df; }
+        .token-kind-other { background: #d0cbc3; }
+        .token-kind-input.is-current { background: var(--logo-pink); }
+        .token-kind-output.is-current { background: #927aaf; }
+        .token-kind-other.is-current { background: #938a80; }
+        .token-meter-segment.is-new-start { box-shadow: inset 2px 0 var(--panel); }
+        .token-meter-unavailable { display: block; width: 100%; height: 100%; background: repeating-linear-gradient(120deg, transparent 0 6px, rgba(118,105,132,.1) 6px 9px); }
+        .token-meter-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 12px; margin-top: 6px; color: #615c61; font-size: 10px; line-height: 1.4; }
+        .token-meter-key { display: inline-flex; align-items: center; gap: 4px; }
+        .token-meter-key::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--logo-pink); }
+        .token-key-output::before { background: #927aaf; }
+        .token-key-other::before { background: #938a80; }
+        .token-meter-current-key { margin-left: 4px; }
+        .token-meter-note { margin: 5px 0 0; color: #615c61; font-size: 10px; line-height: 1.4; }
         .result-token-usage { display: block; margin-top: 4px; color: #615c61; font: 500 11px/1.3 Pretendard, sans-serif; font-variant-numeric: tabular-nums; }
         .preview-copy { color: #554e46; font-size: 13px; line-height: 1.6; }
         .preview-copy strong { display: block; margin-bottom: 3px; color: var(--ink); font: 400 16px/1.3 Jua, Pretendard, sans-serif; }
@@ -390,7 +407,7 @@
             .panel-heading { height: 36px; min-height: 36px; padding: 0 4px 7px; }
             .panel-title { margin-top: 2px; font-size: 19px; }
             .panel-caption { font-size: 10px; }
-            .haema-status-pill { max-width: 47%; padding: 6px 9px; font-size: 9px; }
+            .haema-status-pill { padding: 4px 9px; font-size: 9px; }
             .haema-preview { width: 100%; margin: 0 0 8px; }
             .haema-scroll { padding-right: 2px; }
             .jjum-list { gap: 4px; padding-right: 24px; }
@@ -418,7 +435,6 @@
             .main-container { padding-inline: 9px; }
             .panel-left, .panel-right { padding-inline: 10px; }
             .panel-heading { gap: 5px; }
-            .haema-status-pill { max-width: 46%; }
         }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
@@ -450,8 +466,8 @@
     <script src="web-console/haema-api-key-modal.js?v=13"></script>
     <script src="web-console/haema-conversation-session.js?v=1"></script>
     <script src="web-console/haema-token-usage.js?v=1"></script>
-    <script src="web-console/haema-token-meter.js?v=1"></script>
-    <script src="web-console/haema-console.js?v=21"></script>
+    <script src="web-console/haema-token-meter.js?v=2"></script>
+    <script src="web-console/haema-console.js?v=22"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=12"></script>
 </body>
