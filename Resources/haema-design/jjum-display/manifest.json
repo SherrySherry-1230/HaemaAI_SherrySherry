@@ -1,0 +1,810 @@
+{
+  "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+  "downloadMethod": "curl -L as instructed by get_design_context",
+  "downloadedAt": "2026-10-16",
+  "originalBytesUnmodified": true,
+  "assets": [
+    {
+      "file": "collapsed-01.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1030",
+      "kind": "collapsed",
+      "index": 1,
+      "url": "https://www.figma.com/api/mcp/asset/d0f5c15c-0484-4592-bc55-22774c91fc8f.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:514",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-01.svg",
+      "bytes": 1490,
+      "sha256": "1664c3fcdfc7594ebe38236772c7b31508487086f60f8c9e2cc3871c14dc4437",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-02.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1031",
+      "kind": "collapsed",
+      "index": 2,
+      "url": "https://www.figma.com/api/mcp/asset/2715ea54-b206-4594-8ce0-dc0150821163.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:540",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-02.svg",
+      "bytes": 1669,
+      "sha256": "9b8fed08ab9ba7f43bdf8bbaad2f65c3c740aa74a132ff54354c0346c9f9cd98",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-03.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1032",
+      "kind": "collapsed",
+      "index": 3,
+      "url": "https://www.figma.com/api/mcp/asset/4c7cd157-4453-4055-8eaa-26914fc78f57.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:515",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-03.svg",
+      "bytes": 1741,
+      "sha256": "74d6bf1741ce0f77bee469145f8e17ad64bbb54d9146adfb29995d4b7c7e08d8",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-04.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1033",
+      "kind": "collapsed",
+      "index": 4,
+      "url": "https://www.figma.com/api/mcp/asset/73c244c9-d626-49a0-a00f-468442ae2891.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:519",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-04.svg",
+      "bytes": 1458,
+      "sha256": "3449a40cb8450a1805fb0beeca46fc8aaa44d0b13a640627111ae918797946e7",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-05.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1034",
+      "kind": "collapsed",
+      "index": 5,
+      "url": "https://www.figma.com/api/mcp/asset/ca7dc739-dd17-483f-95af-e3c74065a7e9.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:516",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-05.svg",
+      "bytes": 2085,
+      "sha256": "2167c798c8717f05d778bca4f4b299726e14786a9054f7e2cba1cf6aa3c422d5",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-06.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1035",
+      "kind": "collapsed",
+      "index": 6,
+      "url": "https://www.figma.com/api/mcp/asset/bf05e234-a204-48d0-a601-b0f9e9399c30.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:520",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-06.svg",
+      "bytes": 1408,
+      "sha256": "ef20eb8d29ccc0b06495ae2cc979e93b641a542911f4472270de11c81e4ea461",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-07.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1036",
+      "kind": "collapsed",
+      "index": 7,
+      "url": "https://www.figma.com/api/mcp/asset/932d772b-762a-44ae-b51a-e0062b44d80c.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:517",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-07.svg",
+      "bytes": 1078,
+      "sha256": "20f4c279dcf768fb34cfda3fb669c3645a47f213df7a2b590b23d260793c82aa",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "collapsed-08.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "25:46",
+      "nodeId": "75:1037",
+      "kind": "collapsed",
+      "index": 8,
+      "url": "https://www.figma.com/api/mcp/asset/4be4256a-8e19-45ad-b88c-c6eb347f94e8.svg",
+      "slot": {
+        "width": 715,
+        "height": 100
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:521",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 100
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/collapsed-08.svg",
+      "bytes": 1262,
+      "sha256": "9cd6cd4ab2734cf843da5a29c0408e1dc98cb242e221d6773482eba88f6a43bf",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "100",
+        "viewBox": "0 0 715 100",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-01.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1039",
+      "kind": "expanded",
+      "index": 1,
+      "url": "https://www.figma.com/api/mcp/asset/7d65cc54-9361-43f1-8ef9-0190d1ae74a5.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:531",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-01.svg",
+      "bytes": 1604,
+      "sha256": "4233c3fc1d35b4b356930fde389f23e522848bdd7d67489b2d7100aefa7bc61c",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-02.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1040",
+      "kind": "expanded",
+      "index": 2,
+      "url": "https://www.figma.com/api/mcp/asset/9a662208-5964-40d7-a234-39f3a892a4e8.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:532",
+      "vectorLocalBounds": {
+        "x": -1,
+        "y": 3,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": -1,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-02.svg",
+      "bytes": 1768,
+      "sha256": "e21add133282a80e61fd031eea61bb148428bd44277827cc0f481e679948f2be",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "716",
+        "height": "303",
+        "viewBox": "0 0 716 303",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-03.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1041",
+      "kind": "expanded",
+      "index": 3,
+      "url": "https://www.figma.com/api/mcp/asset/cac7277d-0ef3-4e4d-a98c-ec8634957513.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:533",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-03.svg",
+      "bytes": 1851,
+      "sha256": "86621cb74960baa05db45b827c3ed8d91d5de4f18d6954dccb8b139d82c1d953",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-04.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1042",
+      "kind": "expanded",
+      "index": 4,
+      "url": "https://www.figma.com/api/mcp/asset/13b739bb-5a67-4223-b063-d488e51c6ac4.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:534",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-04.svg",
+      "bytes": 1602,
+      "sha256": "a90c4e4ceaf44a7d472460f0eba6bd3677bcd5a4e0638c558c232dd149b376c7",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-05.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1043",
+      "kind": "expanded",
+      "index": 5,
+      "url": "https://www.figma.com/api/mcp/asset/10bc2101-065a-4263-a48f-c004c60b3bf0.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:535",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-05.svg",
+      "bytes": 2200,
+      "sha256": "96e57f53e89dd13785cff2b54aca0e72714e2446a6d53c51f499fde40d876a2b",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-06.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1044",
+      "kind": "expanded",
+      "index": 6,
+      "url": "https://www.figma.com/api/mcp/asset/3bd7ac63-3063-480d-9ee1-f92e3a13539a.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:536",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-06.svg",
+      "bytes": 1552,
+      "sha256": "e8e6d9ad411fec8755ba1c8a5c081a8335ac009b4287df843e1d5bacef0eb227",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-07.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1045",
+      "kind": "expanded",
+      "index": 7,
+      "url": "https://www.figma.com/api/mcp/asset/6802b5e0-09a0-4a04-822c-252f5740c244.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:537",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-07.svg",
+      "bytes": 1235,
+      "sha256": "4201ad4212fad292b23759024f9e126d96c1653a892bae8ad9f26eec0fbca4ff",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "expanded-08.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "49:526",
+      "nodeId": "75:1046",
+      "kind": "expanded",
+      "index": 8,
+      "url": "https://www.figma.com/api/mcp/asset/4913dd74-00b8-4911-85d2-1be2f7f4d0fa.svg",
+      "slot": {
+        "width": 715,
+        "height": 300
+      },
+      "originalBytesUnmodified": true,
+      "vectorNodeId": "49:538",
+      "vectorLocalBounds": {
+        "x": 0,
+        "y": 0,
+        "width": 715,
+        "height": 300
+      },
+      "fill": "#F7F3EA",
+      "stroke": null,
+      "effects": [],
+      "renderedExportOffset": {
+        "x": 0,
+        "y": 0
+      },
+      "localFile": "Resources/haema-design/jjum-display/expanded-08.svg",
+      "bytes": 1400,
+      "sha256": "13eccecd9ad51f9110c28e673977eed778057db4b8ad4c65d7806bb5a72ad00a",
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "715",
+        "height": "300",
+        "viewBox": "0 0 715 300",
+        "fill": "none"
+      },
+      "existingExactHashMatches": [],
+      "svgElements": {
+        "g": 1,
+        "path": 1,
+        "svg": 1
+      },
+      "externalReferences": []
+    },
+    {
+      "file": "content-outline-expanded.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "52:547",
+      "nodeId": "83:349",
+      "kind": "expanded-content-outline",
+      "url": "https://www.figma.com/api/mcp/asset/1d2bc2a9-aa56-4445-9466-0a95b5cd1464.svg",
+      "downloadMethod": "curl -L as instructed by get_design_context",
+      "localFile": "Resources/haema-design/jjum-display/content-outline-expanded.svg",
+      "bytes": 2249,
+      "sha256": "fb7d64e7cadd2ecfb110a55b8a5454ef6933e538b5ff8c7e601011ff1de2f835",
+      "originalBytesUnmodified": true,
+      "rootAttributes": {
+        "preserveAspectRatio": "none",
+        "overflow": "visible",
+        "style": "display: block;",
+        "width": "552",
+        "height": "159",
+        "viewBox": "0 0 552 159",
+        "fill": "none"
+      },
+      "intrinsicWidth": "552",
+      "intrinsicHeight": "159"
+    },
+    {
+      "file": "list-mask.svg",
+      "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+      "parentNodeId": "40:337",
+      "nodeId": "41:447",
+      "maskTargetNodeId": "41:469",
+      "kind": "list-scroll-mask",
+      "url": "https://www.figma.com/api/mcp/asset/bceacdf8-57be-41b5-ad48-a4a6cf404069.svg",
+      "downloadMethod": "curl -L as instructed by the high-fidelity 40:337 get_design_context response (img3 maskImage).",
+      "localFile": "Resources/haema-design/jjum-display/list-mask.svg",
+      "bytes": 1214,
+      "sha256": "7fb061b3323372d05e78b5048e609395b26fad6e11340c2d71e48d34d60b0816",
+      "originalBytesUnmodified": true,
+      "rootAttributes": {
+        "width": "726.119",
+        "height": "847",
+        "viewBox": "0 0 726.119 847"
+      },
+      "usage": "Fixed outer viewport mask for the scrolling list. The preview is a sibling outside this masked frame in the source."
+    }
+  ],
+  "notes": [
+    "Raw exports are unchanged. Native root width/height/viewBox must remain unchanged.",
+    "Expanded 02 component slot is 715x300, exported SVG is 716x303 at local left=-1/top=0; its vector is x=-1/y=3 within the component.",
+    "These source sheets contain only filled background vectors, not text or an inner scrolling UI. All Figma overflowDirection values were NONE.",
+    "Shape fills are #F7F3EA; no strokes or effects in these source nodes."
+  ]
+}

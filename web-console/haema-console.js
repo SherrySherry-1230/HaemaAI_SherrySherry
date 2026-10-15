@@ -97,7 +97,7 @@ HAEMA_CONSOLE.render = function() {
         }
     }
     scrollPositions.forEach(([key, top, left]) => {
-        const node = document.querySelector('[data-scroll-key="' + key + '"]');
+        const node = [...document.querySelectorAll('[data-scroll-key]')].find(item => item.dataset.scrollKey === key);
         if (node) { node.scrollTop = top; node.scrollLeft = left; }
     });
     if (this.pendingConversationScroll) {
@@ -262,8 +262,8 @@ HAEMA_CONSOLE.openLatestResult = function() {
     card.querySelector('summary')?.focus({ preventScroll: true });
 };
 
+// @editedBy YAONG1230 2026-10-16: Figma 52:547 / 25:46 / 49:526, 내부 스크롤
 HAEMA_CONSOLE.renderJJumListSection = function() {
-    // allJJums가 초기화되지 않았으면 빈 배열로 처리
     const jjums = this.allJJums || [];
     const visibleIds = new Set(jjums.map(jjum => jjum.jjumId));
     for (const id of this.cardShapeHistory.keys()) {
@@ -278,88 +278,85 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         }
         return new Date(b.firstSeen) - new Date(a.firstSeen);
     });
-    if (sortedJJums.length === 0) {
+    if (!sortedJJums.length) {
         return '<div class="jjum-list-section"><div class="empty-state"><img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마"><div class="empty-text">쩜이 없어요</div></div></div>';
     }
-    const cardShapes = ['shape-15.svg', 'shape-22.svg', 'shape-42.svg'];
-    const accordionHtml = sortedJJums.map(jjum => {
-        const isExpanded = String(this.selectedJJumId || '') === String(jjum.jjumId || '');
+    const escape = value => this.escapeHtml(String(value ?? ''));
+    const states = {
+        new: '새 쩜', candidate: '후보', related: '관련', strong: '강추천',
+        'sent-strong': '강추천 전송 완료', 'sent-related': '관련 전송 완료', 'sent-candidate': '후보 전송 완료'
+    };
+    const accordionHtml = sortedJJums.map((jjum, index) => {
+        const id = String(jjum.jjumId);
+        const isExpanded = String(this.selectedJJumId || '') === id;
         const displayState = String(jjum.displayStatus || jjum.visualStatus || '').toLowerCase();
-        const visualStates = {
-            new: ['new', '새 쩜', '25-card-vector-e.svg'],
-            candidate: ['candidate', '후보', '33-related-card-outline.svg'],
-            related: ['related', '관련', '32-card-vector-f.svg'],
-            strong: ['strong', '강추천', '04-card-new-outline.svg'],
-            'sent-strong': ['sent-strong', '강추천 전송 완료', '34-card-vector-g.svg'],
-            'sent-related': ['sent-related', '관련 전송 완료', '34-card-vector-g.svg'],
-            'sent-candidate': ['sent-candidate', '후보 전송 완료', '34-card-vector-g.svg']
-        };
-        const state = visualStates[displayState] ? displayState : 'general';
-        const stateLabel = visualStates[state] ? visualStates[state][1] : '';
-        // 원본 비정형 윤곽을 매번 새로 선택한다. 쩜 ID나 상태에 모양을 고정하지 않는다.
-        const shapeChoices = cardShapes.filter(shape => shape !== this.cardShapeHistory.get(jjum.jjumId));
-        const cardShape = shapeChoices[Math.floor(Math.random() * shapeChoices.length)];
-        this.cardShapeHistory.set(jjum.jjumId, cardShape);
-        const toggleAsset = 'card-toggle/' + (isExpanded ? 'collapse-' : 'expand-') + state + '.svg';
-        const hasLightParts = state === 'strong' || state === 'related';
-        const parts = hasLightParts
+        const state = Object.hasOwn(states, displayState) ? displayState : 'general';
+        const lightParts = state === 'strong' || state === 'related';
+        const parts = lightParts
             ? ['05-score-circle.svg', '03-jjum-name-pill.svg', '06-alias-pill.svg', '02-card-ellipsis.svg', '07-card-summary-background.svg']
             : ['26-score-circle-alt.svg', '27-jjum-name-pill-alt.svg', '28-alias-pill-alt.svg', '29-card-ellipsis-alt.svg', '30-card-summary-a.svg'];
-        let seonsHtml = "";
-        if (jjum.seons && jjum.seons.length > 0) {
-            seonsHtml = jjum.seons.map(t => {
-                const target = this.allJJums.find(j => j.jjumId === t.targetId);
-                const targetName = target ? target.jjumName : "알 수 없음";
-                const weightPercent = (t.weight * 100).toFixed(0);
-                return "<div class=\"seon-item\"><div class=\"seon-weight-bar\"><div class=\"seon-weight-fill\" style=\"width: " + weightPercent + "%\"></div></div><span class=\"seon-target\">" + this.escapeHtml(targetName) + "</span><span class=\"seon-label\">" + this.escapeHtml(t.label || "연결") + "</span><span style=\"margin-left: auto; font-size: 11px; color: var(--text-secondary);\">" + weightPercent + "%</span></div>";
-            }).join("");
-        } else {
-            seonsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">연결된 쩜선 없음</div>";
-        }
-        let factsHtml = "";
-        if (jjum.facts && jjum.facts.length > 0) {
-            factsHtml = jjum.facts.map(f => "<div class=\"detail-text\">" + this.escapeHtml(f.text) + "</div>").join("");
-        } else {
-            factsHtml = "<div style=\"color: var(--text-secondary); font-size: 12px;\">사실 정보 없음</div>";
-        }
-        const tagsHtml = (jjum.jjtags || jjum.tags || []).map(t => "<span class=\"h-tag\">" + this.escapeHtml(t) + "</span>").join("");
+        // 접힘·펼침 각각 8종. 상태가 바뀌어도 바로 직전 윤곽 번호는 반복하지 않는다.
+        const previous = this.cardShapeHistory.get(jjum.jjumId);
+        const choices = Array.from({ length: 8 }, (_, i) => i + 1).filter(shape => shape !== previous);
+        const shape = choices[Math.floor(Math.random() * choices.length)];
+        this.cardShapeHistory.set(jjum.jjumId, shape);
+        const shapeAsset = (isExpanded ? 'expanded-' : 'collapsed-') + String(shape).padStart(2, '0') + '.svg';
+        const name = String(jjum.jjumName || '이름 없는 쩜');
+        const visibleName = isExpanded ? name : this.maskJJumName(name);
         const aliases = Array.isArray(jjum.aliases) ? jjum.aliases : [];
-        const aliasMaskedText = aliases.map(alias => this.escapeHtml(this.maskJJumName(alias))).join(' · ');
-        const aliasFullText = aliases.map(alias => this.escapeHtml(alias)).join(' · ');
-        const cardInfo = [this.escapeHtml(jjum.type || ''), (jjum.jjtags || jjum.tags || []).map(tag => this.escapeHtml(tag)).join(' · ')].filter(Boolean);
-        const cardInfoMaskedText = [aliasMaskedText, ...cardInfo].filter(Boolean).join(' · ');
-        const cardInfoFullText = [aliasFullText, ...cardInfo].filter(Boolean).join(' · ');
-        const aliasSlotHtml = cardInfoMaskedText
-            ? '<span class="jjum-alias"><img src="Resources/haema-design/' + parts[2] + '" width="262.498" height="24.1352" alt=""><span class="alias-masked">' + cardInfoMaskedText + '</span><span class="alias-full">' + cardInfoFullText + '</span></span>'
-            : '<span class="jjum-alias jjum-alias-spacer" aria-hidden="true"></span>';
-        const stateText = stateLabel ? '<span class="jjum-state-label">' + this.escapeHtml(stateLabel) + '</span>' : '';
-        return '<article class="jjum-card state-' + state + (hasLightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + this.escapeHtml(String(jjum.jjumId)) + '">' +
-            '<span class="jjum-card-art is-shape-mask" style="--card-shape:url(\'Resources/haema-design/irregular/' + cardShape + '\')" aria-hidden="true"></span>' +
-            '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + (isExpanded ? ' 닫기' : ' 펼치기') + '">' +
-                '<span class="jjum-card-row">' +
-                    '<span class="score-slot"><img src="Resources/haema-design/' + parts[0] + '" width="32" height="32" alt=""><span aria-label="' + (state === 'new' ? '새 쩜' : '회상 점수 미제공') + '">' + (state === 'new' ? 'New' : '—') + '</span></span>' +
-                    '<span class="jjum-name"><img src="Resources/haema-design/' + parts[1] + '" width="138.361" height="30.3422" alt=""><span class="name-masked">' + this.escapeHtml(this.maskJJumName(jjum.jjumName || '이름 없는 쩜')) + '</span><span class="name-full">' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</span></span>' +
-                    aliasSlotHtml +
-                    '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/' + parts[3] + '" width="38.2605" height="22.9574" alt=""><span class="jjum-menu-dots" aria-hidden="true">...</span></span>' +
-                '</span>' +
-                '<span class="jjum-summary-row"><span class="jjum-summary"><img src="Resources/haema-design/' + parts[4] + '" width="544" height="45" alt=""><span>' + this.escapeHtml(jjum.summary || '요약 없음') + '</span></span><span class="jjum-expand" aria-hidden="true"><img src="Resources/haema-design/' + toggleAsset + '" width="29.3827" height="17.0097" alt=""></span></span>' +
-            '</button>' +
-            '<div class="jjum-card-details">' +
-                '<div class="jjum-meta">' + stateText + this.escapeHtml(jjum.type || '기억') + ' · ' + this.escapeHtml(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
-                '<div class="jjum-identity-full"><strong>' + this.escapeHtml(jjum.jjumName || '이름 없는 쩜') + '</strong><div class="jjum-identity-aliases">별명: ' + (aliasFullText || '없음') + '</div></div>' +
-                '<div class="detail-section"><div class="detail-label">태그</div><div class="detail-tags">' + tagsHtml + '</div></div>' +
-                '<div class="detail-section"><div class="detail-label">사실</div>' + factsHtml + '</div>' +
-                '<div class="detail-section"><div class="detail-label">쩜선 연결</div><div class="seons-list">' + seonsHtml + '</div></div>' +
-                '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div>' +
-            '</div></article>';
-    }).join("");
+        const tags = Array.isArray(jjum.jjtags) ? jjum.jjtags : Array.isArray(jjum.tags) ? jjum.tags : [];
+        const metadata = [
+            ...aliases.map(alias => ({ label: '별명', text: isExpanded ? alias : this.maskJJumName(alias) })),
+            ...(jjum.type ? [{ label: '유형', text: jjum.type }] : []),
+            ...tags.map(tag => ({ label: '태그', text: tag }))
+        ];
+        const chip = item => '<span class="jjum-chip is-' + ({ '별명': 'alias', '유형': 'type', '태그': 'tag' })[item.label] + '" style="--chip-outline:url(\'Resources/haema-design/' + parts[2] + '\')"><span class="sr-only">' + item.label + ': </span><span>' + escape(item.text) + '</span></span>';
+        const metadataHtml = metadata.map(chip).join('');
+        const nameHtml = '<span class="jjum-name" style="--name-shape:url(\'Resources/haema-design/' + parts[1] + '\')"><span>' + escape(visibleName) + '</span></span>';
+        const scoreHtml = '<span class="score-slot"><img src="Resources/haema-design/' + parts[0] + '" width="32" height="32" alt=""><span aria-label="' + (state === 'new' ? '새 쩜' : '회상 점수 미제공') + '">' + (state === 'new' ? 'New' : '—') + '</span></span>';
+        const ellipsisHtml = !isExpanded && metadata.length
+            ? '<span class="jjum-menu" aria-hidden="true"><img src="Resources/haema-design/' + parts[3] + '" width="38.2605" height="22.9574" alt=""><span>...</span></span>' : '';
+        const summary = escape(jjum.summary || '요약 없음');
+        const summaryHtml = '<span class="jjum-summary" style="--summary-outline:url(\'Resources/haema-design/' + parts[4] + '\')"><span>' + summary + '</span></span>';
+        const facts = (Array.isArray(jjum.facts) ? jjum.facts : []).map(fact => '<p class="detail-text">' + escape(fact.text) + '</p>').join('');
+        const events = (Array.isArray(jjum.events) ? jjum.events : []).map(event => {
+            const timestamp = typeof event.date === 'number' ? new Date(event.date) : null;
+            const dateLabel = timestamp && Number.isFinite(timestamp.getTime())
+                ? timestamp.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) : event.date;
+            const references = (Array.isArray(event.refJJumIds) ? event.refJJumIds : [])
+                .map(targetId => jjums.find(item => item.jjumId === targetId)?.jjumName || '목록 밖의 쩜');
+            return '<p class="detail-text">' + (dateLabel != null && dateLabel !== '' ? '<span class="jjum-event-date">' + escape(dateLabel) + '</span> ' : '') + escape(event.summary) +
+                (references.length ? '<span class="jjum-event-references">함께한 쩜: ' + references.map(escape).join(' · ') + '</span>' : '') + '</p>';
+        }).join('');
+        const seons = (Array.isArray(jjum.seons) ? jjum.seons : []).map(relation => {
+            const target = jjums.find(item => item.jjumId === relation.targetId);
+            // 공개 계약의 0~1 관계 강도만 표시한다. 추천 점수/추천 단계로 환산하지 않는다.
+            const weight = typeof relation.weight === 'number' && Number.isFinite(relation.weight) && relation.weight >= 0 && relation.weight <= 1
+                ? Math.round(relation.weight * 100) : null;
+            return '<div class="seon-item"><span class="seon-target">' + escape(target?.jjumName || '목록 밖의 쩜') + '</span><span class="seon-label">' + escape(relation.label || '연결') + '</span>' +
+                (weight === null ? '' : '<span class="seon-strength" aria-label="연결 강도 ' + weight + '%"><span class="seon-weight-bar"><span class="seon-weight-fill" style="width:' + weight + '%"></span></span>' + weight + '%</span>') + '</div>';
+        }).join('');
+        const regionKey = Array.from(id, char => char.codePointAt(0).toString(16)).join('-');
+        const detailsId = 'jjum-content-' + regionKey;
+        const detailsHtml = isExpanded ? '<div class="jjum-card-content"><div class="jjum-content-scroll" id="' + detailsId + '" tabindex="0" role="region" aria-label="' + escape(name) + ' 내용" data-scroll-key="jjum-body:' + escape(id) + '"><div class="jjum-content-summary">' + summary + '</div>' +
+            (facts ? '<section class="detail-section"><h3 class="detail-label">사실</h3>' + facts + '</section>' : '') +
+            (events ? '<section class="detail-section"><h3 class="detail-label">사건</h3>' + events + '</section>' : '') +
+            (seons ? '<section class="detail-section"><h3 class="detail-label">쩜선 연결</h3><div class="seons-list">' + seons + '</div></section>' : '') +
+            '<div class="jjum-meta">' + (states[state] ? escape(states[state]) + ' · ' : '') + escape(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
+            '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div></div></div>' : '';
+        return '<article class="jjum-card state-' + state + (lightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + escape(id) + '">' +
+            '<span class="jjum-card-art" style="--card-shape:url(\'Resources/haema-design/jjum-display/' + shapeAsset + '\')" aria-hidden="true"></span>' +
+            '<div class="jjum-card-scroll"' + (isExpanded ? ' tabindex="0" role="region" aria-label="' + escape(name) + ' 전체 정보" data-scroll-key="jjum:' + escape(id) + '" id="jjum-scroll-' + regionKey + '"' : '') + '>' +
+            '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '"' + (isExpanded ? ' aria-controls="' + detailsId + '"' : '') + ' aria-label="' + escape(visibleName) + (isExpanded ? ' 접기' : ' 펼치기') + '">' +
+                '<span class="jjum-card-row">' + scoreHtml + '<span class="jjum-header-metadata">' + nameHtml + metadataHtml + '</span>' + ellipsisHtml + '</span>' +
+                (isExpanded ? '' : summaryHtml) + '</button>' + detailsHtml + '</div>' +
+            '<button class="jjum-expand" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + escape(visibleName) + (isExpanded ? ' 접기' : ' 펼치기') + '"><img src="Resources/haema-design/card-toggle/' + (isExpanded ? 'collapse-' : 'expand-') + state + '.svg" width="29.3827" height="17.0097" alt=""></button></article>';
+    }).join('');
     const connectorsHtml = sortedJJums.flatMap(jjum => (jjum.seons || []).map(relation => {
         if (relation.targetId === jjum.jjumId || !sortedJJums.some(item => item.jjumId === relation.targetId)) return '';
-        return '<path data-source-id="' + this.escapeHtml(jjum.jjumId) + '" data-target-id="' + this.escapeHtml(relation.targetId) + '" vector-effect="non-scaling-stroke"></path>';
+        return '<path data-source-id="' + escape(jjum.jjumId) + '" data-target-id="' + escape(relation.targetId) + '" vector-effect="non-scaling-stroke"></path>';
     })).join('');
-    return "<div class=\"jjum-list-section\">" +
-        '<div class="jjum-list">' + (connectorsHtml ? '<svg class="seon-connections" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + connectorsHtml + '</svg>' : '') + accordionHtml + '</div>' +
-    "</div>";
+    return '<div class="jjum-list-section"><div class="jjum-list">' + (connectorsHtml ? '<svg class="seon-connections" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + connectorsHtml + '</svg>' : '') + accordionHtml + '</div></div>';
 };
 
 // 카드가 펼쳐지거나 화면 폭이 달라져도 실제 쩜의 위치를 따라가는 부드러운 곡선.
@@ -373,15 +370,15 @@ HAEMA_CONSOLE.updateSeonLayout = function() {
     const cards = new Map([...list.querySelectorAll('.jjum-card')].map(card => [card.dataset.jjumId, card]));
     const routes = [];
     drawing.querySelectorAll('path').forEach(path => {
-        const source = cards.get(path.dataset.sourceId)?.querySelector('.jjum-card-head');
-        const target = cards.get(path.dataset.targetId)?.querySelector('.jjum-card-head');
+        const source = cards.get(path.dataset.sourceId);
+        const target = cards.get(path.dataset.targetId);
         if (!source || !target) { path.removeAttribute('d'); return; }
         const sourceRect = source.getBoundingClientRect();
         const targetRect = target.getBoundingClientRect();
         const startX = sourceRect.right - listRect.left - 8;
         const endX = targetRect.right - listRect.left - 8;
-        const startY = sourceRect.top - listRect.top + Math.min(24, sourceRect.height / 2);
-        const endY = targetRect.top - listRect.top + Math.min(24, targetRect.height / 2);
+        const startY = sourceRect.top - listRect.top + 24;
+        const endY = targetRect.top - listRect.top + 24;
         const anchorX = Math.max(startX, endX);
         routes.push({ path, startX, startY, endX, endY, anchorX, span: Math.abs(endY - startY), room: Math.max(0, listRect.width - anchorX - 4) });
     });
@@ -408,15 +405,46 @@ HAEMA_CONSOLE.updateSeonLayout = function() {
     }));
 };
 
+// 접힘의 한 줄에는 테두리까지 온전히 들어가는 정보만 두고, 나머지는 펼침에서 읽는다.
+HAEMA_CONSOLE.updateJJumMetadataLayout = function() {
+    const scroll = document.querySelector('.haema-scroll');
+    const panelArt = document.querySelector('.right-panel-art');
+    if (scroll && panelArt) {
+        const artBounds = panelArt.getBoundingClientRect();
+        const scrollBounds = scroll.getBoundingClientRect();
+        scroll.style.setProperty('--list-mask-width', artBounds.width + 'px');
+        scroll.style.setProperty('--list-mask-height', artBounds.height + 'px');
+        scroll.style.setProperty('--list-mask-left', artBounds.left - scrollBounds.left + 'px');
+    }
+    document.querySelectorAll('.jjum-card:not(.is-expanded)').forEach(card => {
+        card.classList.remove('has-more-metadata');
+        const metadata = card.querySelector('.jjum-header-metadata');
+        if (!metadata) return;
+        const chips = [...metadata.querySelectorAll('.jjum-chip')];
+        chips.forEach(chip => { chip.hidden = false; });
+        const bottom = metadata.getBoundingClientRect().bottom;
+        if (!chips.some(chip => chip.getBoundingClientRect().bottom > bottom + .5)) return;
+        card.classList.add('has-more-metadata');
+        chips.forEach(chip => { chip.hidden = chip.getBoundingClientRect().bottom > bottom + .5; });
+    });
+};
+
 HAEMA_CONSOLE.observeSeonLayout = function() {
     this.seonLayoutObserver?.disconnect();
     const list = document.querySelector('.jjum-list');
     if (!list) return;
+    this.updateJJumMetadataLayout();
     this.updateSeonLayout();
     if (typeof ResizeObserver === 'undefined') return;
-    this.seonLayoutObserver = new ResizeObserver(() => this.updateSeonLayout());
+    this.seonLayoutObserver = new ResizeObserver(() => {
+        this.updateJJumMetadataLayout();
+        this.updateSeonLayout();
+    });
     this.seonLayoutObserver.observe(list);
+    const scroll = document.querySelector('.haema-scroll');
+    if (scroll) this.seonLayoutObserver.observe(scroll);
     list.querySelectorAll('.jjum-card').forEach(card => this.seonLayoutObserver.observe(card));
+    document.fonts?.ready.then(() => { this.updateJJumMetadataLayout(); this.updateSeonLayout(); });
 };
 
 // ===== 이벤트 리스너 =====
