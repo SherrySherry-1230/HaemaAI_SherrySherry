@@ -1,0 +1,107 @@
+{
+  "editedBy": "YAONG1230 2026-10-16",
+  "purpose": "Transparent convex glass overlay above the frontend's dynamic token segments.",
+  "figma": {
+    "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+    "pageId": "0:1",
+    "sourceComponentSetId": "71:651",
+    "sourceVectorId": "71:654",
+    "sourceOriginalModified": false,
+    "sourcePropertiesUnchangedDuringCreation": true,
+    "workFrameId": "205:912",
+    "overlayNodeId": "205:916",
+    "workFrameUrl": "https://www.figma.com/design/a3PU74yLzhQDHLN2WWzWG2?node-id=205-912",
+    "overlayUrl": "https://www.figma.com/design/a3PU74yLzhQDHLN2WWzWG2?node-id=205-916",
+    "workFrameBounds": {
+      "x": 7602,
+      "y": 369,
+      "width": 548,
+      "height": 346
+    },
+    "createdNodeIds": [
+      "205:912",
+      "205:913",
+      "205:914",
+      "205:915",
+      "205:916",
+      "205:917",
+      "205:918",
+      "205:919",
+      "205:920",
+      "205:921",
+      "205:922",
+      "205:923",
+      "205:924",
+      "205:925",
+      "205:926",
+      "205:927",
+      "205:928",
+      "205:929",
+      "205:930",
+      "205:931",
+      "205:932",
+      "205:933",
+      "205:934",
+      "205:935",
+      "205:936",
+      "205:937",
+      "205:938",
+      "205:939",
+      "205:940",
+      "205:941",
+      "205:942"
+    ],
+    "layers": {
+      "shell": "205:917",
+      "rim": "205:918",
+      "highlight": "205:919",
+      "glint": "205:920",
+      "lower": "205:921"
+    },
+    "pinkSample": {
+      "rowId": "205:922",
+      "barId": "205:924",
+      "fillId": "205:925",
+      "overlayId": "205:926"
+    },
+    "purpleSample": {
+      "rowId": "205:932",
+      "barId": "205:934",
+      "fillId": "205:935",
+      "overlayId": "205:936"
+    }
+  },
+  "asset": {
+    "file": "glass-overlay.svg",
+    "width": 484,
+    "height": 26,
+    "viewBox": "0 0 484 26",
+    "bytes": 6748,
+    "sha256": "fc7467d6a8b9984194747d9eb93511afb818a79974c3cf34f7e805b13e655208",
+    "exportMethod": "Unmodified SVG asset from the high-fidelity get_design_context response for node 205:916.",
+    "transparent": true,
+    "colors": [
+      "#FDFBFC with alpha",
+      "#26292E with alpha"
+    ],
+    "dynamicColorFillIncluded": false
+  },
+  "adaptation": "Source vector cloned into a new YAONG frame. Only the copies were resized and given a translucent shell gradient, inner bevel, edge light, upper reflection and lower refraction. Pink and purple demonstration fills exist in separate Figma sample rows and are not included in the SVG.",
+  "unchangedFiles": [
+    "bar-01.svg",
+    "bar-02.svg",
+    "bar-03.svg",
+    "bar-04.svg",
+    "bar-mask-01.svg",
+    "bar-mask-02.svg",
+    "bar-mask-03.svg",
+    "bar-mask-04.svg",
+    "source-manifest.json"
+  ],
+  "verification": {
+    "highFidelityContext": true,
+    "screenshotReviewed": true,
+    "screenshotFile": "figma-glass-sheet.png",
+    "originalVectorPropertiesCompared": true
+  }
+}
