@@ -1,13 +1,15 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-16
 /**
  * Anthropic 어댑터 구현
  * Anthropic SDK를 사용하여 Claude 시리즈를 호출한다.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createAIUsageReporter } from './aiUsage.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
+  AITask,
   ConversationTurn,
   ExtractedDraft,
   ExtractRequest,
@@ -32,6 +34,8 @@ export class AnthropicAdapter implements AIAdapter {
 
     this.client = new Anthropic({
       apiKey: config.apiKey,
+      // 재시도는 SDK 내부가 아닌 별도 계측 호출로 수행한다.
+      maxRetries: 0,
       ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
   }
@@ -40,8 +44,11 @@ export class AnthropicAdapter implements AIAdapter {
     return this.config.taskModels?.[task as keyof typeof this.config.taskModels] || this.config.model;
   }
 
-  private async callAI(task: string, system: string, user: string): Promise<string> {
+  private async callAI(task: AITask, system: string, user: string): Promise<string> {
+    const signal = this.config.signal;
+    signal?.throwIfAborted();
     const model = this.getModelForTask(task);
+    const reportUsage = createAIUsageReporter(this.config, task, model, 'anthropic');
 
     try {
       const response = await this.client.messages.create({
@@ -51,8 +58,10 @@ export class AnthropicAdapter implements AIAdapter {
         messages: [
           { role: 'user', content: user },
         ],
-      });
+      }, { signal });
 
+      reportUsage(response.usage, response.model);
+      signal?.throwIfAborted();
       const firstBlock = response.content[0];
       const content = firstBlock?.type === 'text' ? firstBlock.text : null;
       if (!content) {
@@ -61,6 +70,8 @@ export class AnthropicAdapter implements AIAdapter {
 
       return content;
     } catch (error) {
+      reportUsage();
+      signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

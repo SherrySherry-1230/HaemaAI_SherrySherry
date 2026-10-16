@@ -1,14 +1,16 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-16
 /**
  * OpenAI SDK 호환 어댑터 구현
  * OpenAI SDK를 사용하여 OpenAI 호환 API (Upstage Solar 등)를 호출한다.
  */
 
 import OpenAI from 'openai';
+import { createAIUsageReporter } from './aiUsage.ts';
 import { isLocalAIProvider, localAIBaseUrl, localAIResponseFormat } from './localProvider.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
+  AITask,
   ConversationTurn,
   ExtractedDraft,
   ExtractRequest,
@@ -40,7 +42,9 @@ export class OpenAIAdapter implements AIAdapter {
       baseURL: isLocalAIProvider(config.provider)
         ? localAIBaseUrl(config.provider, config.baseUrl)
         : config.baseUrl || process.env.SOLAR_BASE_URL || 'https://api.upstage.ai/v1/solar',
-      ...(local ? { timeout: 120_000, maxRetries: 0 } : {}),
+      // 숨은 SDK 재시도 없이 한 호출을 계측한다. 재시도는 새 호출로 기록한다.
+      maxRetries: 0,
+      ...(local ? { timeout: 120_000 } : {}),
       ...(local && !apiKey ? { defaultHeaders: { Authorization: null } } : {}),
     });
   }
@@ -49,8 +53,12 @@ export class OpenAIAdapter implements AIAdapter {
     return this.config.taskModels?.[task as keyof typeof this.config.taskModels] || this.config.model;
   }
 
-  private async callAI(task: string, system: string, user: string): Promise<string> {
+  private async callAI(task: AITask, system: string, user: string): Promise<string> {
+    const signal = this.config.signal;
+    signal?.throwIfAborted();
     const model = this.getModelForTask(task);
+    const local = isLocalAIProvider(this.config.provider);
+    const reportUsage = createAIUsageReporter(this.config, task, model, 'openai');
     
     try {
       const response = await this.client.chat.completions.create({
@@ -60,11 +68,13 @@ export class OpenAIAdapter implements AIAdapter {
           { role: 'user', content: user },
         ],
         temperature: 0.7,
-        ...(isLocalAIProvider(this.config.provider)
+        ...(local
           ? { response_format: localAIResponseFormat(task) }
           : {}),
-      });
+      }, { signal });
 
+      reportUsage(response.usage, response.model, response);
+      signal?.throwIfAborted();
       const content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error('AI returned empty response');
@@ -72,6 +82,8 @@ export class OpenAIAdapter implements AIAdapter {
 
       return content;
     } catch (error) {
+      reportUsage();
+      signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

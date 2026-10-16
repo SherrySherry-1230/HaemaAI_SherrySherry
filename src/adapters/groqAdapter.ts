@@ -1,13 +1,15 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-16
 /**
  * Groq 어댑터 구현
  * Groq SDK를 사용하여 빠른 추론 모델(Llama 시리즈 등)을 호출한다.
  */
 
 import Groq from 'groq-sdk';
+import { createAIUsageReporter } from './aiUsage.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
+  AITask,
   ConversationTurn,
   ExtractedDraft,
   ExtractRequest,
@@ -32,6 +34,8 @@ export class GroqAdapter implements AIAdapter {
 
     this.client = new Groq({
       apiKey: config.apiKey,
+      // 재시도는 SDK 내부가 아닌 별도 계측 호출로 수행한다.
+      maxRetries: 0,
       ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
   }
@@ -40,8 +44,11 @@ export class GroqAdapter implements AIAdapter {
     return this.config.taskModels?.[task as keyof typeof this.config.taskModels] || this.config.model;
   }
 
-  private async callAI(task: string, system: string, user: string): Promise<string> {
+  private async callAI(task: AITask, system: string, user: string): Promise<string> {
+    const signal = this.config.signal;
+    signal?.throwIfAborted();
     const model = this.getModelForTask(task);
+    const reportUsage = createAIUsageReporter(this.config, task, model, 'openai');
 
     try {
       const response = await this.client.chat.completions.create({
@@ -51,8 +58,10 @@ export class GroqAdapter implements AIAdapter {
           { role: 'user', content: user },
         ],
         temperature: 0.7,
-      });
+      }, { signal });
 
+      reportUsage(response.usage, response.model);
+      signal?.throwIfAborted();
       const content = response.choices[0]?.message?.content;
       if (!content) {
         throw new Error('AI returned empty response');
@@ -60,6 +69,8 @@ export class GroqAdapter implements AIAdapter {
 
       return content;
     } catch (error) {
+      reportUsage();
+      signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

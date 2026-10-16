@@ -1,13 +1,15 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-16
 /**
  * Google 어댑터 구현
  * Google Generative AI SDK를 사용하여 Gemini 시리즈를 호출한다.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createAIUsageReporter } from './aiUsage.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
+  AITask,
   ConversationTurn,
   ExtractedDraft,
   ExtractRequest,
@@ -37,8 +39,11 @@ export class GoogleAdapter implements AIAdapter {
     return this.config.taskModels?.[task as keyof typeof this.config.taskModels] || this.config.model;
   }
 
-  private async callAI(task: string, system: string, user: string): Promise<string> {
+  private async callAI(task: AITask, system: string, user: string): Promise<string> {
+    const signal = this.config.signal;
+    signal?.throwIfAborted();
     const model = this.getModelForTask(task);
+    const reportUsage = createAIUsageReporter(this.config, task, model, 'google');
 
     try {
       const modelInstance = this.client.getGenerativeModel({
@@ -46,7 +51,10 @@ export class GoogleAdapter implements AIAdapter {
         systemInstruction: system,
       });
 
-      const result = await modelInstance.generateContent(user);
+      const result = await modelInstance.generateContent(user, { signal });
+      reportUsage(result.response.usageMetadata,
+        (result.response as unknown as { modelVersion?: unknown }).modelVersion);
+      signal?.throwIfAborted();
       const content = result.response.text();
       if (!content) {
         throw new Error('AI returned empty response');
@@ -54,6 +62,8 @@ export class GoogleAdapter implements AIAdapter {
 
       return content;
     } catch (error) {
+      reportUsage();
+      signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

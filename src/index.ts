@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-12
+// @editedBy SherrySherry 2026-10-16
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
@@ -41,6 +41,20 @@ export type {
   MergeJudgement,
   RecallScore,
 } from './adapters/aiAdapter.ts';
+export type { AIUsageEvent, TokenCounts } from './adapters/aiUsage.ts';
+export {
+  TokenUsageCollector,
+  summarizeTokenUsage,
+  summarizeConversationTokenUsage,
+  validateTokenUsageReport,
+  reconcileTokenUsageReport,
+  type TokenUsageStatus,
+  type TokenUsageScope,
+  type TokenUsageMetric,
+  type TokenUsageTotals,
+  type TokenUsageReport,
+} from './tokenUsage.ts';
+export { FileTokenUsageStore, TokenUsageStoreError, type TokenUsageConversation } from './adapters/fileTokenUsageStore.ts';
 export {
   prepareConversationRequest,
   type PreparedConversationRequest,
@@ -50,8 +64,23 @@ export {
 export {
   processConversationToStorage,
   ConversationProcessingError,
+  ConversationSupersededError,
   type ConversationProcessingResult,
 } from './integration.ts';
+export {
+  IncrementalConversationSession,
+  type IncrementalConversationScope,
+  type IncrementalConversationInput,
+  type IncrementalConversationWork,
+  type IncrementalConversationHooks,
+  type IncrementalConversationView,
+  type IncrementalConversationAcceptance,
+  type InputContinuity,
+  type SpeculativeResult,
+  type TemporaryJJumFragment,
+} from './incrementalConversation.ts';
+export { SpeculativeMemoryExplorer } from './speculativeMemory.ts';
+export { assessResponseReadiness, type ResponseReadiness } from './responseReadiness.ts';
 export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
 export {
   LayaDecisionEngine,
