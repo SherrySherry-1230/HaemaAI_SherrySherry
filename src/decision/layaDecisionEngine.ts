@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-16
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -246,32 +246,36 @@ export class LayaDecisionEngine implements RecallDecisionEngine, LayaReviewEngin
       let stdout = '';
       let stderr = '';
       let settled = false;
-      const timer = setTimeout(() => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const fail = (error: Error): void => {
+        if (settled) return;
         settled = true;
+        clearTimeout(timer);
+        child.stdin.destroy();
         child.kill();
-        reject(new Error(`Laya decision timed out after ${this.timeoutMs}ms`));
+        reject(error);
+      };
+      timer = setTimeout(() => {
+        fail(new Error(`Laya decision timed out after ${this.timeoutMs}ms`));
       }, this.timeoutMs);
       child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
       child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        if (!settled) {
-          settled = true;
-          reject(error);
-        }
-      });
+      // 먼저 종료한 엔진의 입력 오류도 Promise로 전달한다. 종료 후의 늦은 오류도 수신한다.
+      child.stdin.on('error', fail);
+      child.on('error', fail);
       child.on('close', (code) => {
         clearTimeout(timer);
         if (settled) return;
-        settled = true;
         if (code !== 0) {
-          reject(new Error(`Laya exited with code ${code}: ${stderr.trim()}`));
+          fail(new Error(`Laya exited with code ${code}: ${stderr.trim()}`));
           return;
         }
         try {
-          resolve(JSON.parse(stdout) as { scores?: DecisionScore[]; review?: unknown });
+          const result = JSON.parse(stdout) as { scores?: DecisionScore[]; review?: unknown };
+          settled = true;
+          resolve(result);
         } catch {
-          reject(new Error(`Laya returned invalid JSON: ${stdout.slice(0, 200)}`));
+          fail(new Error(`Laya returned invalid JSON: ${stdout.slice(0, 200)}`));
         }
       });
       child.stdin.end(payload);
