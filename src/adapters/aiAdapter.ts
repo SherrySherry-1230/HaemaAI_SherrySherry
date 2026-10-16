@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-16
 /**
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
@@ -13,6 +13,7 @@
  */
 
 import type { JJum, JJumTimestamp, JJumId, MentionKind } from '../types/jjum.ts';
+import type { AIUsageEvent } from './aiUsage.ts';
 
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'ollama' | 'lmstudio' | 'custom';
 
@@ -39,6 +40,12 @@ export interface AIAdapterConfig {
   taskModels?: Partial<Record<AITask, string>>;
   /** provider='custom'일 때 필수 */
   customCall?: CustomAICall;
+  /** 현재 작업의 SDK 요청을 취소한다. 취소해도 제공자 측 실행·사용량 취소는 보장하지 않는다. */
+  signal?: AbortSignal;
+  /** 해마.ai SDK 호출 시작. 사용량은 아직 미제공이며 완료 이벤트와 callId가 같다. */
+  onUsageStart?: (event: AIUsageEvent) => void;
+  /** 제공자 응답으로 확인한 요청 전체 사용량. 호출별로 한 번 전달한다. */
+  onUsage?: (event: AIUsageEvent) => void;
 }
 
 /** 호스트가 넘기는 대화 조각 — Haema는 내용을 해석하지 않고 AI에 전달만 한다 */

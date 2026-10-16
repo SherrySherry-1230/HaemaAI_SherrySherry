@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-12
+// @editedBy SherrySherry 2026-10-16
 /** 쩜의 내용 검토. 처리 상태와 판정을 구별하며 검토용 버전·해시는 저장하지 않는다. */
 import type { ConversationTurn } from './adapters/aiAdapter.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
@@ -162,8 +162,10 @@ export async function reviewStoredJJum(
   jjumId: string,
   turns: ConversationTurn[] | LayaReviewIntent,
   now?: number,
+  /** 새 입력으로 교체된 작업은 검토 결과와 실패 태그 모두 반영하지 않는다. */
+  isCurrent?: () => boolean,
 ): Promise<void> {
-  if (!engine) return;
+  if (!engine || (isCurrent && !isCurrent())) return;
   const key = JSON.stringify([ownerId, jjumId]);
   const scope = storage.coordinationScope ?? storage;
   const requested = Array.isArray(turns) ? undefined : intents.get(turns);
@@ -174,8 +176,9 @@ export async function reviewStoredJJum(
   const active = flights.get(scope) ?? new Map<string, ReviewFlight>();
   flights.set(scope, active);
   const claim = await withConversationLock(storage, ownerId, async () => {
+    if (isCurrent && !isCurrent()) return undefined;
     const current = await storage.getJJum(ownerId, jjumId);
-    if (queued.get(scope)?.get(key) !== token
+    if ((isCurrent && !isCurrent()) || queued.get(scope)?.get(key) !== token
       || !current || current.ownerId !== ownerId || current.jjumId !== jjumId
       || current.layaTag?.state !== 'pending') return undefined;
     if (!isLayaTag(current.layaTag)) throw new Error('Stored Laya review is invalid');
@@ -191,6 +194,7 @@ export async function reviewStoredJJum(
   });
   if (!claim) return;
   try {
+    if (isCurrent && !isCurrent()) return;
     let result: LayaReviewResult | undefined;
     try {
       const response: unknown = await engine.reviewJJum({
@@ -207,8 +211,9 @@ export async function reviewStoredJJum(
       // 외부 오류 원문에는 비공개 입력이 섞일 수 있어 저장하지 않는다.
     }
     await withConversationLock(storage, ownerId, async () => {
+      if (isCurrent && !isCurrent()) return;
       const current = await storage.getJJum(ownerId, jjumId);
-      if (active.get(key) !== claim.flight || !current || current.ownerId !== ownerId
+      if ((isCurrent && !isCurrent()) || active.get(key) !== claim.flight || !current || current.ownerId !== ownerId
         || current.jjumId !== jjumId || current.layaTag?.state !== 'pending'
         || layaContentSnapshot(current) !== claim.flight.snapshot
         || JSON.stringify(canonical(current.layaTag)) !== claim.flight.pending) return;

@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-12
+// @editedBy SherrySherry 2026-10-16
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
@@ -151,6 +151,14 @@ export interface ConversationProcessingResult {
   receipt: ConversationReceipt;
 }
 
+/** 새 입력이 현재 작업을 대체했다. 이미 저장한 확정 기억의 삭제를 뜻하지 않는다. */
+export class ConversationSupersededError extends Error {
+  constructor() {
+    super('Conversation processing was superseded by newer input');
+    this.name = 'ConversationSupersededError';
+  }
+}
+
 /** 준비된 발화 식별 정보를 보존하여 실패 후 같은 요청을 재시도할 수 있게 한다. */
 export class ConversationProcessingError extends Error {
   readonly receipt: ConversationReceipt;
@@ -197,6 +205,10 @@ export async function processConversationToStorage(
     maxMentionHistoryEntries?: number;
     /** 생성·실제 내용 수정 뒤 사용할 검토 엔진. 미연결 시 판정 없이 대기를 보존한다. */
     reviewEngine?: LayaReviewEngine;
+    /** 최신 입력에 해당하는 작업인지 확인한다. false가 되면 남은 반영을 중단한다. */
+    isCurrent?: () => boolean;
+    /** 문맥과 구별되는 이번 처리 대상. 지정하면 이 안의 확정 근거가 있는 초안만 저장한다. */
+    evidenceUtteranceIds?: readonly string[];
   },
 ): Promise<ConversationProcessingResult> {
   if (ownerId !== extractReq.ownerId) throw new Error('Conversation ownerId must match request ownerId');
@@ -205,11 +217,36 @@ export async function processConversationToStorage(
   const receipt = conversationReceipt(prepared);
   const reviewTargets = new Map<string, PreparedConversationTurn[]>();
   const reviewIntents = new Map<string, LayaReviewIntent>();
+  const evidenceIds = options?.evidenceUtteranceIds === undefined
+    ? undefined : new Set(options.evidenceUtteranceIds);
+  const assertCurrent = (): void => {
+    if (options?.isCurrent && !options.isCurrent()) throw new ConversationSupersededError();
+  };
+  const pendingInvalidations = new Set<string>();
+  const invalidateReview = (jjumId: string): void => {
+    if (options?.isCurrent) pendingInvalidations.add(jjumId);
+    else invalidateLayaReview(storageAdapter, ownerId, jjumId);
+  };
+  const savePlannedJJums = async (jjums: JJum[]): Promise<void> => {
+    if (!options?.isCurrent) {
+      await putJJums(storageAdapter, ownerId, jjums);
+      return;
+    }
+    // 저장한 파일은 되돌리지 않는다. 다음 파일·관계·검토부터 중단하고 재시도 이력을 남긴다.
+    for (const jjum of jjums) {
+      assertCurrent();
+      if (pendingInvalidations.delete(jjum.jjumId)) invalidateLayaReview(storageAdapter, ownerId, jjum.jjumId);
+      await storageAdapter.putJJum(ownerId, jjum);
+      assertCurrent();
+    }
+  };
   try {
     const chunkSize = options?.maxMentionHistoryEntries ?? DEFAULT_MENTION_HISTORY_CHUNK_SIZE;
     if (!Number.isSafeInteger(chunkSize) || chunkSize < 1) throw new Error('Invalid mention history chunk size');
     const result = await withConversationLock(storageAdapter, ownerId, async () => {
+      assertCurrent();
       const stored = await storageAdapter.listJJums(ownerId);
+      assertCurrent();
       const turns = new Map(prepared.turns.map((turn) => [turn.utteranceId, turn]));
       // 비활성 쩜의 기록도 확인하여 같은 ID로 확정 발화를 바꾸지 못하게 한다.
       for (const jjum of stored) {
@@ -235,9 +272,11 @@ export async function processConversationToStorage(
         ...current.flatMap((jjum) => [jjum.jjumName, ...jjum.aliases, ...jjum.jjtags])
           .filter((name) => name.trim() && contextText.includes(name.trim().toLowerCase())),
       ])], { touch: false, now, topicLimit: 0 });
+      assertCurrent();
       const drafts = await extractJJums(aiAdapter, {
         ...prepared, knownNames, recalledJJums: recalled.candidates.map((candidate) => candidate.jjum),
       });
+      assertCurrent();
       if (!Array.isArray(drafts)) throw new Error('AI drafts must be an array');
       const all = new Map(current.map((jjum) => [jjum.jjumId, jjum]));
       const changed = new Map<string, JJum>();
@@ -275,6 +314,7 @@ export async function processConversationToStorage(
           evidence.set(turn.utteranceId, { turn, kind: mention.kind });
         }
         if (evidence.size === 0) continue;
+        if (evidenceIds && ![...evidence.keys()].some((utteranceId) => evidenceIds.has(utteranceId))) continue;
         // 비활성 쩜에 이미 반영된 발화는 새 쩜으로 복제하거나 상태를 되살리지 않는다.
         const inactiveReplay = inactive.some((jjum) =>
           [jjum.jjumName, ...jjum.aliases].some((name) => normalize(name) === normalize(draft.jjumName))
@@ -364,16 +404,19 @@ export async function processConversationToStorage(
       const summarized: JJum[] = [];
       let failedSummaries = 0;
       for (const candidate of content) {
+        assertCurrent();
         const original = originals.get(candidate.jjumId);
         const contentChanged = !original || layaContentSnapshot(original) !== layaContentSnapshot(candidate);
         let jjum = candidate;
         if (contentChanged) {
           [jjum] = await summarizeJJums(aiAdapter, [candidate], options?.summarizeHint);
+          // 요약 helper의 일반 오류 대체와 별개로 오래된 작업은 저장하지 않는다.
+          assertCurrent();
           if (jjum === candidate) failedSummaries++;
         }
         const evidence = [...(evidenceByJJum.get(jjum.jjumId)?.values() ?? [])];
         if (contentChanged || (requestedReviews.has(jjum.jjumId) && evidence.length > 0)) {
-          invalidateLayaReview(storageAdapter, ownerId, jjum.jjumId);
+          invalidateReview(jjum.jjumId);
           jjum = {
             ...jjum,
             layaTag: pendingLayaTag(now, contentChanged
@@ -396,13 +439,14 @@ export async function processConversationToStorage(
       }
       const savedIds = new Set<string>();
       if (summarized.length > 0) {
-        await putJJums(storageAdapter, ownerId, summarized);
+        await savePlannedJJums(summarized);
         for (const jjum of summarized) {
           all.set(jjum.jjumId, jjum);
           savedIds.add(jjum.jjumId);
         }
       }
 
+      assertCurrent();
       // 이 단계에 도달하면 모든 새 쩜이 저장되어 임시 ID를 가리키는 쩜선이 남지 않는다.
       const connections = new Map<string, JJum>();
       const connect = (sourceId: string, targetId: string, evidence: PreparedConversationTurn[]): void => {
@@ -410,7 +454,7 @@ export async function processConversationToStorage(
         if (source.seons.some((seon) => seon.targetId === targetId && !seon.label)) return;
         const updated = { ...source, seons: [...source.seons] };
         upsertSeon(updated, targetId, 1, undefined, now);
-        invalidateLayaReview(storageAdapter, ownerId, sourceId);
+        invalidateReview(sourceId);
         updated.layaTag = pendingLayaTag(now, '대화 근거로 연결 정보가 바뀌어 검토를 기다립니다.');
         const combinedEvidence = new Map<string, PreparedConversationTurn>();
         for (const turn of [
@@ -444,11 +488,13 @@ export async function processConversationToStorage(
         }
       }
       if (connections.size > 0) {
-        await putJJums(storageAdapter, ownerId, [...connections.values()]);
+        await savePlannedJJums([...connections.values()]);
         for (const id of connections.keys()) savedIds.add(id);
       }
+      assertCurrent();
       if (options?.reviewEngine) {
         for (const [jjumId, evidence] of reviewTargets) {
+          assertCurrent();
           reviewIntents.set(jjumId, captureLayaReviewIntent(storageAdapter, all.get(jjumId)!, evidence));
         }
       }
@@ -456,10 +502,14 @@ export async function processConversationToStorage(
     });
     // 모델 실행 중 소유자 잠금을 잡지 않는다. 서비스가 결과 저장 직전 현재 내용을 다시 확인한다.
     for (const [jjumId, intent] of reviewIntents) {
-      await reviewStoredJJum(storageAdapter, options?.reviewEngine, ownerId, jjumId, intent);
+      assertCurrent();
+      await reviewStoredJJum(storageAdapter, options?.reviewEngine, ownerId, jjumId, intent, undefined, options?.isCurrent);
+      assertCurrent();
     }
+    assertCurrent();
     return result;
   } catch (cause) {
-    throw new ConversationProcessingError(receipt, cause);
+    throw new ConversationProcessingError(receipt,
+      options?.isCurrent && !options.isCurrent() ? new ConversationSupersededError() : cause);
   }
 }
