@@ -9,6 +9,7 @@
 // @editedBy YAONG1230 2026-10-14
 // @editedBy YAONG1230 2026-10-16: 로컬 AI 연결 안내와 모델 선택 보존
 // @editedBy YAONG1230 2026-10-16: 발화별 토큰 계량 표시와 프론트 수신 경계
+// @editedBy YAONG1230 2026-10-17: 토큰 v2 응답과 서버 누적 복원 연결
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -40,6 +41,8 @@ HAEMA_CONSOLE = {
     conversationSession: null,
     tokenUsage: null,
     tokenUsageError: null,
+    tokenUsageRestoreKey: null,
+    conversationScopeEpoch: 0,
     conversationSessionError: '',
     conversationPersistenceBlocked: false,
     activeConversationScope: null,
@@ -662,31 +665,64 @@ HAEMA_CONSOLE.getTokenUsageStore = function() {
 HAEMA_CONSOLE.readTokenUsage = function() {
     const scope = this.getConversationScope();
     if (!scope) return { ok: true, turnCount: 0, latest: null };
-    if (this.tokenUsageError && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.tokenUsageError.scope)) return { ok: false, error: this.tokenUsageError.error };
-    return this.getTokenUsageStore()?.current(scope) || { ok: true, turnCount: 0, latest: null };
+    const summary = this.getTokenUsageStore()?.current(scope) || { ok: true, turnCount: 0, latest: null };
+    if (this.tokenUsageError && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.tokenUsageError.scope)) {
+        return { ...summary, warning: this.tokenUsageError.error };
+    }
+    return summary;
 };
 
 HAEMA_CONSOLE.trackTokenTurn = function(action, scope, request) {
     const outcome = this.getTokenUsageStore()?.[action](scope, request);
     if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
-    else if (outcome?.ok) this.tokenUsageError = null;
     return outcome;
 };
 
-// Frontend integration boundary. The current conversation API does not expose usage.
-// A future adapter must supply normalized, identifiable observed calls; do not guess payload fields.
-HAEMA_CONSOLE.receiveTokenUsage = function(scope, request, measurement) {
-    const outcome = this.getTokenUsageStore()?.record(scope, request, measurement);
+// The report is Haema-only. Host generation and recall length estimates never enter this ledger.
+HAEMA_CONSOLE.receiveTokenUsage = function(scope, request, measurement, persistence = {}) {
+    const outcome = this.getTokenUsageStore()?.record(scope, request, measurement, persistence);
     if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
     else if (outcome?.ok) this.tokenUsageError = null;
     if (HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) this.render();
     return outcome;
 };
 
+HAEMA_CONSOLE.restoreTokenUsage = async function(scope, conversationId, epoch = this.conversationScopeEpoch) {
+    const isCurrent = () => epoch === this.conversationScopeEpoch &&
+        HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope()) &&
+        this.conversationSession.current(scope) === conversationId;
+    try {
+        if (!isCurrent()) return;
+        await this.verifyConversationScope(scope);
+        if (!isCurrent()) return;
+        const query = new URLSearchParams({ ownerId: scope.ownerId, conversationId });
+        const response = await fetch('/api/conversation/usage?' + query, { cache: 'no-store' });
+        const payload = await response.json();
+        if (!isCurrent()) return;
+        if (!response.ok || payload.success !== true) throw new Error('서버의 누적 사용량을 읽지 못했어요. 확인된 기록은 유지해요.');
+        // The API pins its selected store at request time. Verify the visible
+        // path before/after; the model binds and compares the opaque storageId.
+        await this.verifyConversationScope(scope);
+        if (!isCurrent()) return;
+        const outcome = this.getTokenUsageStore()?.restore(scope, conversationId, payload.conversationUsage);
+        if (outcome?.ok === false) throw new Error(outcome.error);
+        this.tokenUsageError = null;
+    } catch (error) {
+        if (HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope()) && epoch === this.conversationScopeEpoch) {
+            this.tokenUsageError = { scope, error: error.message || '서버 사용량을 확인하지 못했어요. 기존 기록은 유지해요.' };
+        }
+    }
+    if (epoch === this.conversationScopeEpoch && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) this.render();
+};
+
 HAEMA_CONSOLE.syncConversationPending = function() {
     try {
         if (!this.conversationSession) this.conversationSession = HAEMA_CONVERSATION_SESSION.create();
         const scope = this.getConversationScope();
+        if (JSON.stringify(scope) !== JSON.stringify(this.activeConversationScope)) {
+            this.conversationScopeEpoch += 1;
+            this.tokenUsageRestoreKey = null;
+        }
         if (!scope || (this.activeConversationScope && !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.activeConversationScope))) {
             this.latestResult = null;
             this.previewState = 'idle';
@@ -695,6 +731,15 @@ HAEMA_CONSOLE.syncConversationPending = function() {
         }
         this.activeConversationScope = scope;
         if (!scope) return;
+        const conversationId = this.conversationSession.current(scope);
+        if (conversationId) {
+            const key = JSON.stringify([scope.ownerId, scope.storageRoot, conversationId]);
+            if (key !== this.tokenUsageRestoreKey) {
+                this.tokenUsageRestoreKey = key;
+                const epoch = this.conversationScopeEpoch;
+                Promise.resolve().then(() => this.restoreTokenUsage(scope, conversationId, epoch));
+            }
+        }
         this.conversationSession.pending(scope).forEach(request => {
             const turn = request.turns[0];
             if (this.conversationHistory.some(item => item.request?.turns[0].utteranceId === turn.utteranceId && HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope))) return;
@@ -800,6 +845,8 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
 
     let accepted = false;
     let tokenTurnStarted = false;
+    let usageReceived = false;
+    const usageEpoch = this.conversationScopeEpoch;
     try {
         if (!alreadyVerified) await this.verifyConversationScope(message.scope);
         if (!HAEMA_CONVERSATION_SESSION.sameScope(message.scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 전송을 멈췄어요.');
@@ -816,6 +863,21 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
             body: JSON.stringify(retry ? { ...request, touch: false } : request)
         });
         const payload = await response.json();
+        usageReceived = !!payload.tokenUsage;
+        // Failure responses may already have consumed tokens. Preserve their
+        // observed usage before receipt/application error handling below.
+        if (payload.tokenUsage && usageEpoch === this.conversationScopeEpoch &&
+            HAEMA_CONVERSATION_SESSION.sameScope(message.scope, this.getConversationScope())) {
+            try {
+                await this.verifyConversationScope(message.scope);
+                if (usageEpoch === this.conversationScopeEpoch) this.receiveTokenUsage(message.scope, request, payload.tokenUsage, {
+                    conversationUsage: payload.conversationUsage,
+                    usagePersistence: payload.usagePersistence
+                });
+            } catch (error) {
+                this.tokenUsageError = { scope: message.scope, error: error.message || '사용량의 저장소를 확인하지 못했어요.' };
+            }
+        }
         if (response.ok && payload.success && !payload.extraction?.receipt) {
             throw Object.assign(new Error('서버에서 대화 처리 확인을 받지 못했어요. 최신 로컬 서버 연결을 확인한 뒤 다시 보내 주세요.'), { code: 'CONVERSATION_RECEIPT' });
         }
@@ -896,6 +958,10 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         this.render();
     } catch (error) {
         if (tokenTurnStarted) this.trackTokenTurn('fail', message.scope, request);
+        if (tokenTurnStarted && !usageReceived && usageEpoch === this.conversationScopeEpoch &&
+            HAEMA_CONVERSATION_SESSION.sameScope(message.scope, this.getConversationScope())) {
+            await this.restoreTokenUsage(message.scope, request.conversationId, usageEpoch);
+        }
         this.latestResult = null;
         this.previewState = accepted ? 'result-error' : 'error';
         this.recallResults = [];

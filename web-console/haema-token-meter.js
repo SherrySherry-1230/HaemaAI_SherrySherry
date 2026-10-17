@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-10-16
+// @editedBy YAONG1230 2026-10-17
 // Display only observed usage. No text-length estimates or provider API assumptions.
 (function (global) {
     'use strict';
@@ -7,7 +7,7 @@
     const known = value => Number.isSafeInteger(value) && value >= 0;
     function valueText(item, loading = false) {
         if (!item) return '대화 대기';
-        if (!known(item.totalKnown)) return loading ? '집계 중' : item.status === 'pending' ? '확인 필요' : '미제공';
+        if (!known(item.totalKnown)) return loading ? '집계 중' : item.ok === false || item.status === 'pending' ? '확인 필요' : '미제공';
         return (item.complete ? '' : '≥ ') + format(item.totalKnown);
     }
     function ceiling(value) {
@@ -17,29 +17,40 @@
     }
     function render(summary, loading = false) {
         const failed = !summary || summary.ok === false;
-        const latest = failed ? null : summary.latest;
-        const hasTurns = !failed && summary.turnCount > 0;
-        const total = hasTurns ? summary : null;
+        const warning = typeof summary?.warning === 'string' ? summary.warning : '';
+        // Failed refreshes retain the last validated server snapshot. A measured
+        // latest report may also exist even when persisting it failed.
+        if (summary?.ok === false && summary.summary) summary = summary.summary;
+        const latest = summary?.latest || null;
+        const hasTurns = summary?.turnCount > 0 || known(summary?.totalKnown);
+        const total = hasTurns || summary?.found === false ? summary : null;
         const quantity = (item, delta = false) => {
+            if (known(item?.totalKnown)) return (delta ? '+' : '') + format(item.totalKnown) + (item.complete ? '' : ' 이상');
             if (failed) return '확인 필요';
-            if (!known(item?.totalKnown)) return valueText(item, loading && delta);
-            return (delta ? '+' : '') + format(item.totalKnown) + (item.complete ? '' : ' 이상');
+            if (loading && delta) return '집계 중';
+            if (summary?.found === false && !item) return '미제공';
+            return valueText(item);
         };
         const delta = quantity(latest, true), cumulative = quantity(total);
         const longValue = (delta + cumulative).length > 28;
-        // Only split calls whose total is known. Unreported input/output portions
-        // stay neutral instead of being guessed or added to a different total.
+        // The v2 model derives these segments from validated observations,
+        // including known input/output when the provider omitted its total.
+        // Retries share an utteranceId, so only usageId identifies this report.
+        const parts = item => ({
+            input: known(item?.segments?.input) ? item.segments.input : 0,
+            output: known(item?.segments?.output) ? item.segments.output : 0,
+            other: known(item?.segments?.unclassified) ? item.segments.unclassified : 0
+        });
+        const cumulativeParts = parts(total);
+        const persistedLatest = latest?.usageId
+            ? (summary?.turns || []).find(report => report.usageId === latest.usageId)
+            : null;
+        // Use the stored version of this report. A newer unpersisted completion
+        // may contain more tokens than its pending version in the snapshot.
+        let currentParts = parts(persistedLatest);
+        if (Object.keys(currentParts).some(kind => currentParts[kind] > cumulativeParts[kind])) currentParts = parts(null);
         const buckets = [false, true].flatMap(current => ['input', 'output', 'other'].map(kind => ({ current, kind, tokens: 0 })));
-        for (const turn of failed ? [] : summary.turns || []) {
-            const current = turn.utteranceId === latest?.utteranceId;
-            for (const call of turn.calls || []) {
-                if (!known(call.totalTokens)) continue;
-                const input = known(call.inputTokens) ? call.inputTokens : 0;
-                const output = known(call.outputTokens) ? call.outputTokens : 0;
-                const values = { input, output, other: call.totalTokens - input - output };
-                for (const kind of ['input', 'output', 'other']) buckets.find(bucket => bucket.current === current && bucket.kind === kind).tokens += values[kind];
-            }
-        }
+        for (const bucket of buckets) bucket.tokens = bucket.current ? currentParts[bucket.kind] : cumulativeParts[bucket.kind] - currentParts[bucket.kind];
         const segments = buckets.filter(bucket => bucket.tokens > 0);
         const labels = { input: '입력', output: '출력', other: '미분류' };
         const segmentLabel = segment => (segment.current ? '이번 발화 ' : '이전 발화 ') + labels[segment.kind] + ' ' + format(segment.tokens) + ' 토큰';
@@ -48,10 +59,13 @@
         const bar = hasValue ? segments.map(segment => '<span class="token-meter-segment token-kind-' + segment.kind +
             (segment.current ? ' is-current' : '') + (segment === firstCurrent ? ' is-new-start' : '') + '" style="width:' + (segment.tokens / (total.totalKnown || 1) * 100) +
             '%" title="' + escape(segmentLabel(segment)) + '"></span>').join('') : '';
-        const note = failed ? '사용량 기록을 확인하지 못했어요. 기존 기록은 보존돼요.' :
+        const persistenceFailed = latest?.persistenceStatus === 'failed' || summary?.persistenceStatus === 'failed';
+        const note = warning || (persistenceFailed ? '이번 값은 저장하지 못했어요. 누적은 마지막 저장값이에요.' :
+            failed ? '사용량을 갱신하지 못했어요. 마지막 확인값을 표시해요.' :
+            summary?.found === false ? '저장된 사용량 기록이 아직 없어요.' :
             !hasTurns ? '대화를 보내면 발화별 사용량을 확인할 수 있어요.' :
-            summary.complete ? '' : known(summary.totalKnown) ? '확인된 사용량만 표시해요. 미집계 발화가 있어요.' :
-            loading ? '실제 사용량이 도착하면 표시해요.' : '사용량 정보가 아직 전달되지 않았어요.';
+            summary.complete ? '' : known(summary.totalKnown) ? '확인된 사용량만 표시해요. 미집계 사용량이 있어요.' :
+            loading ? '실제 사용량이 도착하면 표시해요.' : '사용량 정보가 아직 전달되지 않았어요.');
         const component = kind => '<span class="token-meter-key token-key-' + kind + '">' + labels[kind] + '</span>';
         const legend = component('input') + component('output') +
             (segments.some(segment => segment.kind === 'other') ? '<span class="token-meter-key token-key-other">미분류</span>' : '') + '<span class="token-meter-current-key">진한색 · 이번 발화</span>';
@@ -90,7 +104,8 @@
             { duration: state.duration - elapsed, easing: 'linear' });
     }
     function badge(turn) {
-        return '<span class="result-token-usage">토큰 ' + escape(turn?.ok === false ? '확인 필요' : !turn || turn.found === false ? '미제공' : valueText(turn)) + '</span>';
+        const value = known(turn?.totalKnown) ? valueText(turn) : turn?.ok === false ? '확인 필요' : !turn || turn.found === false ? '미제공' : valueText(turn);
+        return '<span class="result-token-usage">토큰 ' + escape(value + (turn?.persistenceStatus === 'failed' ? ' · 저장 미완료' : '')) + '</span>';
     }
     global.HAEMA_TOKEN_METER = { render, badge, ceiling, valueText, animate };
 })(window);
