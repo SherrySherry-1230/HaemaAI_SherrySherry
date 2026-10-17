@@ -10,6 +10,7 @@
 // @editedBy YAONG1230 2026-10-16: 로컬 AI 연결 안내와 모델 선택 보존
 // @editedBy YAONG1230 2026-10-16: 발화별 토큰 계량 표시와 프론트 수신 경계
 // @editedBy YAONG1230 2026-10-17: 토큰 v2 응답과 서버 누적 복원 연결
+// @editedBy YAONG1230 2026-10-18: 연결된 저장소 식별자와 최초 사용량 응답 대조
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -23,6 +24,7 @@ HAEMA_CONSOLE = {
     streamingJJums: new Set(),
     selectedJJumId: null,
     storageConnected: false,
+    storageIdentity: null,
     apiConfigured: false,
     sending: false,
     sendPressed: false,
@@ -44,6 +46,7 @@ HAEMA_CONSOLE = {
     tokenUsageRestoreKey: null,
     conversationScopeEpoch: 0,
     conversationSessionError: '',
+    conversationSessionNotice: '',
     conversationPersistenceBlocked: false,
     activeConversationScope: null,
     draftVersion: 0,
@@ -84,7 +87,7 @@ HAEMA_CONSOLE.render = function() {
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
     if (typeof HAEMA_TOKEN_METER !== 'undefined' && typeof HAEMA_TOKEN_METER.animate === 'function') {
         const scope = this.getConversationScope();
-        HAEMA_TOKEN_METER.animate(app, scope ? JSON.stringify([scope.ownerId, scope.storageRoot]) : '');
+        HAEMA_TOKEN_METER.animate(app, scope ? JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId ?? null]) : '');
     }
     this.renderedModalMode = this.modalMode;
     this.renderedModalData = this.modalData;
@@ -654,7 +657,15 @@ HAEMA_CONSOLE.activateSend = function() {
 
 HAEMA_CONSOLE.getConversationScope = function() {
     const storageRoot = localStorage.getItem('haema_storage_root') || localStorage.getItem('haema_storage_path') || '';
-    return this.storageConnected && storageRoot ? { ownerId: this.conversationOwnerId, storageRoot } : null;
+    if (!this.storageConnected || !storageRoot) return null;
+    const identity = this.storageIdentity;
+    const storageId = identity?.storageRoot === storageRoot ? identity.storageId : undefined;
+    return { ownerId: this.conversationOwnerId, storageRoot, ...(this.hasStorageId({ storageId }) ? { storageId } : {}) };
+};
+
+HAEMA_CONSOLE.hasStorageId = function(scope) {
+    return typeof scope?.storageId === 'string' && scope.storageId.trim() === scope.storageId &&
+        scope.storageId.length > 0 && scope.storageId.length <= 512;
 };
 
 HAEMA_CONSOLE.getTokenUsageStore = function() {
@@ -665,6 +676,7 @@ HAEMA_CONSOLE.getTokenUsageStore = function() {
 HAEMA_CONSOLE.readTokenUsage = function() {
     const scope = this.getConversationScope();
     if (!scope) return { ok: true, turnCount: 0, latest: null };
+    if (!this.hasStorageId(scope)) return { ok: false, summary: null, error: '연결된 저장소의 식별 정보를 받지 못해 사용량을 확인할 수 없어요. 저장소를 다시 연결해 주세요.' };
     const summary = this.getTokenUsageStore()?.current(scope) || { ok: true, turnCount: 0, latest: null };
     if (this.tokenUsageError && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.tokenUsageError.scope)) {
         return { ...summary, warning: this.tokenUsageError.error };
@@ -673,6 +685,7 @@ HAEMA_CONSOLE.readTokenUsage = function() {
 };
 
 HAEMA_CONSOLE.trackTokenTurn = function(action, scope, request) {
+    if (!this.hasStorageId(scope)) return;
     const outcome = this.getTokenUsageStore()?.[action](scope, request);
     if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
     return outcome;
@@ -680,6 +693,7 @@ HAEMA_CONSOLE.trackTokenTurn = function(action, scope, request) {
 
 // The report is Haema-only. Host generation and recall length estimates never enter this ledger.
 HAEMA_CONSOLE.receiveTokenUsage = function(scope, request, measurement, persistence = {}) {
+    if (!this.hasStorageId(scope)) return { ok: false, summary: null, error: '사용량의 저장소를 확인하지 못했어요.' };
     const outcome = this.getTokenUsageStore()?.record(scope, request, measurement, persistence);
     if (outcome?.ok === false) this.tokenUsageError = { scope, error: outcome.error };
     else if (outcome?.ok) this.tokenUsageError = null;
@@ -688,6 +702,7 @@ HAEMA_CONSOLE.receiveTokenUsage = function(scope, request, measurement, persiste
 };
 
 HAEMA_CONSOLE.restoreTokenUsage = async function(scope, conversationId, epoch = this.conversationScopeEpoch) {
+    if (!this.hasStorageId(scope)) return;
     const isCurrent = () => epoch === this.conversationScopeEpoch &&
         HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope()) &&
         this.conversationSession.current(scope) === conversationId;
@@ -700,8 +715,8 @@ HAEMA_CONSOLE.restoreTokenUsage = async function(scope, conversationId, epoch = 
         const payload = await response.json();
         if (!isCurrent()) return;
         if (!response.ok || payload.success !== true) throw new Error('서버의 누적 사용량을 읽지 못했어요. 확인된 기록은 유지해요.');
-        // The API pins its selected store at request time. Verify the visible
-        // path before/after; the model binds and compares the opaque storageId.
+        // Pin the opaque ID supplied by storage status/init before the request;
+        // both status checks and the response must agree with that original ID.
         await this.verifyConversationScope(scope);
         if (!isCurrent()) return;
         const outcome = this.getTokenUsageStore()?.restore(scope, conversationId, payload.conversationUsage);
@@ -730,10 +745,13 @@ HAEMA_CONSOLE.syncConversationPending = function() {
             this.answerGuide = null;
         }
         this.activeConversationScope = scope;
+        this.conversationSessionNotice = '';
         if (!scope) return;
+        const unverified = this.conversationSession.unverifiedPendingCount(scope);
+        if (unverified) this.conversationSessionNotice = '이전 연결의 미완료 전송 ' + unverified + '건은 이 탭에 보관 중이에요. 저장소가 확인되지 않아 자동으로 다시 보내지 않았어요.';
         const conversationId = this.conversationSession.current(scope);
         if (conversationId) {
-            const key = JSON.stringify([scope.ownerId, scope.storageRoot, conversationId]);
+            const key = JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId ?? null, conversationId]);
             if (key !== this.tokenUsageRestoreKey) {
                 this.tokenUsageRestoreKey = key;
                 const epoch = this.conversationScopeEpoch;
@@ -756,11 +774,15 @@ HAEMA_CONSOLE.verifyConversationScope = async function(scope) {
     if (!scope || !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) {
         throw new Error('이 대화를 보냈던 저장소를 연결한 뒤 다시 보내 주세요.');
     }
-    const response = await fetch('/api/storage/status');
+    const response = await fetch('/api/storage/status', { cache: 'no-store' });
     const status = await response.json();
     if (!response.ok || status.connected !== true || status.storageRoot !== scope.storageRoot ||
         !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) {
         throw new Error('저장소 연결이 바뀌었거나 확인되지 않아 전송을 멈췄어요. 저장소를 다시 확인해 주세요.');
+    }
+    if ((this.hasStorageId(scope) && status.storageId !== scope.storageId) ||
+        (!this.hasStorageId(scope) && this.hasStorageId(status))) {
+        throw new Error('연결된 저장소의 식별 정보가 바뀌어 처리를 멈췄어요. 저장소를 다시 연결해 주세요.');
     }
 };
 
@@ -866,7 +888,7 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         usageReceived = !!payload.tokenUsage;
         // Failure responses may already have consumed tokens. Preserve their
         // observed usage before receipt/application error handling below.
-        if (payload.tokenUsage && usageEpoch === this.conversationScopeEpoch &&
+        if (payload.tokenUsage && this.hasStorageId(message.scope) && usageEpoch === this.conversationScopeEpoch &&
             HAEMA_CONVERSATION_SESSION.sameScope(message.scope, this.getConversationScope())) {
             try {
                 await this.verifyConversationScope(message.scope);
@@ -1708,9 +1730,10 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     }).join('');
     const empty = visibleHistory.length ? '' : '<div class="conversation-empty"><span class="conversation-empty-mark">~</span><strong>해마와 대화를 시작해 보세요</strong><br>보낸 메시지는 이곳에 차곡차곡 쌓여요.</div>';
     const sessionError = this.conversationSessionError ? '<p class="conversation-session-error" role="alert">' + this.escapeHtml(this.conversationSessionError) + '</p>' : '';
+    const sessionNotice = this.conversationSessionNotice ? '<p class="message-meta" role="status">' + this.escapeHtml(this.conversationSessionNotice) + '</p>' : '';
     return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + storageBtn + apiBtn + '</div>' +
         '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
-        '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + empty + messages + '</div>' +
+        '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
         '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
         '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></section>';

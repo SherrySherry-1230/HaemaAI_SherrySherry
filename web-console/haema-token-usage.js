@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-10-17
+// @editedBy YAONG1230 2026-10-18
 // TOKEN_USAGE v2 receiver. Server snapshots are authoritative conversation totals.
 // This cache contains identifiers/measurements only, never prompts or API keys.
 (function (global) {
@@ -10,6 +10,7 @@
     const error = (code, message) => Object.assign(new Error(message), { code });
     const invalid = () => error('TOKEN_USAGE_INVALID', '토큰 계량 정보의 형식을 확인할 수 없어 기존 기록을 유지했어요.');
     const conflict = () => error('TOKEN_USAGE_CONFLICT', '같은 처리의 토큰 계량 정보가 달라 기존 기록을 유지했어요.');
+    const scopeError = () => error('TOKEN_USAGE_SCOPE', '저장소 식별자를 확인하지 못해 토큰 기록 표시를 보류했어요. 기존 기록은 그대로 두었습니다.');
     const storageError = () => error('TOKEN_USAGE_STORAGE', '이 탭의 토큰 계량 기록을 읽거나 보관하지 못했어요. 기존 기록은 그대로 두었습니다.');
     function count(value) {
         if (value === null) return null;
@@ -179,10 +180,31 @@
     function create(options = {}) {
         const storage = () => options.storage || global.sessionStorage;
         let lastValid = { version: 2, scopes: [] };
+        function findGroup(data, scope, ensure = false) {
+            const candidates = data.scopes.filter(item => sameScope(item.scope, scope));
+            let group;
+            if (scope.storageId !== undefined) {
+                group = candidates.find(item => item.storageId === scope.storageId);
+                // A legacy group with no observed report may be bound once. A
+                // group already bound to another store is preserved separately.
+                if (!group && ensure) {
+                    group = candidates.find(item => item.storageId === null);
+                    if (group) group.storageId = scope.storageId;
+                }
+            } else {
+                // Keep the former single-store API, but never guess between two
+                // actual stores that have used the same displayed path.
+                if (candidates.length > 1) throw scopeError();
+                group = candidates[0];
+            }
+            if (!group && ensure) {
+                group = { scope: { ownerId: scope.ownerId, storageRoot: scope.storageRoot }, storageId: scope.storageId ?? null, currentConversationId: null, conversations: [] };
+                data.scopes.push(group);
+            }
+            return group;
+        }
         function locate(data, scope, conversationId, ensure = false) {
-            let group = data.scopes.find(item => sameScope(item.scope, scope));
-            if (!group && ensure) { group = { scope: { ownerId: scope.ownerId, storageRoot: scope.storageRoot }, storageId: null, currentConversationId: null, conversations: [] }; data.scopes.push(group); }
-            if (scope.storageId && group?.storageId && scope.storageId !== group.storageId) throw conflict();
+            const group = findGroup(data, scope, ensure);
             let conversation = group?.conversations.find(item => item.conversationId === conversationId);
             if (!conversation && ensure) {
                 conversation = { conversationId, server: null, reports: [], latestRequest: null, latestUsageId: null, persistenceStatus: null };
@@ -227,9 +249,8 @@
             if (!data || data.version !== 2 || !Array.isArray(data.scopes)) throw invalid();
             const scopes = new Set();
             for (const group of data.scopes) {
-                const scope = checkScope(group.scope), key = JSON.stringify([scope.ownerId, scope.storageRoot]);
-                if (scopes.has(key) || (group.storageId !== null && !validId(group.storageId)) || !Array.isArray(group.conversations)) throw invalid();
-                scopes.add(key);
+                const scope = checkScope(group.scope);
+                if ((group.storageId !== null && !validId(group.storageId)) || !Array.isArray(group.conversations)) throw invalid();
                 const conversations = new Set();
                 for (const conversation of group.conversations) {
                     if (!validId(conversation.conversationId) || conversations.has(conversation.conversationId) || !Array.isArray(conversation.reports) ||
@@ -255,6 +276,9 @@
                         typeof request.pending !== 'boolean' || typeof request.accepted !== 'boolean')) throw invalid();
                 }
                 if (group.currentConversationId !== null && !conversations.has(group.currentConversationId)) throw invalid();
+                const key = JSON.stringify([scope.ownerId, scope.storageRoot, group.storageId]);
+                if (scopes.has(key)) throw invalid();
+                scopes.add(key);
             }
             return data;
         }
@@ -271,8 +295,9 @@
             catch (cause) {
                 let summary = null;
                 try {
-                    const group = lastValid.scopes.find(item => sameScope(item.scope, scope));
-                    summary = describe(group?.conversations.find(item => item.conversationId === (conversationId || group.currentConversationId)));
+                    const checkedScope = checkScope(scope);
+                    const group = findGroup(lastValid, checkedScope);
+                    if (group) summary = describe(group.conversations.find(item => item.conversationId === (conversationId || group.currentConversationId)));
                 } catch { /* Invalid caller scope cannot expose another conversation. */ }
                 return { ok: false, code: cause?.code || 'TOKEN_USAGE_STORAGE', error: cause?.message || storageError().message, summary };
             }
@@ -381,8 +406,7 @@
             current(scope) {
                 return safe(scope, null, () => {
                     scope = checkScope(scope);
-                    const data = read(), group = data.scopes.find(item => sameScope(item.scope, scope));
-                    if (scope.storageId && group?.storageId && scope.storageId !== group.storageId) throw conflict();
+                    const data = read(), group = findGroup(data, scope);
                     return describe(group?.conversations.find(item => item.conversationId === group.currentConversationId));
                 });
             },
