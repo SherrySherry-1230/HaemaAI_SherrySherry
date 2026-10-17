@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-12
+// @editedBy SherrySherry 2026-10-17
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -418,6 +418,9 @@ export class FileAdapter implements StorageAdapter {
     }
     if (validation.invalidLayaReview) {
       throw new Error(`Cannot store invalid Laya review: ${validation.errors.join(' / ')}`);
+    }
+    if (!validation.ok || !validation.jjum) {
+      throw new Error(`Cannot store invalid JJum: ${validation.errors.join(' / ')}`);
     }
     const existing = this.getJJumSync(ownerId, stored.jjumId);
     if (existing && validation.jjum && layaContentSnapshot(existing) !== layaContentSnapshot(validation.jjum)) {
