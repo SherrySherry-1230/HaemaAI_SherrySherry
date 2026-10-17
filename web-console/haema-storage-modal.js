@@ -1,5 +1,5 @@
 // @editedBy SherrySherry 2026-09-24
-// @editedBy YAONG1230 2026-10-07
+// @editedBy YAONG1230 2026-10-18
 // ============================================================
 // haema-storage-modal.js
 // 로컬 저장소(쩜통) 연결/생성 모달
@@ -7,6 +7,8 @@
 
 window.HAEMA_STORAGE_MODAL = (function () {
     let consoleRef = null;
+    let storageRequestGeneration = 0;
+    let pendingInit = null;
 
     // 폴더명 상수
     // 추후 영문명 전환 시 이 부분만 변경
@@ -22,6 +24,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     const STORAGE_PATH_KEY = "haema_storage_root";
 
     function setConsole(consoleObj) {
+        storageRequestGeneration += 1;
         consoleRef = consoleObj;
     }
 
@@ -46,18 +49,31 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
         if (consoleRef) {
             consoleRef.storageConnected = connected;
+            const hasIdentity = connected && typeof status.storageRoot === "string" && status.storageRoot.length > 0 &&
+                typeof status.storageId === "string" && status.storageId.length > 0 &&
+                status.storageId.length <= 512 && status.storageId.trim() === status.storageId;
+            consoleRef.storageIdentity = hasIdentity
+                ? { storageRoot: status.storageRoot, storageId: status.storageId }
+                : null;
             consoleRef.updateJJumList(connected ? status.jjums || [] : []);
         }
     }
 
     async function autoConnectStorage() {
+        // 연결 도중의 이전 상태를 읽어 실제 연결 완료 응답을 덮지 않는다.
+        while (pendingInit) {
+            try { await pendingInit; } catch { /* 연결 오류는 해당 모달에서 안내한다. */ }
+        }
+        const generation = ++storageRequestGeneration;
         try {
-            const response = await fetch("/api/storage/status");
+            const response = await fetch("/api/storage/status", { cache: "no-store" });
             if (!response.ok) throw new Error("저장소 상태를 확인할 수 없습니다.");
             const status = await response.json();
+            if (generation !== storageRequestGeneration) return { stale: true };
             applyStorageStatus(status);
             return status;
         } catch {
+            if (generation !== storageRequestGeneration) return { stale: true };
             applyStorageStatus({ connected: false });
             return { connected: false };
         }
@@ -82,24 +98,42 @@ window.HAEMA_STORAGE_MODAL = (function () {
         pathInput.focus();
     }
 
-    async function handleDirectInput(storagePath, forceCreate = false, connectExisting = false) {
-        const response = await fetch("/api/storage/init", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ storageRoot: storagePath, forceCreate, connectExisting }),
+    function handleDirectInput(storagePath, forceCreate = false, connectExisting = false) {
+        const generation = ++storageRequestGeneration;
+        const operation = (async function() {
+            try {
+                const response = await fetch("/api/storage/init", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ storageRoot: storagePath, forceCreate, connectExisting }),
+                });
+                const result = await response.json();
+                if (generation !== storageRequestGeneration) return { stale: true };
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || "저장소 연결에 실패했습니다.");
+                }
+                if (result.exists && result.connected !== true && !forceCreate && !connectExisting) {
+                    return { exists: true, path: result.path, result };
+                }
+                if (result.connected !== true) {
+                    throw new Error(result.error || "저장소 연결 완료를 확인할 수 없습니다.");
+                }
+                applyStorageStatus(result);
+                if (consoleRef && typeof consoleRef.refreshApiStatus === "function") {
+                    await consoleRef.refreshApiStatus();
+                }
+                if (generation !== storageRequestGeneration) return { stale: true };
+                return { exists: false, connected: true, path: result.path, result };
+            } catch (error) {
+                if (generation !== storageRequestGeneration) return { stale: true };
+                throw error;
+            }
+        })();
+        const pending = operation.finally(function() {
+            if (pendingInit === pending) pendingInit = null;
         });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || "저장소 연결에 실패했습니다.");
-        }
-        if (result.exists && !result.connected && !forceCreate && !connectExisting) {
-            return { exists: true, path: result.path, result };
-        }
-        applyStorageStatus({ ...result, connected: true });
-        if (consoleRef && typeof consoleRef.refreshApiStatus === "function") {
-            await consoleRef.refreshApiStatus();
-        }
-        return { exists: false, connected: true, path: result.path, result };
+        pendingInit = pending;
+        return pending;
     }
 
     function openModal() {
@@ -281,6 +315,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             try {
                 // 직접입력 방식 사용
                 const result = await handleDirectInput(storagePath);
+                if (result.stale) return;
 
                 if (result.exists) {
                     // 기존 저장소 존재 - 중첩 모달 표시
@@ -369,10 +404,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         connectBtn.addEventListener("click", async function() {
             try {
                 const result = await handleDirectInput(existingPath, false, true);
-                // 기존 저장소 연결 시에도 쩜 목록 로드
-                if (consoleRef && typeof consoleRef.loadLocalServerData === "function") {
-                    await consoleRef.loadLocalServerData();
-                }
+                if (result.stale) return;
                 overlay.remove();
                 closeModal();
             } catch (error) {
@@ -384,6 +416,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         createBtn.addEventListener("click", async function() {
             try {
                 const result = await handleDirectInput(existingPath, true);
+                if (result.stale) return;
                 overlay.remove();
                 closeModal();
             } catch (error) {

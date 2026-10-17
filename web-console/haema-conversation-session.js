@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-10-17
+// @editedBy YAONG1230 2026-10-18
 // Pending requests live only in this tab. A retry reuses the original request.
 (function (global) {
     'use strict';
@@ -7,8 +7,11 @@
     const recordError = () => Object.assign(new Error('이 탭에 보관한 전송 기록을 확인할 수 없어 전송을 멈췄어요. 기존 기록은 그대로 두었습니다.'), { code: 'CONVERSATION_SESSION' });
     const validId = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 512;
     const validTime = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
-    const sameScope = (a, b) => !!a && !!b && a.ownerId === b.ownerId && a.storageRoot === b.storageRoot;
-    const validScope = scope => scope && validId(scope.ownerId) && typeof scope.storageRoot === 'string' && scope.storageRoot.trim().length > 0;
+    const samePath = (a, b) => !!a && !!b && a.ownerId === b.ownerId && a.storageRoot === b.storageRoot;
+    const sameScope = (a, b) => samePath(a, b) && a.storageId === b.storageId;
+    const validScope = scope => scope && validId(scope.ownerId) && typeof scope.storageRoot === 'string' && scope.storageRoot.trim().length > 0 &&
+        (scope.storageId === undefined || validId(scope.storageId));
+    const scopeKey = scope => JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId ?? null]);
     const clone = value => JSON.parse(JSON.stringify(value));
 
     function validRequest(request, session) {
@@ -33,8 +36,9 @@
                 if (data?.version !== 1 || !Array.isArray(data.sessions)) throw recordError();
                 const seen = new Set();
                 for (const item of data.sessions) {
-                    const key = JSON.stringify([item?.scope?.ownerId, item?.scope?.storageRoot]);
-                    if (!validScope(item?.scope) || !validId(item.conversationId) || seen.has(key)) throw recordError();
+                    if (!validScope(item?.scope) || !validId(item.conversationId)) throw recordError();
+                    const key = scopeKey(item.scope);
+                    if (seen.has(key)) throw recordError();
                     seen.add(key);
                 }
                 return data;
@@ -46,7 +50,7 @@
                 const item = data.sessions.find(entry => sameScope(entry.scope, scope));
                 if (item?.conversationId === conversationId) return;
                 if (item) item.conversationId = conversationId;
-                else data.sessions.push({ scope: { ownerId: scope.ownerId, storageRoot: scope.storageRoot }, conversationId });
+                else data.sessions.push({ scope: clone(scope), conversationId });
                 (options.identityStorage || global.localStorage).setItem(IDENTITY_KEY, JSON.stringify(data));
             } catch { throw recordError(); }
         }
@@ -57,7 +61,13 @@
                 rememberIdentity(scope, session.conversationId);
                 return session.conversationId;
             }
-            return identities().sessions.find(item => sameScope(item.scope, scope))?.conversationId || null;
+            const directory = identities().sessions;
+            const known = directory.find(item => sameScope(item.scope, scope));
+            // A legacy conversation ID can locate its server ledger. Its pending
+            // text is never rebound to a newly identified physical store.
+            const legacy = scope.storageId === undefined ? null : directory.find(item =>
+                item.scope.storageId === undefined && samePath(item.scope, scope));
+            return known?.conversationId || legacy?.conversationId || null;
         }
         function read() {
             try {
@@ -68,9 +78,9 @@
                 const scopes = new Set();
                 for (const session of data.sessions) {
                     if (!validScope(session?.scope) || !validId(session.conversationId) || !Array.isArray(session.pending)) throw recordError();
-                    const scopeKey = JSON.stringify([session.scope.ownerId, session.scope.storageRoot]);
-                    if (scopes.has(scopeKey)) throw recordError();
-                    scopes.add(scopeKey);
+                    const key = scopeKey(session.scope);
+                    if (scopes.has(key)) throw recordError();
+                    scopes.add(key);
                     const ids = new Set();
                     for (const request of session.pending) {
                         if (!validRequest(request, session) || ids.has(request.turns[0].utteranceId)) throw recordError();
@@ -90,15 +100,15 @@
                 if (!validScope(scope) || typeof text !== 'string' || !text.trim()) throw recordError();
                 const data = read();
                 const session = data.sessions.find(item => sameScope(item.scope, scope));
-                const scopeKey = JSON.stringify([scope.ownerId, scope.storageRoot]);
+                const key = scopeKey(scope);
                 let conversationId, utteranceId;
                 try {
-                    conversationId = session?.conversationId || current(scope) || preparedConversations.get(scopeKey) || uuid();
+                    conversationId = session?.conversationId || current(scope) || preparedConversations.get(key) || uuid();
                     utteranceId = uuid();
                 } catch { throw recordError(); }
                 const at = now();
                 if (!validId(conversationId) || !validId(utteranceId) || !validTime(at)) throw recordError();
-                preparedConversations.set(scopeKey, conversationId);
+                preparedConversations.set(key, conversationId);
                 return { ownerId: scope.ownerId, conversationId, turns: [{ utteranceId, role: 'user', text, at, receivedAt: at, final: true }] };
             },
             savePending(scope, request) {
@@ -117,6 +127,12 @@
             },
             pending(scope) {
                 return clone(read().sessions.find(item => sameScope(item.scope, scope))?.pending || []);
+            },
+            unverifiedPendingCount(scope) {
+                if (!validScope(scope)) throw recordError();
+                if (scope.storageId === undefined) return 0;
+                return read().sessions.filter(item => item.scope.storageId === undefined && samePath(item.scope, scope))
+                    .reduce((total, item) => total + item.pending.length, 0);
             },
             complete(scope, utteranceId) {
                 const data = read();
