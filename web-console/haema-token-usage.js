@@ -1,199 +1,400 @@
-// @editedBy YAONG1230 2026-10-16
-// Frontend measurement model only. No backend response field is assumed here.
-// Each callId identifies one actual provider call within this conversation.
+// @editedBy YAONG1230 2026-10-17
+// TOKEN_USAGE v2 receiver. Server snapshots are authoritative conversation totals.
+// This cache contains identifiers/measurements only, never prompts or API keys.
 (function (global) {
     'use strict';
-    const KEY = 'haema_token_usage_v1';
-    const MAX = Number.MAX_SAFE_INTEGER;
+    const KEY = 'haema_token_usage_v2';
     const clone = value => JSON.parse(JSON.stringify(value));
+    const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     const validId = value => typeof value === 'string' && value.trim() === value && value.length > 0 && value.length <= 512;
-    const sameScope = (a, b) => a.ownerId === b.ownerId && a.storageRoot === b.storageRoot;
-    const keysOnly = (value, keys) => value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(key => keys.includes(key));
     const error = (code, message) => Object.assign(new Error(message), { code });
     const invalid = () => error('TOKEN_USAGE_INVALID', '토큰 계량 정보의 형식을 확인할 수 없어 기존 기록을 유지했어요.');
-    const conflict = () => error('TOKEN_USAGE_CONFLICT', '같은 호출의 토큰 계량 정보가 달라 기존 기록을 유지했어요.');
+    const conflict = () => error('TOKEN_USAGE_CONFLICT', '같은 처리의 토큰 계량 정보가 달라 기존 기록을 유지했어요.');
     const storageError = () => error('TOKEN_USAGE_STORAGE', '이 탭의 토큰 계량 기록을 읽거나 보관하지 못했어요. 기존 기록은 그대로 두었습니다.');
-    function checkScope(scope) {
-        if (!scope || !validId(scope.ownerId) || typeof scope.storageRoot !== 'string' || !scope.storageRoot.trim()) throw invalid();
-        return { ownerId: scope.ownerId, storageRoot: scope.storageRoot };
-    }
-    function requestIds(request) {
-        const turn = request?.turns?.[0];
-        if (!validId(request?.conversationId) || !Array.isArray(request.turns) || request.turns.length !== 1 || !validId(turn?.utteranceId)) throw invalid();
-        return { conversationId: request.conversationId, utteranceId: turn.utteranceId };
-    }
-    function add(a, b) {
-        if (a > MAX - b) throw invalid();
-        return a + b;
-    }
     function count(value) {
-        if (value === undefined || value === null) return null;
+        if (value === null) return null;
         if (!Number.isSafeInteger(value) || value < 0) throw invalid();
         return value;
     }
-    function normalizeCall(call) {
-        if (!call || !validId(call.callId) || !validId(call.provider) || !validId(call.model)) throw invalid();
-        const inputTokens = count(call.inputTokens), outputTokens = count(call.outputTokens);
-        let totalTokens = count(call.totalTokens);
-        const parts = add(inputTokens ?? 0, outputTokens ?? 0);
-        if (totalTokens !== null && totalTokens < parts) throw invalid();
-        if (totalTokens === null && inputTokens !== null && outputTokens !== null) totalTokens = parts;
-        return { callId: call.callId, provider: call.provider, model: call.model, inputTokens, outputTokens, totalTokens };
-    }
-    const sameCall = (a, b) => Object.keys(a).every(key => a[key] === b[key]);
-    function sumKnown(calls, key, explicitlyEmpty) {
-        const values = calls.map(call => call[key]).filter(value => value !== null);
-        return values.length ? values.reduce(add, 0) : explicitlyEmpty ? 0 : null;
-    }
-    function describeTurn(conversationId, turn) {
-        const explicitlyEmpty = turn.coverage === 'complete' && turn.calls.length === 0;
-        const knownCallCount = turn.calls.filter(call => call.totalTokens !== null).length;
-        const complete = turn.accepted && !turn.pending && turn.coverage === 'complete' && knownCallCount === turn.calls.length;
-        const totalKnown = sumKnown(turn.calls, 'totalTokens', explicitlyEmpty);
-        const inputKnown = sumKnown(turn.calls, 'inputTokens', explicitlyEmpty);
-        const outputKnown = sumKnown(turn.calls, 'outputTokens', explicitlyEmpty);
-        const inputComplete = complete && turn.calls.every(call => call.inputTokens !== null);
-        const outputComplete = complete && turn.calls.every(call => call.outputTokens !== null);
-        return { conversationId, utteranceId: turn.utteranceId, pending: turn.pending, accepted: turn.accepted,
-            coverage: turn.coverage, inputKnown, outputKnown, totalKnown, inputComplete, outputComplete, complete,
-            status: turn.pending ? 'pending' : complete ? 'complete' : turn.coverage !== null ? 'partial' : 'unavailable',
-            callCount: turn.calls.length, knownCallCount, unknownCallCount: turn.calls.length - knownCallCount, calls: clone(turn.calls) };
-    }
-    function describeConversation(conversation) {
-        const conversationId = conversation?.conversationId || null;
-        const turns = (conversation?.turns || []).map(turn => describeTurn(conversationId, turn));
-        const knownTurnCount = turns.filter(turn => turn.complete).length;
-        const known = turns.map(turn => turn.totalKnown).filter(value => value !== null);
-        const totalKnown = known.length ? known.reduce(add, 0) : null;
-        const complete = turns.length > 0 && knownTurnCount === turns.length;
-        return { ok: true, conversationId, totalKnown, knownTurnCount, unknownTurnCount: turns.length - knownTurnCount,
-            turnCount: turns.length, complete,
-            status: !turns.length ? 'empty' : complete ? 'complete' : turns.some(turn => turn.pending) ? 'pending' : totalKnown !== null ? 'partial' : 'unavailable',
-            latest: turns.length ? turns[turns.length - 1] : null, turns };
-    }
-    function validateStored(data) {
-        if (!keysOnly(data, ['version', 'scopes']) || data.version !== 1 || !Array.isArray(data.scopes)) throw invalid();
-        const scopeIds = new Set();
-        for (const group of data.scopes) {
-            if (!keysOnly(group, ['scope', 'currentConversationId', 'conversations']) || !keysOnly(group.scope, ['ownerId', 'storageRoot']) || !Array.isArray(group.conversations)) throw invalid();
-            const scope = checkScope(group.scope), scopeId = JSON.stringify([scope.ownerId, scope.storageRoot]);
-            if (scopeIds.has(scopeId)) throw invalid();
-            scopeIds.add(scopeId);
-            const conversationIds = new Set();
-            for (const conversation of group.conversations) {
-                if (!keysOnly(conversation, ['conversationId', 'turns']) || !validId(conversation.conversationId) || !Array.isArray(conversation.turns) || conversationIds.has(conversation.conversationId)) throw invalid();
-                conversationIds.add(conversation.conversationId);
-                const utteranceIds = new Set(), callIds = new Set();
-                for (const turn of conversation.turns) {
-                    if (!keysOnly(turn, ['utteranceId', 'pending', 'accepted', 'coverage', 'calls']) || !validId(turn.utteranceId) || utteranceIds.has(turn.utteranceId) ||
-                        typeof turn.pending !== 'boolean' || typeof turn.accepted !== 'boolean' || (turn.pending && turn.accepted) ||
-                        ![null, 'complete', 'partial'].includes(turn.coverage) || !Array.isArray(turn.calls) || (turn.coverage === null && turn.calls.length)) throw invalid();
-                    utteranceIds.add(turn.utteranceId);
-                    for (const call of turn.calls) {
-                        if (!keysOnly(call, ['callId', 'provider', 'model', 'inputTokens', 'outputTokens', 'totalTokens']) || callIds.has(call.callId)) throw invalid();
-                        const normalized = normalizeCall(call);
-                        if (!sameCall(normalized, call)) throw invalid();
-                        callIds.add(call.callId);
-                    }
-                }
-                describeConversation(conversation); // Also reject unsafe aggregate sums.
-            }
-            if (group.currentConversationId !== null && !conversationIds.has(group.currentConversationId)) throw invalid();
+    function sum(values) {
+        let total = 0;
+        for (const value of values) {
+            if (value === null || !Number.isSafeInteger(total + value)) return null;
+            total += value;
         }
-        return data;
+        return total;
+    }
+    function checkScope(scope) {
+        if (!scope || !validId(scope.ownerId) || typeof scope.storageRoot !== 'string' || !scope.storageRoot.trim() ||
+            (scope.storageId !== undefined && !validId(scope.storageId))) throw invalid();
+        return { ownerId: scope.ownerId, storageRoot: scope.storageRoot, ...(scope.storageId === undefined ? {} : { storageId: scope.storageId }) };
+    }
+    const sameScope = (a, b) => a.ownerId === b.ownerId && a.storageRoot === b.storageRoot;
+    function requestIds(request, scope) {
+        if (!validId(request?.conversationId) || !Array.isArray(request.turns) || !request.turns.length ||
+            (request.ownerId !== undefined && request.ownerId !== scope.ownerId)) throw invalid();
+        const utteranceIds = [...new Set(request.turns.map(turn => turn?.utteranceId))];
+        if (!utteranceIds.every(validId)) throw invalid();
+        return { conversationId: request.conversationId, utteranceIds };
+    }
+    function identity(raw) {
+        if (!raw || raw.schemaVersion !== 2 || raw.scope !== 'haema' || raw.unit !== 'tokens' ||
+            ![raw.ownerId, raw.storageId, raw.conversationId].every(validId)) throw invalid();
+        return { schemaVersion: 2, scope: 'haema', unit: 'tokens', ownerId: raw.ownerId, storageId: raw.storageId, conversationId: raw.conversationId };
+    }
+    const sameIdentity = (a, b) => a.ownerId === b.ownerId && a.storageId === b.storageId && a.conversationId === b.conversationId;
+    function normalizeCall(raw) {
+        if (!raw || raw.scope !== 'haema' || !['pending', 'complete'].includes(raw.state) ||
+            !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review'].includes(raw.task) ||
+            !['provider', 'unreported'].includes(raw.source) || !['response', 'requested'].includes(raw.modelSource) ||
+            ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts'].includes(raw.usageSource) ||
+            ![raw.callId, raw.provider, raw.model, raw.requestedModel].every(validId)) throw invalid();
+        const inputTokens = count(raw.inputTokens), outputTokens = count(raw.outputTokens), totalTokens = count(raw.totalTokens);
+        const parts = sum([inputTokens ?? 0, outputTokens ?? 0]);
+        if (totalTokens !== null && (parts === null || totalTokens < parts)) throw invalid();
+        if (raw.state === 'pending' && [inputTokens, outputTokens, totalTokens].some(value => value !== null)) throw invalid();
+        return { callId: raw.callId, scope: 'haema', state: raw.state, provider: raw.provider, model: raw.model,
+            requestedModel: raw.requestedModel, modelSource: raw.modelSource, usageSource: raw.usageSource,
+            task: raw.task, source: raw.source, inputTokens, outputTokens, totalTokens };
+    }
+    // Recheck public normalized counts. Partial input/output remain visible;
+    // arithmetic overflow stays unknown rather than becoming an exact number.
+    function totals(calls, pending = false) {
+        const input = calls.map(call => call.inputTokens), output = calls.map(call => call.outputTokens);
+        const all = calls.map(call => call.totalTokens);
+        const other = calls.map(call => call.totalTokens === null ? null : call.totalTokens - (call.inputTokens ?? 0) - (call.outputTokens ?? 0));
+        const segments = { input: sum(input.filter(value => value !== null)), output: sum(output.filter(value => value !== null)), unclassified: sum(other.filter(value => value !== null)) };
+        const anyKnown = calls.some(call => [call.inputTokens, call.outputTokens, call.totalTokens].some(value => value !== null));
+        const anyParts = calls.some(call => call.inputTokens !== null || call.outputTokens !== null);
+        const totalTokens = sum(all), inputTokens = sum(input), outputTokens = sum(output), unclassifiedTokens = sum(other);
+        const totalStatus = totalTokens !== null ? 'complete' : anyKnown ? 'partial' : 'unreported';
+        const breakdownStatus = inputTokens !== null && outputTokens !== null && segments.unclassified === 0 ? 'complete' : anyParts ? 'partial' : 'unreported';
+        return { status: pending ? (anyKnown ? 'partial' : 'unreported') : totalStatus,
+            totalStatus: pending ? (anyKnown ? 'partial' : 'unreported') : totalStatus,
+            breakdownStatus: pending ? (calls.length && breakdownStatus !== 'unreported' ? 'partial' : 'unreported') : breakdownStatus,
+            inputTokens: pending ? null : inputTokens, outputTokens: pending ? null : outputTokens, totalTokens: pending ? null : totalTokens,
+            reportedTotalTokens: sum(calls.map(call => call.totalTokens ?? sum([call.inputTokens ?? 0, call.outputTokens ?? 0]))),
+            unclassifiedTokens: pending ? null : unclassifiedTokens, segments, callCount: calls.length,
+            unreportedCallCount: calls.filter(call => [call.inputTokens, call.outputTokens, call.totalTokens].every(value => value === null)).length,
+            incompleteCallCount: calls.filter(call => [call.inputTokens, call.outputTokens, call.totalTokens].includes(null)).length };
+    }
+    function verifyTotals(raw, expected) {
+        for (const key of Object.keys(expected)) {
+            if (key === 'segments') {
+                if (!raw.segments || !['input', 'output', 'unclassified'].every(part => raw.segments[part] === expected.segments[part])) throw invalid();
+            } else if (raw[key] !== expected[key]) throw invalid();
+        }
+    }
+    function normalizeReport(raw) {
+        const ids = identity(raw);
+        if (!validId(raw.usageId) || !['pending', 'complete'].includes(raw.phase) || !Array.isArray(raw.calls) ||
+            !Array.isArray(raw.utteranceIds) || !raw.utteranceIds.length || !raw.utteranceIds.every(validId)) throw invalid();
+        const utteranceIds = [...new Set(raw.utteranceIds)], calls = [];
+        for (const value of raw.calls) {
+            const call = normalizeCall(value), previous = calls.find(item => item.callId === call.callId);
+            if (previous && !equal(previous, call)) throw conflict();
+            if (!previous) calls.push(call);
+        }
+        if (raw.phase === 'complete' && calls.some(call => call.state === 'pending')) throw invalid();
+        const values = totals(calls, raw.phase === 'pending');
+        const coverage = values.totalStatus === 'complete' && raw.phase === 'complete' ? 'complete' : 'partial';
+        const attribution = utteranceIds.length === 1 ? 'single' : 'shared';
+        if (raw.coverage !== coverage || raw.attribution !== attribution) throw invalid();
+        verifyTotals(raw, values);
+        return { ...ids, usageId: raw.usageId, utteranceIds, attribution, phase: raw.phase, coverage, ...values, calls };
+    }
+    function reconcile(previous, incoming) {
+        if (!sameIdentity(previous, incoming) || previous.usageId !== incoming.usageId || !equal(previous.utteranceIds, incoming.utteranceIds)) throw conflict();
+        if (equal(previous, incoming)) return previous;
+        if (previous.phase === 'complete') throw conflict();
+        for (const call of previous.calls) {
+            const next = incoming.calls.find(item => item.callId === call.callId);
+            if (!next) throw conflict();
+            if (equal(call, next)) continue;
+            if (call.state === 'complete' || next.state !== 'complete' ||
+                ['callId', 'scope', 'provider', 'requestedModel', 'task'].some(key => call[key] !== next[key])) throw conflict();
+        }
+        return incoming;
+    }
+    function checkCallOwnership(reports) {
+        const owners = new Map();
+        for (const report of reports) for (const call of report.calls) {
+            if (owners.has(call.callId) && owners.get(call.callId) !== report.usageId) throw conflict();
+            owners.set(call.callId, report.usageId);
+        }
+    }
+    function normalizeConversation(raw) {
+        const ids = identity(raw);
+        if (typeof raw.found !== 'boolean' || count(raw.revision) === null || !Array.isArray(raw.reports)) throw invalid();
+        const reports = raw.reports.map(normalizeReport), usageIds = reports.map(report => report.usageId);
+        if (new Set(usageIds).size !== usageIds.length || reports.some(report => !sameIdentity(report, ids))) throw conflict();
+        if (!raw.found && (raw.revision !== 0 || reports.length)) throw invalid();
+        checkCallOwnership(reports);
+        const pendingUsageIds = reports.filter(report => report.phase === 'pending').map(report => report.usageId);
+        if (!equal(raw.usageIds, usageIds) || raw.reportCount !== reports.length || !equal(raw.pendingUsageIds, pendingUsageIds)) throw invalid();
+        const values = totals(reports.flatMap(report => report.calls), pendingUsageIds.length > 0);
+        verifyTotals(raw, values);
+        return { ...ids, found: raw.found, revision: raw.revision, reports, usageIds, reportCount: reports.length, pendingUsageIds, ...values };
+    }
+    function view(report) {
+        const pending = report.phase === 'pending';
+        const complete = !pending && report.totalStatus === 'complete';
+        return { ...clone(report), utteranceId: report.utteranceIds[0], pending, complete,
+            inputKnown: report.segments.input, outputKnown: report.segments.output,
+            inputComplete: !pending && report.inputTokens !== null, outputComplete: !pending && report.outputTokens !== null,
+            totalKnown: report.totalStatus === 'unreported' ? null : report.reportedTotalTokens,
+            status: pending ? 'pending' : complete ? 'complete' : report.totalStatus === 'unreported' ? 'unavailable' : 'partial' };
+    }
+    function placeholder(conversationId, request) {
+        return { conversationId, utteranceId: request.utteranceIds[0], utteranceIds: request.utteranceIds.slice(), usageId: null,
+            attribution: request.utteranceIds.length > 1 ? 'shared' : 'single', pending: request.pending, accepted: request.accepted,
+            totalKnown: null, inputKnown: null, outputKnown: null, inputComplete: false, outputComplete: false,
+            complete: false, coverage: null, totalStatus: 'unreported', breakdownStatus: 'unreported',
+            status: request.pending ? 'pending' : 'unavailable', callCount: 0, calls: [], segments: { input: 0, output: 0, unclassified: 0 } };
+    }
+    function reportView(conversation, report) {
+        const saved = conversation.server?.reports.find(item => item.usageId === report.usageId);
+        return { ...view(report), persistenceStatus: saved && equal(saved, report) ? 'saved' : conversation.persistenceStatus === 'failed' ? 'failed' : null };
+    }
+    function describe(conversation) {
+        const server = conversation?.server, request = conversation?.latestRequest;
+        const report = conversation?.reports.find(item => item.usageId === conversation.latestUsageId);
+        const latest = report ? reportView(conversation, report) : request ? placeholder(conversation.conversationId, request) : null;
+        const turns = (server?.reports || []).map(item => ({ ...view(item), persistenceStatus: 'saved' }));
+        const knownTurnCount = turns.filter(turn => turn.complete).length;
+        const found = server?.found ?? false;
+        const totalKnown = found && server.totalStatus !== 'unreported' ? server.reportedTotalTokens : null;
+        const complete = found && server.pendingUsageIds.length === 0 && server.totalStatus === 'complete';
+        return { ok: true, conversationId: conversation?.conversationId || null, storageId: server?.storageId || report?.storageId || null,
+            found, serverBacked: !!server, revision: server?.revision ?? null, persistenceStatus: conversation?.persistenceStatus || null,
+            totalKnown, inputKnown: found ? server.segments.input : null, outputKnown: found ? server.segments.output : null,
+            inputComplete: found && server.inputTokens !== null, outputComplete: found && server.outputTokens !== null,
+            totalStatus: found ? server.totalStatus : 'unreported', breakdownStatus: found ? server.breakdownStatus : 'unreported',
+            segments: found ? clone(server.segments) : { input: 0, output: 0, unclassified: 0 },
+            pendingUsageIds: server?.pendingUsageIds.slice() || [], knownTurnCount, unknownTurnCount: turns.length - knownTurnCount,
+            turnCount: Math.max(turns.length, latest ? 1 : 0), complete,
+            status: server?.pendingUsageIds.length || (request?.pending && !report) ? 'pending' : complete ? 'complete' : totalKnown !== null ? 'partial' : latest ? 'unavailable' : 'empty',
+            latest, turns };
     }
     function create(options = {}) {
         const storage = () => options.storage || global.sessionStorage;
+        let lastValid = { version: 2, scopes: [] };
+        function locate(data, scope, conversationId, ensure = false) {
+            let group = data.scopes.find(item => sameScope(item.scope, scope));
+            if (!group && ensure) { group = { scope: { ownerId: scope.ownerId, storageRoot: scope.storageRoot }, storageId: null, currentConversationId: null, conversations: [] }; data.scopes.push(group); }
+            if (scope.storageId && group?.storageId && scope.storageId !== group.storageId) throw conflict();
+            let conversation = group?.conversations.find(item => item.conversationId === conversationId);
+            if (!conversation && ensure) {
+                conversation = { conversationId, server: null, reports: [], latestRequest: null, latestUsageId: null, persistenceStatus: null };
+                group.conversations.push(conversation);
+            }
+            return { group, conversation };
+        }
+        function bind(group, scope, ids, incoming) {
+            if (incoming.ownerId !== scope.ownerId || incoming.conversationId !== ids.conversationId ||
+                (scope.storageId && incoming.storageId !== scope.storageId) || (group.storageId && incoming.storageId !== group.storageId)) throw conflict();
+            group.storageId = incoming.storageId;
+        }
+        function mergeReport(conversation, report, serverSnapshot = false) {
+            const index = conversation.reports.findIndex(item => item.usageId === report.usageId);
+            if (index < 0) conversation.reports.push(report);
+            else {
+                const previous = conversation.reports[index];
+                try { conversation.reports[index] = reconcile(previous, report); }
+                catch (cause) {
+                    // A failed final save can leave a valid earlier snapshot on
+                    // the server. Keep the newer observed delta independently.
+                    if (!serverSnapshot) throw cause;
+                    reconcile(report, previous);
+                }
+            }
+            checkCallOwnership(conversation.reports);
+        }
+        function applyServer(conversation, server) {
+            const previous = conversation.server;
+            if (previous && server.revision < previous.revision) return false;
+            if (previous && server.revision === previous.revision && !equal(previous, server)) throw conflict();
+            if (previous) for (const report of previous.reports) {
+                const incoming = server.reports.find(item => item.usageId === report.usageId);
+                if (!incoming) throw conflict();
+                reconcile(report, incoming);
+            }
+            for (const report of server.reports) mergeReport(conversation, report, true);
+            conversation.server = server;
+            return true;
+        }
+        function validateStored(data) {
+            if (!data || data.version !== 2 || !Array.isArray(data.scopes)) throw invalid();
+            const scopes = new Set();
+            for (const group of data.scopes) {
+                const scope = checkScope(group.scope), key = JSON.stringify([scope.ownerId, scope.storageRoot]);
+                if (scopes.has(key) || (group.storageId !== null && !validId(group.storageId)) || !Array.isArray(group.conversations)) throw invalid();
+                scopes.add(key);
+                const conversations = new Set();
+                for (const conversation of group.conversations) {
+                    if (!validId(conversation.conversationId) || conversations.has(conversation.conversationId) || !Array.isArray(conversation.reports) ||
+                        ![null, 'saved', 'failed'].includes(conversation.persistenceStatus)) throw invalid();
+                    conversations.add(conversation.conversationId);
+                    const reports = conversation.reports.map(normalizeReport);
+                    if (new Set(reports.map(report => report.usageId)).size !== reports.length) throw conflict();
+                    for (const report of reports) bind(group, scope, conversation, report);
+                    checkCallOwnership(reports);
+                    if (conversation.server) {
+                        const server = normalizeConversation(conversation.server);
+                        bind(group, scope, conversation, server);
+                        for (const report of server.reports) {
+                            const saved = reports.find(item => item.usageId === report.usageId);
+                            if (!saved) throw conflict();
+                            reconcile(report, saved);
+                        }
+                    }
+                    if (conversation.latestUsageId !== null && !reports.some(report => report.usageId === conversation.latestUsageId)) throw invalid();
+                    const request = conversation.latestRequest;
+                    if (request !== null && (!Array.isArray(request.utteranceIds) || !request.utteranceIds.length || !request.utteranceIds.every(validId) ||
+                        !Array.isArray(request.previousUsageIds) || !request.previousUsageIds.every(validId) ||
+                        typeof request.pending !== 'boolean' || typeof request.accepted !== 'boolean')) throw invalid();
+                }
+                if (group.currentConversationId !== null && !conversations.has(group.currentConversationId)) throw invalid();
+            }
+            return data;
+        }
         function read() {
             try {
                 const raw = storage().getItem(KEY);
-                return raw === null ? { version: 1, scopes: [] } : validateStored(JSON.parse(raw));
+                const data = raw === null ? { version: 2, scopes: [] } : validateStored(JSON.parse(raw));
+                lastValid = clone(data);
+                return data;
             } catch { throw storageError(); }
         }
-        function safe(action) {
+        function safe(scope, conversationId, action) {
             try { return action(); }
-            catch (cause) { return { ok: false, code: cause?.code || 'TOKEN_USAGE_STORAGE', error: cause?.message || storageError().message }; }
+            catch (cause) {
+                let summary = null;
+                try {
+                    const group = lastValid.scopes.find(item => sameScope(item.scope, scope));
+                    summary = describe(group?.conversations.find(item => item.conversationId === (conversationId || group.currentConversationId)));
+                } catch { /* Invalid caller scope cannot expose another conversation. */ }
+                return { ok: false, code: cause?.code || 'TOKEN_USAGE_STORAGE', error: cause?.message || storageError().message, summary };
+            }
         }
-        function locate(data, scope, ids, ensure = false) {
-            let group = data.scopes.find(item => sameScope(item.scope, scope));
-            if (!group && ensure) { group = { scope, currentConversationId: null, conversations: [] }; data.scopes.push(group); }
-            let conversation = group?.conversations.find(item => item.conversationId === ids.conversationId);
-            if (!conversation && ensure) { conversation = { conversationId: ids.conversationId, turns: [] }; group.conversations.push(conversation); }
-            let turn = conversation?.turns.find(item => item.utteranceId === ids.utteranceId);
-            const createdTurn = !turn && ensure;
-            if (!turn && ensure) { turn = { utteranceId: ids.utteranceId, pending: true, accepted: false, coverage: null, calls: [] }; conversation.turns.push(turn); }
-            if (group && ensure && group.currentConversationId === null) group.currentConversationId = ids.conversationId;
-            return { group, conversation, turn, createdTurn };
-        }
-        function mutate(scope, request, operation) {
-            return safe(() => {
+        function mutate(scope, conversationId, operation) {
+            return safe(scope, conversationId, () => {
                 scope = checkScope(scope);
-                const ids = requestIds(request);
-                if (request.ownerId !== undefined && request.ownerId !== scope.ownerId) throw invalid();
+                if (!validId(conversationId)) throw invalid();
                 const data = read(), before = JSON.stringify(data);
-                const located = locate(data, scope, ids, true);
-                operation(located, ids);
+                const located = locate(data, scope, conversationId, true);
+                operation(located, scope);
                 validateStored(data);
-                const summary = describeConversation(located.conversation), after = JSON.stringify(data);
-                if (after !== before) {
-                    try { storage().setItem(KEY, after); } catch { throw storageError(); }
-                }
-                return { ok: true, turn: describeTurn(ids.conversationId, located.turn), summary };
+                const after = JSON.stringify(data);
+                if (after !== before) { try { storage().setItem(KEY, after); } catch { throw storageError(); } }
+                lastValid = clone(data);
+                const summary = describe(located.conversation);
+                return { ok: true, turn: summary.latest, summary };
             });
+        }
+        function requestAction(scope, request, action) {
+            return mutate(scope, request?.conversationId, (located, checkedScope) => action(located, requestIds(request, checkedScope)));
         }
         return {
             begin(scope, request) {
-                return mutate(scope, request, ({ group, turn, createdTurn }, ids) => {
-                    if (!turn.accepted) {
-                        // A real retry can consume more tokens even with the same
-                        // utterance ID. Unmeasured earlier attempts remain unknown.
-                        if (!createdTurn) turn.coverage = 'partial';
-                        turn.pending = true;
-                    }
+                return requestAction(scope, request, ({ group, conversation }, ids) => {
+                    conversation.latestRequest = { utteranceIds: ids.utteranceIds, pending: true, accepted: false,
+                        previousUsageIds: conversation.reports.filter(report => equal(report.utteranceIds, ids.utteranceIds)).map(report => report.usageId) };
+                    conversation.latestUsageId = null;
                     group.currentConversationId = ids.conversationId;
                 });
             },
             accept(scope, request) {
-                return mutate(scope, request, ({ turn }) => { turn.accepted = true; turn.pending = false; });
+                return requestAction(scope, request, ({ conversation }, ids) => {
+                    if (equal(conversation.latestRequest?.utteranceIds, ids.utteranceIds)) {
+                        conversation.latestRequest.pending = false; conversation.latestRequest.accepted = true;
+                    }
+                });
             },
             fail(scope, request) {
-                return mutate(scope, request, ({ turn }) => { turn.pending = false; });
+                return requestAction(scope, request, ({ conversation }, ids) => {
+                    if (equal(conversation.latestRequest?.utteranceIds, ids.utteranceIds)) conversation.latestRequest.pending = false;
+                });
             },
-            record(scope, request, measurement) {
-                return mutate(scope, request, ({ conversation, turn }) => {
-                    if (!measurement || !['complete', 'partial'].includes(measurement.coverage) || !Array.isArray(measurement.calls)) throw invalid();
-                    const incoming = measurement.calls.map(normalizeCall);
-                    for (const call of incoming) {
-                        const owner = conversation.turns.find(item => item.calls.some(saved => saved.callId === call.callId));
-                        const previous = owner?.calls.find(saved => saved.callId === call.callId);
-                        if (previous && (owner !== turn || !sameCall(previous, call))) throw conflict();
-                        if (!previous) turn.calls.push(call);
+            record(scope, request, measurement, envelope = {}) {
+                return requestAction(scope, request, ({ group, conversation }, ids) => {
+                    const report = normalizeReport(measurement);
+                    bind(group, scope, ids, report);
+                    if (!equal(ids.utteranceIds, report.utteranceIds)) throw conflict();
+                    const server = envelope.conversationUsage == null ? null : normalizeConversation(envelope.conversationUsage);
+                    if (server) {
+                        bind(group, scope, ids, server);
+                        // An old POST must not replace the latest delta either.
+                        if (conversation.server && server.revision < conversation.server.revision) return;
                     }
-                    // No replacement/reconciliation contract exists: an earlier
-                    // partial observation cannot be silently promoted to complete.
-                    turn.coverage = turn.coverage === 'partial' || measurement.coverage === 'partial' ? 'partial' : 'complete';
+                    mergeReport(conversation, report);
+                    if (!conversation.latestRequest || equal(conversation.latestRequest.utteranceIds, ids.utteranceIds)) {
+                        conversation.latestUsageId = report.usageId;
+                        if (!conversation.latestRequest) conversation.latestRequest = { utteranceIds: ids.utteranceIds, pending: false, accepted: false, previousUsageIds: [] };
+                    }
+                    if (envelope.usagePersistence !== undefined) {
+                        const status = envelope.usagePersistence?.status;
+                        if (!['saved', 'failed'].includes(status)) throw invalid();
+                        if (status === 'failed' && envelope.conversationUsage !== null) throw invalid();
+                        if (status === 'saved' && !envelope.conversationUsage) throw invalid();
+                        if (status === 'saved') {
+                            const saved = server.reports.find(item => item.usageId === report.usageId);
+                            if (!saved) throw conflict();
+                            reconcile(report, saved);
+                        }
+                        conversation.persistenceStatus = status;
+                    }
+                    if (server) applyServer(conversation, server);
+                    if (group.currentConversationId === null) group.currentConversationId = ids.conversationId;
+                });
+            },
+            restore(scope, conversationId, measurement) {
+                return mutate(scope, conversationId, ({ group, conversation }, checkedScope) => {
+                    const server = normalizeConversation(measurement);
+                    bind(group, checkedScope, { conversationId }, server);
+                    if (applyServer(conversation, server)) {
+                        const stillUnpersisted = conversation.reports.some(report => !server.reports.some(saved => equal(report, saved)));
+                        if (conversation.persistenceStatus !== 'failed' || !stillUnpersisted) conversation.persistenceStatus = 'saved';
+                        const request = conversation.latestRequest;
+                        const matches = server.reports.filter(report => !request || (equal(report.utteranceIds, request.utteranceIds) &&
+                            (conversation.latestUsageId || !request.previousUsageIds.includes(report.usageId))));
+                        const latestIndex = server.reports.findIndex(report => report.usageId === conversation.latestUsageId);
+                        // Never replace an unsaved local retry with an older
+                        // saved attempt. GET can still recover a lost POST result.
+                        if (matches.length && (!conversation.latestUsageId || latestIndex >= 0)) {
+                            const candidate = matches[matches.length - 1];
+                            if (!conversation.latestUsageId || server.reports.indexOf(candidate) >= latestIndex) conversation.latestUsageId = candidate.usageId;
+                        }
+                    }
+                    // The caller guards the selected conversation/connection epoch
+                    // before applying a GET response, including a restored session.
+                    group.currentConversationId = conversationId;
                 });
             },
             summary(scope, conversationId) {
-                return safe(() => {
+                return safe(scope, conversationId, () => {
                     scope = checkScope(scope);
                     if (!validId(conversationId)) throw invalid();
-                    return describeConversation(locate(read(), scope, { conversationId }).conversation);
-                });
-            },
-            turn(scope, conversationId, utteranceId) {
-                return safe(() => {
-                    scope = checkScope(scope);
-                    if (!validId(conversationId) || !validId(utteranceId)) throw invalid();
-                    const found = locate(read(), scope, { conversationId, utteranceId }).turn;
-                    return found ? { ok: true, found: true, ...describeTurn(conversationId, found) } : { ok: true, found: false };
+                    return describe(locate(read(), scope, conversationId).conversation);
                 });
             },
             current(scope) {
-                return safe(() => {
+                return safe(scope, null, () => {
                     scope = checkScope(scope);
-                    const group = read().scopes.find(item => sameScope(item.scope, scope));
-                    return describeConversation(group?.conversations.find(item => item.conversationId === group.currentConversationId));
+                    const data = read(), group = data.scopes.find(item => sameScope(item.scope, scope));
+                    if (scope.storageId && group?.storageId && scope.storageId !== group.storageId) throw conflict();
+                    return describe(group?.conversations.find(item => item.conversationId === group.currentConversationId));
+                });
+            },
+            turn(scope, conversationId, utteranceId) {
+                return safe(scope, conversationId, () => {
+                    scope = checkScope(scope);
+                    if (!validId(conversationId) || !validId(utteranceId)) throw invalid();
+                    const conversation = locate(read(), scope, conversationId).conversation;
+                    const reports = (conversation?.reports || []).filter(report => report.utteranceIds.includes(utteranceId));
+                    const latestRequest = conversation?.latestRequest;
+                    if (latestRequest?.utteranceIds.includes(utteranceId) && !conversation.latestUsageId) return { ok: true, found: true, ...placeholder(conversationId, latestRequest) };
+                    return reports.length ? { ok: true, found: true, ...reportView(conversation, reports[reports.length - 1]) } : { ok: true, found: false };
                 });
             }
         };
