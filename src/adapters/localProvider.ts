@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-14
+// @editedBy SherrySherry 2026-10-20
 /** 해마.ai의 로컬 OpenAI 호환 서버 설정. 클라우드 주소로 자동 대체하지 않는다. */
 export type LocalAIProvider = 'ollama' | 'lmstudio';
 
@@ -24,6 +24,12 @@ export function localAIBaseUrl(provider: LocalAIProvider, baseUrl?: string): str
 export function localAIResponseFormat(task: string) {
   const strings = { type: 'array', items: { type: 'string' } };
   const schemas: Record<string, Record<string, unknown>> = {
+    selectDisplayName: {
+      type: 'object',
+      properties: { displayName: { type: ['string', 'null'] } },
+      required: ['displayName'],
+      additionalProperties: false,
+    },
     extract: {
       type: 'array',
       items: {

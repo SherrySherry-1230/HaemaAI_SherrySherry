@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
@@ -55,6 +55,24 @@ export {
   type TokenUsageReport,
 } from './tokenUsage.ts';
 export { FileTokenUsageStore, TokenUsageStoreError, type TokenUsageConversation } from './adapters/fileTokenUsageStore.ts';
+export {
+  type Introduction,
+  IntroductionStoreError,
+  emptyIntroduction,
+  validateIntroductionText,
+  validateDisplayName,
+  validateIntroductionOwnerId,
+  validateIntroductionRevision,
+  MAX_INTRODUCTION_TEXT_BYTES,
+  MAX_DISPLAY_NAME_CODE_POINTS,
+} from './introduction.ts';
+export { FileIntroductionStore } from './adapters/fileIntroductionStore.ts';
+export {
+  resolveIntroductionDisplayName,
+  type IntroductionDisplayNameSelection,
+  type ResolvedIntroductionDisplayName,
+} from './introductionName.ts';
+export { buildIntroductionHostContext, type IntroductionHostContext } from './introductionHostContext.ts';
 export {
   prepareConversationRequest,
   type PreparedConversationRequest,

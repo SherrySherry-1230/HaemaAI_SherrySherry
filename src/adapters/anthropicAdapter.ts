@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /**
  * Anthropic 어댑터 구현
  * Anthropic SDK를 사용하여 Claude 시리즈를 호출한다.
@@ -6,6 +6,9 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createAIUsageReporter } from './aiUsage.ts';
+import {
+  INTRODUCTION_DISPLAY_NAME_SYSTEM, introductionDisplayNamePrompt, parseIntroductionDisplayName,
+} from '../introductionName.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
@@ -74,6 +77,12 @@ export class AnthropicAdapter implements AIAdapter {
       signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async selectDisplayName(text: string): Promise<{ displayName: string | null }> {
+    const response = await this.callAI('selectDisplayName', INTRODUCTION_DISPLAY_NAME_SYSTEM,
+      introductionDisplayNamePrompt(text));
+    return parseIntroductionDisplayName(response);
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {

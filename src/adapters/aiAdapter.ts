@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /**
  * Haema AI 어댑터 인터페이스 — Haema가 AI를 직접 호출하는 경계면.
  * (1단계: 인터페이스 정의만. 레퍼런스 구현 3종 + 커스텀 주입은 2단계)
@@ -18,7 +18,7 @@ import type { AIUsageEvent } from './aiUsage.ts';
 export type AIProvider = 'anthropic' | 'openai' | 'google' | 'upstage' | 'groq' | 'ollama' | 'lmstudio' | 'custom';
 
 /** 작업 종류 — 작업별로 모델을 분리 지정할 수 있다 (예: 추출은 경량, 판정은 상위) */
-export type AITask = 'extract' | 'summarize' | 'judgeMerge' | 'scoreRecall';
+export type AITask = 'extract' | 'summarize' | 'judgeMerge' | 'scoreRecall' | 'selectDisplayName';
 
 /** provider='custom'일 때 개발자가 주입하는 호출 함수. 응답은 텍스트(파싱은 Haema 몫). */
 export type CustomAICall = (req: {
@@ -119,6 +119,9 @@ export interface RecallScore {
 
 export interface AIAdapter {
   readonly config: AIAdapterConfig;
+
+  /** 자기소개를 저장할 때 호칭 한 가지를 정한다. 조회에서는 호출하지 않는다. */
+  selectDisplayName?(text: string): Promise<{ displayName: string | null }>;
 
   /** 대화에서 쩜(JJum) 초안을 추출한다. 근거 없는 내용은 만들지 않는다(기억 지어내기 금지). */
   extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]>;

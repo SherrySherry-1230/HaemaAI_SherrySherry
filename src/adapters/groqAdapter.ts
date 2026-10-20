@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /**
  * Groq 어댑터 구현
  * Groq SDK를 사용하여 빠른 추론 모델(Llama 시리즈 등)을 호출한다.
@@ -6,6 +6,9 @@
 
 import Groq from 'groq-sdk';
 import { createAIUsageReporter } from './aiUsage.ts';
+import {
+  INTRODUCTION_DISPLAY_NAME_SYSTEM, introductionDisplayNamePrompt, parseIntroductionDisplayName,
+} from '../introductionName.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
@@ -73,6 +76,12 @@ export class GroqAdapter implements AIAdapter {
       signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async selectDisplayName(text: string): Promise<{ displayName: string | null }> {
+    const response = await this.callAI('selectDisplayName', INTRODUCTION_DISPLAY_NAME_SYSTEM,
+      introductionDisplayNamePrompt(text));
+    return parseIntroductionDisplayName(response);
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {

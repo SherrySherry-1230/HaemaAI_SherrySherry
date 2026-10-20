@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /**
  * OpenAI SDK 호환 어댑터 구현
  * OpenAI SDK를 사용하여 OpenAI 호환 API (Upstage Solar 등)를 호출한다.
@@ -6,6 +6,9 @@
 
 import OpenAI from 'openai';
 import { createAIUsageReporter } from './aiUsage.ts';
+import {
+  INTRODUCTION_DISPLAY_NAME_SYSTEM, introductionDisplayNamePrompt, parseIntroductionDisplayName,
+} from '../introductionName.ts';
 import { isLocalAIProvider, localAIBaseUrl, localAIResponseFormat } from './localProvider.ts';
 import type {
   AIAdapter,
@@ -86,6 +89,12 @@ export class OpenAIAdapter implements AIAdapter {
       signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async selectDisplayName(text: string): Promise<{ displayName: string | null }> {
+    const response = await this.callAI('selectDisplayName', INTRODUCTION_DISPLAY_NAME_SYSTEM,
+      introductionDisplayNamePrompt(text));
+    return parseIntroductionDisplayName(response);
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {

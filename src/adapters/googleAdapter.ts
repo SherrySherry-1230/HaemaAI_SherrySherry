@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 /**
  * Google 어댑터 구현
  * Google Generative AI SDK를 사용하여 Gemini 시리즈를 호출한다.
@@ -6,6 +6,9 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createAIUsageReporter } from './aiUsage.ts';
+import {
+  INTRODUCTION_DISPLAY_NAME_SYSTEM, introductionDisplayNamePrompt, parseIntroductionDisplayName,
+} from '../introductionName.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
@@ -66,6 +69,12 @@ export class GoogleAdapter implements AIAdapter {
       signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async selectDisplayName(text: string): Promise<{ displayName: string | null }> {
+    const response = await this.callAI('selectDisplayName', INTRODUCTION_DISPLAY_NAME_SYSTEM,
+      introductionDisplayNamePrompt(text));
+    return parseIntroductionDisplayName(response);
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {
