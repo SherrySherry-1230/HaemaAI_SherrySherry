@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-20
 import { randomUUID } from 'node:crypto';
 import type { AIUsageEvent, TokenCounts } from './adapters/aiUsage.ts';
 
@@ -57,7 +57,7 @@ function same(a: unknown, b: unknown): boolean { return JSON.stringify(a) === JS
 /** 제공자 이름이 아니라 계측 호출의 출처를 검사한다. 원문·키·추가 필드는 복제하지 않는다. */
 export function validateTokenUsageEvent(event: AIUsageEvent): AIUsageEvent {
   if (!event || event.scope !== 'haema' || !['pending', 'complete'].includes(event.state)
-      || !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review'].includes(event.task)
+      || !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review', 'selectDisplayName'].includes(event.task)
       || !['provider', 'unreported'].includes(event.source)
       || !['response', 'requested'].includes(event.modelSource)
       || ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts'].includes(event.usageSource)) {
