@@ -11,6 +11,7 @@
 // @editedBy YAONG1230 2026-10-16: 발화별 토큰 계량 표시와 프론트 수신 경계
 // @editedBy YAONG1230 2026-10-17: 토큰 v2 응답과 서버 누적 복원 연결
 // @editedBy YAONG1230 2026-10-18: 연결된 저장소 식별자와 최초 사용량 응답 대조
+// @editedBy YAONG1230 2026-10-20: 자기소개 입력과 저장 호칭 버튼
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -130,6 +131,9 @@ HAEMA_CONSOLE.render = function() {
             HAEMA_API_KEY_MODAL.bindEvents();
         }
         this.bindFormModalKeyboard(overlay);
+        if (this.modalMode === 'introduction' && typeof HAEMA_INTRODUCTION_MODAL !== 'undefined') {
+            HAEMA_INTRODUCTION_MODAL.bind(this);
+        }
     }
     // 재렌더 후에도 카드 버튼과 열린 폼 안의 키보드 위치를 유지한다.
     if (!document.querySelector('dialog[open]')) {
@@ -465,6 +469,7 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     const userInput = document.getElementById("userInput");
     const inputArea = document.querySelector(".input-area");
     const storageBtn = document.getElementById("storageBtn");
+    document.getElementById('introductionBtn')?.addEventListener('click', () => HAEMA_INTRODUCTION_MODAL.open(this));
 
     document.querySelectorAll("[data-action]").forEach(element => {
         element.addEventListener("click", event => {
@@ -1441,6 +1446,10 @@ HAEMA_CONSOLE.closeModal = function() {
 };
 
 HAEMA_CONSOLE.saveModal = async function() {
+    if (this.modalMode === 'introduction') {
+        await HAEMA_INTRODUCTION_MODAL.save(this);
+        return;
+    }
     if (this.modalMode === "apiKey") {
         if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
             await HAEMA_API_KEY_MODAL.saveApiKeyModal();
@@ -1731,7 +1740,8 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const empty = visibleHistory.length ? '' : '<div class="conversation-empty"><span class="conversation-empty-mark">~</span><strong>해마와 대화를 시작해 보세요</strong><br>보낸 메시지는 이곳에 차곡차곡 쌓여요.</div>';
     const sessionError = this.conversationSessionError ? '<p class="conversation-session-error" role="alert">' + this.escapeHtml(this.conversationSessionError) + '</p>' : '';
     const sessionNotice = this.conversationSessionNotice ? '<p class="message-meta" role="status">' + this.escapeHtml(this.conversationSessionNotice) + '</p>' : '';
-    return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + storageBtn + apiBtn + '</div>' +
+    const introductionBtn = typeof HAEMA_INTRODUCTION_MODAL !== 'undefined' ? HAEMA_INTRODUCTION_MODAL.button(this) : '';
+    return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + introductionBtn + storageBtn + apiBtn + '</div>' +
         '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
         '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
@@ -1752,6 +1762,12 @@ HAEMA_CONSOLE.renderModal = function() {
     let titlePrefix = '';
     let saveText = '';
 
+    if (this.modalMode === 'introduction') {
+        modeText = '자기소개';
+        titlePrefix = '👤 ';
+        saveText = '저장';
+    }
+
     if (this.modalMode === 'create') {
         modeText = '✨ 새 쩜(JJum) 만들기';
         titlePrefix = '✨ ';
@@ -1766,7 +1782,7 @@ HAEMA_CONSOLE.renderModal = function() {
         saveText = '💾 저장';
     }
 
-    return '<div class="modal-overlay" id="modalOverlay">' +
+    return '<div class="modal-overlay' + (this.modalMode === 'introduction' ? ' introduction-modal' : '') + '" id="modalOverlay">' +
         '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">' +
         '<div class="modal-header">' +
         '<div class="modal-title" id="modalTitle">' + titlePrefix + modeText + '</div>' +
@@ -1774,7 +1790,7 @@ HAEMA_CONSOLE.renderModal = function() {
         '</div>' +
         '<div class="modal-body" id="modalBody">' + modalContent + '</div>' +
         '<div class="modal-footer">' +
-        '<button class="btn btn-secondary" id="modalCancel">취소</button>' +
+        '<button class="btn btn-secondary" id="modalCancel">' + (this.modalMode === 'introduction' ? '닫기' : '취소') + '</button>' +
         '<button class="btn btn-primary" id="modalSave">' + saveText + '</button>' +
         '</div>' +
         '</div>' +
@@ -1791,6 +1807,7 @@ HAEMA_CONSOLE.formatSeonForEdit = function(seon, index) {
 };
 
 HAEMA_CONSOLE.renderModalContent = function() {
+    if (this.modalMode === 'introduction') return HAEMA_INTRODUCTION_MODAL.render(this);
     // API 키 설정 모달인 경우, 이제 haema-api-key-modal.js에서 콘텐츠를 생성한다.
     if (this.modalMode === "apiKey") {
         if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
