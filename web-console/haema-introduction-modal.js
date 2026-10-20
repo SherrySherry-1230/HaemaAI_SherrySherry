@@ -1,5 +1,5 @@
-// @editedBy YAONG1230 2026-10-20
-// The HTTP contract is proposed in docs/INTRODUCTION_API_PROPOSAL.md.
+// @editedBy YAONG1230 2026-10-21
+// The confirmed HTTP contract is documented in docs/INTRODUCTION_API.md.
 (function(global) {
     'use strict';
     const records = new Map();
@@ -140,6 +140,9 @@
     function bind(consoleApp) {
         const record = consoleApp.modalData;
         const input = document.getElementById('modalIntroduction');
+        // HTML parsing drops the first LF immediately after <textarea>. Restore
+        // via the value property without resetting an already-correct selection.
+        if (input && input.value !== record.text.replace(/\r\n?/g, '\n')) input.value = record.text;
         input?.addEventListener('compositionstart', () => { consoleApp.isComposing = true; });
         input?.addEventListener('compositionend', () => {
             consoleApp.isComposing = false;
