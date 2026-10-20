@@ -1,9 +1,26 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-20
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
 export { validateJJum, type ValidationResult } from './types/validateJJum.ts';
 export { createJJum, type CreateJJumInput } from './createJJum.ts';
+export {
+  reviewStoredJJum,
+  captureLayaReviewIntent,
+  pendingLayaTag,
+  layaContentSnapshot,
+  type LayaReviewEngine,
+  type LayaReviewRequest,
+  type LayaReviewResult,
+  type LayaReviewIntent,
+} from './layaReview.ts';
+export {
+  DEFAULT_MENTION_HISTORY_CHUNK_SIZE,
+  iterateMentionHistory,
+  appendMentionHistory,
+  getMentionHistoryGroups,
+  type MentionHistoryGroup,
+} from './mentionHistory.ts';
 export {
   parseMentionCoefficientsCsv,
   calculateMentionScore,
@@ -24,6 +41,38 @@ export type {
   MergeJudgement,
   RecallScore,
 } from './adapters/aiAdapter.ts';
+export type { AIUsageEvent, TokenCounts } from './adapters/aiUsage.ts';
+export {
+  TokenUsageCollector,
+  summarizeTokenUsage,
+  summarizeConversationTokenUsage,
+  validateTokenUsageReport,
+  reconcileTokenUsageReport,
+  type TokenUsageStatus,
+  type TokenUsageScope,
+  type TokenUsageMetric,
+  type TokenUsageTotals,
+  type TokenUsageReport,
+} from './tokenUsage.ts';
+export { FileTokenUsageStore, TokenUsageStoreError, type TokenUsageConversation } from './adapters/fileTokenUsageStore.ts';
+export {
+  type Introduction,
+  IntroductionStoreError,
+  emptyIntroduction,
+  validateIntroductionText,
+  validateDisplayName,
+  validateIntroductionOwnerId,
+  validateIntroductionRevision,
+  MAX_INTRODUCTION_TEXT_BYTES,
+  MAX_DISPLAY_NAME_CODE_POINTS,
+} from './introduction.ts';
+export { FileIntroductionStore } from './adapters/fileIntroductionStore.ts';
+export {
+  resolveIntroductionDisplayName,
+  type IntroductionDisplayNameSelection,
+  type ResolvedIntroductionDisplayName,
+} from './introductionName.ts';
+export { buildIntroductionHostContext, type IntroductionHostContext } from './introductionHostContext.ts';
 export {
   prepareConversationRequest,
   type PreparedConversationRequest,
@@ -33,8 +82,23 @@ export {
 export {
   processConversationToStorage,
   ConversationProcessingError,
+  ConversationSupersededError,
   type ConversationProcessingResult,
 } from './integration.ts';
+export {
+  IncrementalConversationSession,
+  type IncrementalConversationScope,
+  type IncrementalConversationInput,
+  type IncrementalConversationWork,
+  type IncrementalConversationHooks,
+  type IncrementalConversationView,
+  type IncrementalConversationAcceptance,
+  type InputContinuity,
+  type SpeculativeResult,
+  type TemporaryJJumFragment,
+} from './incrementalConversation.ts';
+export { SpeculativeMemoryExplorer } from './speculativeMemory.ts';
+export { assessResponseReadiness, type ResponseReadiness } from './responseReadiness.ts';
 export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
 export {
   LayaDecisionEngine,

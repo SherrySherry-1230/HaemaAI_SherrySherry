@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-17
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -18,8 +18,10 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { JJum, JJumId, JJumStatus } from '../types/jjum.ts';
+import { isDeepStrictEqual } from 'node:util';
+import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
+import { invalidateLayaReview, isLayaTag, layaContentSnapshot, pendingLayaTag } from '../layaReview.ts';
 import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
 
 const LONG_TERM_FOLDER = '🧠장기기억저장소_feat.해마🧠';
@@ -65,8 +67,18 @@ function atomicWrite(filePath: string, content: string): void {
   fs.renameSync(tmp, filePath);
 }
 
+/** 대화 밖의 수정에 예전 대화의 검토 근거가 재사용되지 않도록 기존 이력 뒤에 남긴다. */
+function recordDirectReviewRequest(jjum: JJum, now: number): void {
+  jjum.editHistory = [...jjum.editHistory, {
+    date: now, action: 'laya_review_invalidated', by: 'batch',
+    memo: '대화 검토 요청과 별도로 내용이 수정되어 새 검토가 필요합니다.',
+    reviewRequested: true,
+  }];
+}
+
 const SORT_KEYS: JJumSortKey[] = ['mentionCount', 'lastMentioned', 'firstSeen', 'recallCount'];
 const ownerQueues = new Map<string, Promise<void>>();
+const coordinationScopes = new Map<string, object>();
 
 /** 아직 없는 저장 폴더도 기존 상위 폴더의 실제 경로를 기준으로 같은 큐를 사용한다. */
 function physicalDirectory(directory: string): string {
@@ -95,6 +107,17 @@ export class FileAdapter implements StorageAdapter {
     this.storageRoot = options?.storageRoot ?? options?.baseDir ?? path.join(process.cwd(), 'local-server', 'haema');
     this.memoryRoot = options?.memoryRoot;
     this.useLegacyStructure = options?.useLegacyStructure ?? false;
+  }
+
+  /** 같은 실제 저장 경로의 인스턴스가 검토 중복 방지와 무효화 상태를 공유한다. */
+  get coordinationScope(): object {
+    const key = physicalDirectory(this.baseDir);
+    let scope = coordinationScopes.get(key);
+    if (!scope) {
+      scope = {};
+      coordinationScopes.set(key, scope);
+    }
+    return scope;
   }
 
   async withOwnerLock<T>(ownerId: string, run: () => Promise<T>): Promise<T> {
@@ -237,6 +260,7 @@ export class FileAdapter implements StorageAdapter {
     jjum?: JJum;
     error?: string;
     invalidMentionHistory?: { ownerId: string; jjumId: string };
+    invalidLayaReview?: { ownerId: string; jjumId: string };
   } {
     let raw: string;
     try {
@@ -257,6 +281,9 @@ export class FileAdapter implements StorageAdapter {
         error: `스키마 검증 실패: ${result.errors.join(' / ')}`,
         ...(result.invalidMentionHistory ? {
           invalidMentionHistory: { ownerId: identity.ownerId.trim(), jjumId: identity.jjumId.trim() },
+        } : {}),
+        ...(result.invalidLayaReview ? {
+          invalidLayaReview: { ownerId: identity.ownerId.trim(), jjumId: identity.jjumId.trim() },
         } : {}),
       };
     }
@@ -298,12 +325,15 @@ export class FileAdapter implements StorageAdapter {
     }
     for (const entry of entries) {
       if (!entry.endsWith('.jj') || entry.startsWith('_')) continue;
-      const { jjum, error, invalidMentionHistory } = this.readJJumFile(path.join(dir, entry));
+      const { jjum, error, invalidMentionHistory, invalidLayaReview } = this.readJJumFile(path.join(dir, entry));
       if (error) {
         this.loadErrors.push({ file: path.join(dir, entry), reason: error });
         // 중복 방지 이력을 제외한 채 새 쩜을 만드는 것을 막는다. 다른 소유자의 처리는 계속한다.
         if (invalidMentionHistory?.ownerId === ownerId) {
           throw new Error(`Stored mentionHistory is invalid for JJum ${invalidMentionHistory.jjumId}: ${error}`);
+        }
+        if (invalidLayaReview?.ownerId === ownerId) {
+          throw new Error(`Stored Laya review is invalid for JJum ${invalidLayaReview.jjumId}: ${error}`);
         }
         continue;
       }
@@ -337,16 +367,16 @@ export class FileAdapter implements StorageAdapter {
         if (!entry.isDirectory()) continue;
         for (const filename of fs.readdirSync(path.join(this.baseDir, entry.name))) {
           if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
-          const { jjum, invalidMentionHistory } = this.readJJumFile(path.join(this.baseDir, entry.name, filename));
-          const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId;
+          const { jjum, invalidMentionHistory, invalidLayaReview } = this.readJJumFile(path.join(this.baseDir, entry.name, filename));
+          const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId ?? invalidLayaReview?.ownerId;
           if (ownerId) owners.add(ownerId);
         }
       }
     } else if (fs.existsSync(this.baseDir)) {
       for (const filename of fs.readdirSync(this.baseDir)) {
         if (!filename.endsWith('.jj') || filename.startsWith('_')) continue;
-        const { jjum, invalidMentionHistory } = this.readJJumFile(path.join(this.baseDir, filename));
-        const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId;
+        const { jjum, invalidMentionHistory, invalidLayaReview } = this.readJJumFile(path.join(this.baseDir, filename));
+        const ownerId = jjum?.ownerId ?? invalidMentionHistory?.ownerId ?? invalidLayaReview?.ownerId;
         if (ownerId) owners.add(ownerId);
       }
     }
@@ -356,6 +386,10 @@ export class FileAdapter implements StorageAdapter {
   // ── StorageAdapter 구현 ────────────────────────────────
 
   async getJJum(ownerId: string, jjumId: JJumId): Promise<JJum | null> {
+    return this.getJJumSync(ownerId, jjumId);
+  }
+
+  private getJJumSync(ownerId: string, jjumId: JJumId): JJum | null {
     const index = this.loadIndex();
     const filename = index.owners[ownerId]?.files[jjumId];
     if (typeof filename === 'string' && path.basename(filename) === filename && filename.endsWith('.jj') && !filename.startsWith('_')) {
@@ -373,10 +407,33 @@ export class FileAdapter implements StorageAdapter {
   }
 
   async putJJum(ownerId: string, jjum: JJum): Promise<void> {
+    this.putJJumSync(ownerId, jjum);
+  }
+
+  private putJJumSync(ownerId: string, jjum: JJum): void {
     const stored: JJum = { ...jjum, ownerId };
     const validation = validateJJum(stored);
     if (validation.invalidMentionHistory) {
       throw new Error(`Cannot store invalid mentionHistory: ${validation.errors.join(' / ')}`);
+    }
+    if (validation.invalidLayaReview) {
+      throw new Error(`Cannot store invalid Laya review: ${validation.errors.join(' / ')}`);
+    }
+    if (!validation.ok || !validation.jjum) {
+      throw new Error(`Cannot store invalid JJum: ${validation.errors.join(' / ')}`);
+    }
+    const existing = this.getJJumSync(ownerId, stored.jjumId);
+    if (existing && validation.jjum && layaContentSnapshot(existing) !== layaContentSnapshot(validation.jjum)) {
+      invalidateLayaReview(this, ownerId, stored.jjumId);
+      const hasNewReviewRequest = validation.jjum.editHistory.length > existing.editHistory.length
+        && isDeepStrictEqual(validation.jjum.editHistory.slice(0, existing.editHistory.length), existing.editHistory)
+        && validation.jjum.editHistory.at(-1)?.reviewRequested === true;
+      if (!hasNewReviewRequest) recordDirectReviewRequest(stored, Date.now());
+      const { verdict: _previousVerdict, ...previousTag } = stored.layaTag ?? existing.layaTag ?? {};
+      stored.layaTag = stored.layaTag?.state === 'pending'
+        ? stored.layaTag : { ...previousTag, ...pendingLayaTag(Date.now()) };
+    } else if (existing?.layaTag && stored.layaTag === undefined) {
+      stored.layaTag = existing.layaTag;
     }
     const index = this.loadIndex();
     const dir = this.ownerDir(ownerId);
@@ -405,15 +462,43 @@ export class FileAdapter implements StorageAdapter {
   }
 
   async patchJJum(ownerId: string, jjumId: JJumId, partial: Partial<JJum>): Promise<void> {
-    const existing = await this.getJJum(ownerId, jjumId);
+    const existing = this.getJJumSync(ownerId, jjumId);
     if (!existing) throw new Error(`patchJJum: 쩜 없음 — ${ownerId}/${jjumId}`);
-    await this.putJJum(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
+    this.putJJumSync(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
+  }
+
+  /** 같은 프로세스에서는 다시 읽기·비교·태그 저장 사이에 다른 작업을 실행하지 않는다. */
+  async compareAndSetLayaTag(
+    ownerId: string,
+    jjumId: JJumId,
+    expectedSnapshot: string,
+    expectedTag: LayaTag,
+    newTag: LayaTag,
+  ): Promise<boolean> {
+    if (!isLayaTag(newTag)) throw new Error('Cannot store invalid Laya review');
+    const filePath = this.jjumPath(ownerId, jjumId);
+    if (!filePath) return false;
+    const data: unknown = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const validation = validateJJum(data);
+    if (validation.invalidLayaReview || validation.invalidMentionHistory) {
+      throw new Error(`Cannot review invalid stored JJum: ${validation.errors.join(' / ')}`);
+    }
+    const current = validation.jjum;
+    if (!validation.ok || !current || current.ownerId !== ownerId || current.jjumId !== jjumId
+      || current.layaTag?.state !== 'pending' || layaContentSnapshot(current) !== expectedSnapshot
+      || !isDeepStrictEqual(current.layaTag, expectedTag)) return false;
+    // 원본에서 태그만 바꾸므로 통계와 알 수 없는 확장 필드도 그대로 보존한다.
+    atomicWrite(filePath, JSON.stringify({ ...(data as Record<string, unknown>), layaTag: newTag }, null, 2));
+    return true;
   }
 
   async deleteJJum(ownerId: string, jjumId: JJumId): Promise<void> {
     const index = this.loadIndex();
     const filename = this.jjumPath(ownerId, jjumId);
-    if (filename) fs.unlinkSync(filename);
+    if (filename) {
+      invalidateLayaReview(this, ownerId, jjumId);
+      fs.unlinkSync(filename);
+    }
     this.removeFromIndex(index, ownerId, jjumId);
     this.saveIndex(index);
   }
@@ -476,6 +561,7 @@ export class FileAdapter implements StorageAdapter {
     if (!result?.jjum || result.jjum.ownerId !== ownerId || result.jjum.jjumId !== jjumId) return null;
 
     const jjum = result.jjum;
+    const beforeContent = layaContentSnapshot(jjum);
     const now = Date.now();
 
     // 쩜 자체 언급 카운트/시각 갱신
@@ -505,6 +591,12 @@ export class FileAdapter implements StorageAdapter {
       }
     }
 
+    if (layaContentSnapshot(updated) !== beforeContent) {
+      invalidateLayaReview(this, ownerId, jjumId);
+      recordDirectReviewRequest(updated, now);
+      const { verdict: _previousVerdict, ...previousTag } = updated.layaTag ?? {};
+      updated.layaTag = { ...previousTag, ...pendingLayaTag(now) };
+    }
     atomicWrite(filePath, JSON.stringify(updated, null, 2));
     return updated;
   }

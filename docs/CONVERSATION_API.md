@@ -1,7 +1,7 @@
-<!-- @editedBy SherrySherry 2026-10-08 -->
+<!-- @editedBy SherrySherry 2026-10-16 -->
 # 발화 식별과 언급 이력 API
 
-2026-10-08 구현. `schemaVersion=4` 파일에 선택 필드 `mentionHistory`를 추가한다. 과거 기억이나 언급 횟수를 이행·삭제하지 않는다. 발화 ID는 내용의 압축값이 아니라 개별 발화의 식별자다.
+2026-10-08 발화 이력 구현, 2026-10-10 연속 묶음 보강. `schemaVersion=4` 파일의 선택 필드 `mentionHistory`와 `mentionHistoryChunks`에 같은 쩜의 이력을 이어 보관한다. 과거 기억이나 언급 횟수를 일괄 이행·삭제하지 않는다. 발화 ID는 내용의 압축값이 아니라 개별 발화의 식별자다.
 
 ## 저장 전에 발화 ID를 준비한다
 
@@ -57,11 +57,16 @@ try {
 | `ConversationTurn` | `receivedAt?` | 최초 준비·수신 시각. 준비 단계가 한 번 채우며 재시도 때 보존한다. |
 | `ConversationTurn` | `final?` | 기본 `true`. `false`는 대화 맥락으로만 전달하며 저장·집계 근거에서 제외한다. |
 | `ExtractedDraft` | `mentions[]` | `{utteranceId, kind}` 근거 목록. 통합 저장을 사용하려면 필요하다. |
-| 결과 | `storedCount` | 이번 호출에서 실제 저장한 서로 다른 쩜 수. 내용과 관계를 두 번 저장해도 하나로 센다. 완전한 재전송으로 변경이 없으면 0이다. |
+| `ExtractRequest` | `recalledJJums?` | 통합 처리에서 같은 사용자의 저장소를 `touch:false`로 회상하여 채우는 기존 쩜. 태그·이유를 가장 먼저 참고한다. |
+| `ExtractedDraft` | `updateMemo?`, `requestLayaReview?` | 새 확정 발화에 따른 수정 메모(공백뿐인 문자열 금지, 최대 500 길이)와 재검토 요청 여부. 판정·검토 시각은 추출 AI가 작성하지 않는다. |
+| 통합 옵션 | `reviewEngine?` | `reviewJJum({jjum, turns})`을 제공하는 검토 엔진. 생략하면 `pending`을 보존한다. |
+| 결과 | `storedCount` | 이번 호출에서 내용·언급 이력·관계를 저장한 서로 다른 쩜 수. 같은 쩜을 여러 번 저장해도 하나로 센다. 완전한 재전송은 0일 수 있으며 대기 중 검토 결과만 저장한 경우도 이 수에 더하지 않는다. |
 | 결과 | `failedSummaries` | 이번에 실행한 요약 보강의 실패 수. 기존 실패 보존 정책을 유지한다. |
 | 결과·처리 오류 | `receipt` | `{conversationId, turns:[{utteranceId, receivedAt, final, at?}]}`. 정규화된 입력 순서이며 발화 원문은 포함하지 않는다. |
 
 OpenAI·Anthropic·Google·Groq 어댑터는 위 발화 필드를 JSON으로 전달하고 근거 발화 ID를 요청한다. AI가 새 ID나 횟수를 만들도록 맡기지 않는다. 사용자 본인을 암시하는 표현, 같은 대상의 별칭, 일반 질문에 답하며 새로 꺼낸 대상도 제공된 문맥으로 판단하도록 요청한다.
+
+추출 응답의 최상위 값은 JSON 배열이어야 한다. 정상 빈 배열 `[]`는 저장할 초안이 없는 성공 응답이다. JSON 문법 오류나 객체·`null`·숫자·문자열·불리언 응답은 추출 오류로 전달하며, 성공한 빈 배열로 바꾸지 않는다. 같은 OpenAI 호환 어댑터를 사용하는 Ollama·LM Studio에도 이 계약을 적용한다. 통합 저장은 이 오류가 발생하면 내용을 저장하지 않고 `ConversationProcessingError`와 준비된 `receipt`를 전달한다. 재시도할 때는 같은 대화·발화 ID를 유지한다. 배열 안의 필수 필드와 발화 근거 검증은 아래의 기존 규칙을 따른다.
 
 `kind`는 다음 세 값이다.
 
@@ -77,7 +82,7 @@ AI는 제공된 `turns` 안에서 선행 언급을 판단한다. 호출자가 �
 
 ## 쩜에 남는 기록과 횟수
 
-`mentionHistory`는 쩜의 `.jj` JSON 안에 다음 항목을 저장한다. `editHistory`, `facts`, `events`, `responseFeedback`를 대체하지 않는다.
+`mentionHistory`와 후속 묶음의 `entries`는 쩜의 `.jj` JSON 안에 다음 항목을 저장한다. `editHistory`, `facts`, `events`, `responseFeedback`를 대체하지 않는다.
 
 ```ts
 interface JJumMention {
@@ -112,26 +117,60 @@ interface JJumMention {
 - 같은 프로세스에서 FileAdapter의 같은 실제 저장 경로·사용자에 대한 통합 호출은 순서대로 처리한다. 다른 StorageAdapter는 선택 메서드 `withOwnerLock`을 제공하거나 같은 어댑터 객체의 기본 대기열을 사용한다. 다른 프로세스·다른 어댑터의 직접 쓰기·`patchJJum`·`recall` 등 별도 경로까지 트랜잭션으로 보호하지 않는다. 호스트는 그런 쓰기를 별도로 직렬화해야 한다.
 - 발급 ID를 처음 처리 전에 보관하지 않았고 응답까지 유실됐다면, 식별 정보 없는 새 요청이 재시도인지 확실히 알 수 없다. 쩜으로 저장된 근거가 없는 발화에 대한 전역 메시지 보관함도 만들지 않는다. 따라서 기억 이력이 없는 발화의 편집 충돌까지 영구 추적한다고 주장하지 않는다.
 
-## 크기 제한과 기존 파일 호환
+## 연속 기록 묶음과 기존 파일 호환
 
-통합 옵션 `maxMentionHistoryEntries`의 기본값은 쩜당 **10,000개**이며 양의 정수다. 요청으로 추가할 이력이 상한을 넘으면 저장 전에 오류를 반환한다. 기존 이력을 몰래 잘라 중복 방지 근거를 잃거나 횟수만 올리지 않는다. 호스트가 상한을 조정할 수 있지만, 별도 보관·압축·삭제 정책은 구현하지 않는다.
+통합 옵션 `maxMentionHistoryEntries`는 **묶음 하나의 크기**이며 기본값은 10,000, 허용값은 양의 안전한 정수다. 기존 옵션 이름을 유지하되 전체 이력의 저장 상한이라는 동작은 대체했다. 10,000개를 채우면 다음 새 기록부터 2번 묶음에 넣고, 이어서 3·4번으로 계속 보존한다. 수량 때문에 저장을 거부하거나 기존 기록을 삭제하지 않는다. 저장 장치 오류 등은 기존 처리 오류·receipt 계약으로 전달한다.
 
-과거 파일에 `mentionHistory`가 없으면 없는 상태 그대로 읽는다. 정상 이력의 추가 필드도 보존한다. 이력 형식이 손상된 해당 사용자의 저장소는 오류를 알려 처리 중단하며, 빈 이력으로 바꾸거나 같은 이름의 새 쩜을 만들어 중복 증가시키지 않는다. 다른 사용자의 손상 이력 때문에 현재 사용자의 기억을 섞거나 차단하지 않는다.
+```ts
+// 같은 JJum, 같은 jjumId의 단일 .jj 파일 내부
+mentionHistory?: JJumMention[]; // 첫 묶음
+mentionHistoryChunks?: Array<{
+  sequence: number;             // 2, 3, 4, ...
+  entries: JJumMention[];
+}>;
+```
+
+`getMentionHistoryGroups(jjum)`는 `{sequence, name, entries}`를 반환한다. `name`은 현재 쩜 이름, `이름2`, `이름3` 순의 표시값이며, 별도 쩜·검색 이름·별칭을 생성하지 않는다. 묶음의 신원은 부모 `jjumId`와 번호로 정한다. 쩜의 이름이 바뀌어도 번호와 기록은 그대로이며 표시값만 현재 이름을 따른다. `iterateMentionHistory(jjum)`는 첫 묶음부터 모든 항목을 저장 순서대로 순회한다. 직접 이력을 추가하는 어댑터에는 원본을 바꾸지 않는 `appendMentionHistory(jjum, additions, chunkSize?)`를 제공한다. 이 함수는 중복 키의 직접 추가를 거부하며, 통합 처리에서는 재전송을 먼저 제외한다.
+
+중복·발화 편집 검사는 **전체 묶음**을 대상으로 한다. host·prompted도 보관 공간을 사용하되 사용자 언급 증분은 0이다. `mentionCount`, 최초 시각, `recallCount`, 쩜선은 부모 쩜 한 곳에 유지하고, 새 묶음의 생성에 초기 횟수 1을 추가하지 않는다. 회상 후보도 같은 `jjumId` 하나다. 기존 언급 점수 함수에 부모의 누적 N을 직접 넣는 테스트를 수행했으며, 묶음별 점수를 더하지 않는 기준을 확인했다. 전체 파워의 저장 연결이나 보류 중인 회상·언급 매너 계산식을 새로 구현한 것은 아니다.
+
+모든 묶음과 누적 횟수를 같은 JJum payload에 저장하므로 FileAdapter는 하나의 파일 교체로 반영한다. **파일 내부의 논리적 분할**이며 별도 파일·페이지로 나누지는 않는다. 전체 기록이 늘면 파일 크기와 조회 비용도 늘어난다. 기존 저장 인터페이스와 단일 파일 교체의 보존 특성을 유지하기 위해 선택한 방식이다.
+
+과거 파일에 이력이 없으면 없는 상태 그대로 읽는다. 기존 묶음의 번호·추가 정보·발화 시각을 보존하며, 설정한 크기가 작아지거나 과거 묶음이 더 길어도 재분할하지 않고 다음 묶음에 추가한다. 이력을 빈 값으로 바꾸어 재집계하지 않는다. 후속 묶음의 번호 누락·빈 항목 배열·첫 묶음 부재/공백·묶음 간 중복이나 역할·ID·시각 손상은 해당 사용자의 처리 오류로 알린다. 다른 사용자의 손상 이력 때문에 현재 사용자의 기억을 섞거나 차단하지 않는다.
 
 이 호환성은 **새 코어가 기존 파일을 읽는 방향**이다. 새 필드를 모르는 옛 검증기는 저장할 때 이력을 버릴 수 있으므로 이력 쓰기에 참여하는 실행 환경은 함께 업데이트해야 한다. 실제 개인 파일을 일괄 변환하거나 과거 언급 기록을 만들어 넣지 않는다.
 
+## Laya 검토와 새 대화 업데이트
+
+통합 처리는 추출 전에 기존 회상 규칙으로 같은 사용자의 쩜을 찾고 `recalledJJums`로 전달한다. 이 준비 조회는 `touch:false`여서 회상 횟수를 늘리지 않는다. OpenAI·Anthropic·Google·Groq 어댑터는 기존 `layaTag`의 상태·판정·이유·시각을 기억 내용과 새 대화보다 앞에 놓고 추출·요약에 참고한다. `meta`나 전체 언급 이력을 검토 참고 문맥으로 보내지 않는다. custom AIAdapter는 이 입력과 우선 참조 규칙을 직접 지원해야 한다.
+
+처음 만든 쩜, 새 사실·사건·별칭·분류 등 실제 내용이 바뀐 쩜과 새 연결이 추가된 쩜에는 `pending`을 저장한다. 기존 사실·출처를 보존하고 편집 이력에 수정 메모, `conversationId/utteranceIds`, `reviewRequested:true`를 남긴다. 새 확정 발화의 근거가 있으면 명시적 재검토 요청도 수용한다. 태그 자체나 기존 발화의 단순 재전송은 새 근거가 아니다.
+
+내용과 관계의 최종 저장을 마친 사용자 잠금 안에서 `captureLayaReviewIntent()`가 저장 내용·대기 태그·발화 근거를 묶는다. 잠금을 놓은 뒤 이 요청이 여전히 유효할 때만 연결된 `reviewEngine`을 실행하여 `{verdict, reason}`을 받는다. 코어가 결과를 검증하고 실제 완료 시각을 더한다. 검토 실패는 `failed`로 저장하며 내용 저장 성공을 취소하지 않는다. 검토 결과의 저장 장치 오류는 기존 처리 오류·receipt 계약으로 전달한다. 검토 엔진이 없으면 정상 판정을 대신 채우지 않는다.
+
+완전히 같은 요청에서 `reviewed/failed`를 반복 검토하지 않는다. 저장 후 중단되어 남은 `pending`은 편집 이력의 마지막 `reviewRequested`에 기록된 대화 ID와 일치하며, 근거 발화 ID 모두를 확정 발화로 포함한 요청에서만 재개한다. 언급·사실·수정 메모를 중복 추가하지 않으며 예전 대화의 재전송으로 새 대화의 대기 검토를 시작하지 않는다. 실행 전이나 처리 중 내용이 달라지면 이전 요청·결과를 적용하지 않고, 같은 시각에 내용을 바꿨다가 되돌린 경우도 내부 요청 무효화로 구별한다. 별도 영구 검토 버전 없이 내용 비교와 작업 식별로 보호하는 범위 및 한계는 [LAYA_REVIEW.md](LAYA_REVIEW.md)를 참고한다. 기존 10,000개 단위 연속 기록·동일 발화 중복 방지 계약은 유지한다.
+
+FileAdapter는 같은 프로세스의 같은 실제 저장 경로끼리 검토 작업을 조정하고, 최신 내용·대기 태그가 일치할 때 태그만 조건부 저장한다. 따라서 검토를 기다리는 동안 바뀐 통계와 추가 필드를 보존한다. 기존 편집 이력 뒤에 새 검토 요청이 추가되지 않은 직접 내용 수정은 `laya_review_invalidated` 메모(`by:'batch'`, `reviewRequested:true`, `evidence` 없음)를 남겨, 재로드 후에도 옛 대화 재시도가 이 대기를 재개하지 않게 한다. 새 근거에 따른 요청이나 명시적 검토가 필요하며 기존 미검토 파일의 읽기는 바꾸지 않는다. custom StorageAdapter는 선택 계약 `coordinationScope`와 `compareAndSetLayaTag`를 제공할 수 있다. 조건부 저장이 없으면 같은 사용자 잠금에 참여하는 쓰기 범위에서만 보호되며, 별도 프로세스의 파일 잠금을 제공하지 않는다.
+
 ## 로컬 HTTP 경로
+
+연속 입력은 별도의 세션 접수·스냅샷·제출 경로로 제공한다. 메시지 제출과 의미상 발화를 구분하고 대화 맥락을 유지하며, 제출 시 임시 회상 점수만 무효화한다. 기존 단일 요청 경로는 아래 계약을 유지한다. 새 수신부 연결과 미정 정책은 [연속 입력 계약](INCREMENTAL_CONVERSATION.md)을 따른다.
 
 기존 `POST /api/conversation`과 별칭 경로는 `conversationId`와 `turns[].utteranceId/receivedAt/at/final`을 코어로 전달한다. 성공 응답은 `extraction.receipt`, 준비 이후 처리 실패 응답은 `receipt`를 포함한다. 입력 자체가 잘못되어 준비되지 않았거나 처리 전 설정·연결 검사가 실패한 경우에는 영수증이 없을 수 있다. 발화 식별·시각 형식 오류는 HTTP 400으로 반환한다.
 
-현재 콘솔 화면은 ID를 지속 보관하도록 수정하지 않았다. 안정적인 재시도가 필요한 호스트는 자체 ID를 제공하거나 위 준비 함수를 사용해야 한다. 이 경로는 저장 뒤 회상도 실행하므로, 언급 횟수의 중복 방지가 회상 횟수의 중복 방지까지 뜻하지 않는다. 재시도 시 회상 상태 갱신을 원하지 않으면 기존 `touch:false` 옵션을 사용한다.
+안정적인 재시도가 필요한 호스트는 자체 ID를 제공하거나 위 준비 함수를 사용하고, 전송 전에 보관한 ID·시각을 재사용해야 한다. 이 경로는 저장 뒤 회상도 실행하므로, 언급 횟수의 중복 방지가 회상 횟수의 중복 방지까지 뜻하지 않는다. 재시도 시 회상 상태 갱신을 원하지 않으면 기존 `touch:false` 옵션을 사용한다. 요청이 선택한 저장소 인스턴스를 추출·저장·회상까지 사용하며, 진행 중 저장소 선택이 바뀌어도 해당 요청을 다른 저장소로 넘기지 않는다.
+
+`HAEMA_LAYA_ENABLED=1`이면 같은 Laya 엔진을 대화 저장 후 검토에도 연결한다. 기존 쩜 생성·수정 HTTP 경로 역시 저장 후 대기 중 검토를 실행하고 저장된 `layaTag`를 반환한다. 별도 판정 입력 API나 검토 버전 필드는 추가하지 않는다. 프론트의 태그 표시와 receipt·ID 보관·재사용 연동은 이 백엔드 계약 문서만으로 완료됐다고 간주하지 않는다.
 
 ## 로컬 검증
+
+대화 처리의 실제 해마.ai 호출 사용량은 성공·실패 응답의 `tokenUsage`로, 서버에 보존된 대화 누적은 `conversationUsage`로 전달한다. 재접속 시 `GET /api/conversation/usage`로 같은 사용자·저장소·대화의 누적을 복원한다. 호스트 답변 생성은 제외하며 합계·입출력 구분의 확정도, 중복·재시도, 저장 실패 처리는 [토큰 사용량 계약 v2](TOKEN_USAGE.md)를 따른다.
 
 기존 `npm test`와 `npm run typecheck`에 더해 아래 검사를 실행한다. 테스트 파일은 저장소의 기존 방침대로 Git에서 제외되므로 현재 로컬 환경에만 있다. `package.json`에 무시되는 새 경로를 추가하지 않았다.
 
 ```sh
-node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-identity.test.ts tests/provider-extraction.test.ts tests/mention-storage.test.ts tests/mention-history.test.ts
+node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-identity.test.ts tests/provider-extraction.test.ts tests/mention-storage.test.ts tests/mention-history.test.ts tests/mention-continuation.test.ts
+node --disable-warning=ExperimentalWarning --experimental-strip-types --test tests/conversation-http.test.ts
 ```
 
 가짜 SDK·합성 발화·임시 저장소로 검증하며, 실제 모델의 의미 판정 품질을 검증했다고 주장하지 않는다.

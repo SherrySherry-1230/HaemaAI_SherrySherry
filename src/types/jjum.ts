@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * 쩜(JJum) 스키마 v4 — 단일 기준: docs/SCHEMA.md (2026-09-22 확정)
  * 쩜 = AI와 유저가 공유하는 생각·기억의 최소 단위. 쩜 사이 연관 = 쩜선(Seon),
@@ -24,6 +24,20 @@ export type FactSource = 'conversation' | 'user_edit' | 'batch';
 
 /** 편집 이력의 주체 */
 export type EditActor = 'user' | 'ai' | 'batch';
+
+/** 판단 근거 부족과 오류·충돌 의심을 구별하는 Laya 검토 판정. */
+export type LayaVerdict = '정상' | '이상함' | '정보 부족';
+
+interface LayaTagBase {
+  reason: string;
+  /** 시간대가 포함된 ISO 날짜·시각. 별도 검토 버전은 저장하지 않는다. */
+  timestamp: string;
+  [key: string]: unknown;
+}
+
+/** 대기·실패는 판정이 아니며 이전 정상 판정을 이어받지 않는다. */
+export type LayaTag = (LayaTagBase & { state: 'reviewed'; verdict: LayaVerdict })
+  | (LayaTagBase & { state: 'pending' | 'failed'; verdict?: never });
 
 /**
  * 쩜 상태.
@@ -66,6 +80,11 @@ export interface JJumEditEntry {
   action: string;
   field?: string;
   by: EditActor;
+  /** 새 대화 근거에 따라 무엇을 수정했는지 남기는 짧은 기록. */
+  memo?: string;
+  evidence?: { conversationId: string; utteranceIds: string[] };
+  reviewRequested?: boolean;
+  [key: string]: unknown;
 }
 
 /** 호스트 AI 답변에 대한 사용자 반응의 결과 */
@@ -92,6 +111,15 @@ export interface JJumMention {
   fingerprint: string;
   counted: boolean;
   /** 이후 추가된 이력 정보도 읽기·저장 과정에서 보존한다. */
+  [key: string]: unknown;
+}
+
+/** 같은 쩜 안에서 이어지는 언급 기록 묶음. 첫 묶음은 mentionHistory에 보관한다. */
+export interface JJumMentionChunk {
+  /** 2부터 빠짐없이 이어지는 묶음 번호. 쩜 ID나 별도 쩜의 이름이 아니다. */
+  sequence: number;
+  entries: JJumMention[];
+  /** 이후 추가된 묶음 정보도 읽기·저장 과정에서 보존한다. */
   [key: string]: unknown;
 }
 
@@ -136,8 +164,10 @@ export interface JJum {
   // ═══ 통계 (정렬·선별·회상 우선순위의 재료) ═══
   /** 언급 횟수 — 인기순 정렬 키 */
   mentionCount: number;
-  /** 새로 처리한 발화의 이력만 저장한다. 과거 파일에는 없을 수 있다. */
+  /** 언급 기록의 첫 묶음. 새로 처리한 발화만 저장하며 과거 파일에는 없을 수 있다. */
   mentionHistory?: JJumMention[];
+  /** 2·3·4번으로 이어지는 기록 묶음. 모든 묶음은 이 쩜의 ID·누적 통계를 공유한다. */
+  mentionHistoryChunks?: JJumMentionChunk[];
   firstSeen: JJumTimestamp;
   /** 날짜순 정렬 키, 자동 정리 기준 */
   lastMentioned: JJumTimestamp;
@@ -155,6 +185,8 @@ export interface JJum {
   /** (status=merged일 때) 어디로 흡수됐는지 역참조 */
   mergedInto?: JJumId;
   editHistory: JJumEditEntry[];
+  /** 이전 파일에는 없을 수 있다. 누락을 정상 판정으로 간주하지 않는다. */
+  layaTag?: LayaTag;
   /** 호스트 AI 답변에 대한 사용자 반응의 간략 기록 */
   responseFeedback: ResponseFeedback[];
 
