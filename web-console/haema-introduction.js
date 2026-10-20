@@ -1,5 +1,5 @@
-// @editedBy YAONG1230 2026-10-20
-// Proposed owner-introduction API, awaiting backend implementation/confirmation.
+// @editedBy YAONG1230 2026-10-21
+// Owner-introduction API follows the confirmed docs/INTRODUCTION_API.md contract.
 // The server selects displayName; this client never infers a name from the text.
 // Connection status before/after each request and draft ownership belong to the UI.
 (function (global) {
@@ -58,6 +58,7 @@
             }
             if (status === 409) return failure('INTRODUCTION_CONFLICT', '자기소개가 변경됐거나 저장소 연결이 달라졌어요. 최신 상태를 다시 확인해 주세요.', status);
             if (!Number.isInteger(status) || status < 100 || status > 599 || typeof response?.ok !== 'boolean') return invalid(0);
+            if (status === 413) return failure('INTRODUCTION_TOO_LARGE', '자기소개가 너무 길어요. 내용을 줄인 뒤 다시 저장해 주세요. 입력한 내용은 유지했어요.', status);
             if (!response.ok || status < 200 || status >= 300) return failure('INTRODUCTION_HTTP', '자기소개를 읽거나 저장하지 못했어요. 입력한 내용은 그대로 두었습니다.', status);
             let payload;
             try { payload = await response.json(); } catch { return invalid(status); }

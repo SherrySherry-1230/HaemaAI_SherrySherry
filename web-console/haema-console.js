@@ -12,6 +12,7 @@
 // @editedBy YAONG1230 2026-10-17: 토큰 v2 응답과 서버 누적 복원 연결
 // @editedBy YAONG1230 2026-10-18: 연결된 저장소 식별자와 최초 사용량 응답 대조
 // @editedBy YAONG1230 2026-10-20: 자기소개 입력과 저장 호칭 버튼
+// @editedBy YAONG1230 2026-10-21: 모달 편집 선택 방향 보존
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -83,7 +84,7 @@ HAEMA_CONSOLE.render = function() {
     const modalDrafts = (sameModal ? [...document.querySelectorAll('.modal-overlay.active input, .modal-overlay.active textarea, .modal-overlay.active select')] : [])
         .filter(node => node.id).map(node => [node.id,
             node.id === 'modalApiModel' ? node.value || node.dataset.selectedModel || '' : node.value,
-            node.selectionStart, node.selectionEnd]);
+            node.selectionStart, node.selectionEnd, node.selectionDirection]);
 
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
     if (typeof HAEMA_TOKEN_METER !== 'undefined' && typeof HAEMA_TOKEN_METER.animate === 'function') {
@@ -112,12 +113,12 @@ HAEMA_CONSOLE.render = function() {
         if (history) history.scrollTop = history.scrollHeight;
         this.pendingConversationScroll = false;
     }
-    modalDrafts.forEach(([id, value, start, end]) => {
+    modalDrafts.forEach(([id, value, start, end, direction]) => {
         const node = document.getElementById(id);
         if (node) {
             node.value = value;
             if (id === 'modalApiModel') node.dataset.selectedModel = value;
-            if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end);
+            if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end, direction || 'none');
             if (id === activeElementId) node.focus();
         }
     });
