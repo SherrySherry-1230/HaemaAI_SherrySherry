@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-10
 /**
  * 쩜(JJum) 스키마 v4 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
@@ -17,19 +17,23 @@ import type {
   JJumEvent,
   JJumFact,
   JJumMention,
+  JJumMentionChunk,
   Seon,
   JJumStatus,
 } from './jjum.ts';
 import { SCHEMA_VERSION } from './jjum.ts';
+import { isLayaTag, isLayaReviewText } from '../layaReview.ts';
 
 export interface ValidationResult {
   ok: boolean;
   /** 하드 실패 사유 + 살리면서 고친 항목 리포트 */
   errors: string[];
-  /** ok=true일 때 정규화된 점 */
+  /** ok=true일 때 정규화된 쩜 */
   jjum?: JJum;
   /** 중복 방지 이력이 손상되면 저장 어댑터가 해당 소유자의 처리를 중단해야 한다. */
   invalidMentionHistory?: boolean;
+  /** 손상된 검토·수정 근거를 조용히 버리지 않고 해당 소유자의 처리를 중단한다. */
+  invalidLayaReview?: boolean;
 }
 
 const STATUSES: JJumStatus[] = ['active', 'resting', 'archived', 'merged'];
@@ -51,16 +55,19 @@ function toStringArray(v: unknown): string[] {
   return v.filter(str);
 }
 
-function readMentionHistory(value: unknown): { history?: JJumMention[]; errors: string[] } {
-  if (!Array.isArray(value)) return { errors: ['mentionHistory: 배열이어야 함'] };
+function readMentionHistory(
+  value: unknown,
+  field: string,
+  seen: Set<string>,
+): { history?: JJumMention[]; errors: string[] } {
+  if (!Array.isArray(value)) return { errors: [`${field}: 배열이어야 함`] };
   const history: JJumMention[] = [];
   const errors: string[] = [];
-  const seen = new Set<string>();
   const validId = (id: unknown): id is string => typeof id === 'string' && id.trim() !== '' && id.length <= 512;
   const validTime = (time: unknown): time is number => typeof time === 'number' && Number.isFinite(time) && time >= 0;
   for (let i = 0; i < value.length; i++) {
     const entry: unknown = value[i];
-    const prefix = `mentionHistory[${i}]`;
+    const prefix = `${field}[${i}]`;
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
       errors.push(`${prefix}: 객체여야 함`);
       continue;
@@ -91,10 +98,34 @@ function readMentionHistory(value: unknown): { history?: JJumMention[]; errors: 
   return errors.length > 0 ? { errors } : { history, errors };
 }
 
+function readMentionHistoryChunks(
+  value: unknown,
+  seen: Set<string>,
+): { chunks?: JJumMentionChunk[]; errors: string[] } {
+  if (!Array.isArray(value)) return { errors: ['mentionHistoryChunks: 배열이어야 함'] };
+  const chunks: JJumMentionChunk[] = [];
+  const errors: string[] = [];
+  for (let i = 0; i < value.length; i++) {
+    const chunk: unknown = value[i];
+    const prefix = `mentionHistoryChunks[${i}]`;
+    if (typeof chunk !== 'object' || chunk === null || Array.isArray(chunk)) {
+      errors.push(`${prefix}: 객체여야 함`);
+      continue;
+    }
+    const item = chunk as Record<string, unknown>;
+    if (item.sequence !== i + 2) errors.push(`${prefix}: 묶음 번호는 2부터 연속이어야 함`);
+    const mentions = readMentionHistory(item.entries, `${prefix}.entries`, seen);
+    errors.push(...mentions.errors);
+    if (mentions.history?.length === 0) errors.push(`${prefix}.entries: 빈 묶음은 저장할 수 없음`);
+    if (mentions.history) chunks.push({ ...item, entries: mentions.history } as JJumMentionChunk);
+  }
+  return errors.length > 0 ? { errors } : { chunks, errors };
+}
+
 export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): ValidationResult {
   const errors: string[] = [];
   if (typeof data !== 'object' || data === null || Array.isArray(data)) {
-    return { ok: false, errors: ['점이 JSON 객체가 아님'] };
+    return { ok: false, errors: ['쩜이 JSON 객체가 아님'] };
   }
   const d = data as Record<string, unknown>;
 
@@ -105,10 +136,55 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
   }
   if (errors.length > 0) return { ok: false, errors };
 
-  const mentions = d.mentionHistory === undefined ? undefined : readMentionHistory(d.mentionHistory);
-  if (mentions && mentions.errors.length > 0) {
-    return { ok: false, errors: mentions.errors, invalidMentionHistory: true };
+  const seenMentions = new Set<string>();
+  const mentions = d.mentionHistory === undefined
+    ? undefined : readMentionHistory(d.mentionHistory, 'mentionHistory', seenMentions);
+  const mentionChunks = d.mentionHistoryChunks === undefined
+    ? undefined : readMentionHistoryChunks(d.mentionHistoryChunks, seenMentions);
+  const mentionErrors = [...(mentions?.errors ?? []), ...(mentionChunks?.errors ?? [])];
+  if (mentionChunks?.chunks?.length && !mentions?.history?.length) {
+    mentionErrors.push('mentionHistory: 후속 묶음이 있으면 비어 있지 않은 첫 묶음이 필요함');
   }
+  if (mentionErrors.length > 0) {
+    return { ok: false, errors: mentionErrors, invalidMentionHistory: true };
+  }
+
+  const reviewErrors: string[] = [];
+  if (d.layaTag !== undefined && !isLayaTag(d.layaTag)) {
+    reviewErrors.push('layaTag: 검토 상태·판정·이유·시간대 포함 시각 오류');
+  }
+  if (Array.isArray(d.editHistory)) {
+    const validId = (value: unknown): value is string =>
+      typeof value === 'string' && value.trim() !== '' && value.length <= 512;
+    for (let i = 0; i < d.editHistory.length; i++) {
+      const entry: unknown = d.editHistory[i];
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+      const item = entry as Record<string, unknown>;
+      const prefix = `editHistory[${i}]`;
+      if (item.memo !== undefined && !isLayaReviewText(item.memo)) reviewErrors.push(`${prefix}.memo: 짧은 수정 이유 필요`);
+      if (item.reviewRequested !== undefined && typeof item.reviewRequested !== 'boolean') {
+        reviewErrors.push(`${prefix}.reviewRequested: boolean이어야 함`);
+      }
+      if (item.evidence !== undefined) {
+        const evidence = item.evidence;
+        if (typeof evidence !== 'object' || evidence === null || Array.isArray(evidence)) {
+          reviewErrors.push(`${prefix}.evidence: 대화·발화 근거 객체 필요`);
+        } else {
+          const e = evidence as Record<string, unknown>;
+          if (!validId(e.conversationId) || !Array.isArray(e.utteranceIds)
+            || e.utteranceIds.length === 0 || !e.utteranceIds.every(validId)
+            || new Set(e.utteranceIds).size !== e.utteranceIds.length) {
+            reviewErrors.push(`${prefix}.evidence: 대화·발화 ID 오류`);
+          }
+        }
+      }
+      if ((item.memo !== undefined || item.evidence !== undefined || item.reviewRequested !== undefined)
+        && (!str(item.action) || item.action.trim() === '')) {
+        reviewErrors.push(`${prefix}.action: 수정 기록의 작업명 필요`);
+      }
+    }
+  }
+  if (reviewErrors.length > 0) return { ok: false, errors: reviewErrors, invalidLayaReview: true };
 
   const facts: JJumFact[] = [];
   if (Array.isArray(d.facts)) {
@@ -165,6 +241,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
       if (typeof h === 'object' && h !== null && str((h as Record<string, unknown>).action)) {
         const hr = h as Record<string, unknown>;
         editHistory.push({
+          ...hr,
           date: toNumber(hr.date, now),
           action: hr.action as string,
           ...(str(hr.field) ? { field: hr.field as string } : {}),
@@ -197,6 +274,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     seons,
     mentionCount: toNumber(d.mentionCount, 0),
     ...(mentions ? { mentionHistory: mentions.history! } : {}),
+    ...(mentionChunks ? { mentionHistoryChunks: mentionChunks.chunks! } : {}),
     firstSeen: toNumber(d.firstSeen, now),
     lastMentioned: toNumber(d.lastMentioned, now),
     recallCount: toNumber(d.recallCount, 0),
@@ -206,6 +284,7 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     mergedFrom: toStringArray(d.mergedFrom),
     ...(str(d.mergedInto) ? { mergedInto: d.mergedInto as string } : {}),
     editHistory,
+    ...(isLayaTag(d.layaTag) ? { layaTag: { ...d.layaTag } } : {}),
     responseFeedback: Array.isArray(d.responseFeedback)
       ? d.responseFeedback
           .filter((entry): entry is Record<string, unknown> => typeof entry === 'object' && entry !== null)

@@ -1,13 +1,18 @@
-// @editedBy SherrySherry 2026-10-08
+// @editedBy SherrySherry 2026-10-20
 /**
  * Anthropic 어댑터 구현
  * Anthropic SDK를 사용하여 Claude 시리즈를 호출한다.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createAIUsageReporter } from './aiUsage.ts';
+import {
+  INTRODUCTION_DISPLAY_NAME_SYSTEM, introductionDisplayNamePrompt, parseIntroductionDisplayName,
+} from '../introductionName.ts';
 import type {
   AIAdapter,
   AIAdapterConfig,
+  AITask,
   ConversationTurn,
   ExtractedDraft,
   ExtractRequest,
@@ -15,6 +20,9 @@ import type {
   RecallScore,
 } from './aiAdapter.ts';
 import type { JJum, JJumId } from '../types/jjum.ts';
+import {
+  formatLayaReviewContext, LAYA_REVIEW_PRIORITY_INSTRUCTIONS, LAYA_EXTRACT_UPDATE_INSTRUCTIONS,
+} from '../layaReviewContext.ts';
 
 export class AnthropicAdapter implements AIAdapter {
   readonly config: AIAdapterConfig;
@@ -29,6 +37,8 @@ export class AnthropicAdapter implements AIAdapter {
 
     this.client = new Anthropic({
       apiKey: config.apiKey,
+      // 재시도는 SDK 내부가 아닌 별도 계측 호출로 수행한다.
+      maxRetries: 0,
       ...(config.baseUrl ? { baseURL: config.baseUrl } : {}),
     });
   }
@@ -37,8 +47,11 @@ export class AnthropicAdapter implements AIAdapter {
     return this.config.taskModels?.[task as keyof typeof this.config.taskModels] || this.config.model;
   }
 
-  private async callAI(task: string, system: string, user: string): Promise<string> {
+  private async callAI(task: AITask, system: string, user: string): Promise<string> {
+    const signal = this.config.signal;
+    signal?.throwIfAborted();
     const model = this.getModelForTask(task);
+    const reportUsage = createAIUsageReporter(this.config, task, model, 'anthropic');
 
     try {
       const response = await this.client.messages.create({
@@ -48,8 +61,10 @@ export class AnthropicAdapter implements AIAdapter {
         messages: [
           { role: 'user', content: user },
         ],
-      });
+      }, { signal });
 
+      reportUsage(response.usage, response.model);
+      signal?.throwIfAborted();
       const firstBlock = response.content[0];
       const content = firstBlock?.type === 'text' ? firstBlock.text : null;
       if (!content) {
@@ -58,8 +73,16 @@ export class AnthropicAdapter implements AIAdapter {
 
       return content;
     } catch (error) {
+      reportUsage();
+      signal?.throwIfAborted();
       throw new Error(`AI call failed: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  async selectDisplayName(text: string): Promise<{ displayName: string | null }> {
+    const response = await this.callAI('selectDisplayName', INTRODUCTION_DISPLAY_NAME_SYSTEM,
+      introductionDisplayNamePrompt(text));
+    return parseIntroductionDisplayName(response);
   }
 
   async extractJJums(req: ExtractRequest): Promise<ExtractedDraft[]> {
@@ -78,8 +101,12 @@ export class AnthropicAdapter implements AIAdapter {
     const knownNamesText = req.knownNames?.join(', ') || '없음';
     const hint = req.hint ? `\n\n추가 지시: ${req.hint}` : '';
 
-    const system = `당신은 대화에서 기억할 만한 정보(사람, 장소, 사건 등)를 추출하는 AI입니다.
-대화 내용을 분석하여 점(JJum)(기억 단위)를 추출하세요.
+    const system = `${LAYA_REVIEW_PRIORITY_INSTRUCTIONS}
+
+${LAYA_EXTRACT_UPDATE_INSTRUCTIONS}
+
+당신은 대화에서 기억할 만한 정보(사람, 장소, 사건 등)를 추출하는 AI입니다.
+대화 내용을 분석하여 쩜(JJum)(기억 단위)를 추출하세요.
 
 출력 형식(JSON):
 [
@@ -91,7 +118,9 @@ export class AnthropicAdapter implements AIAdapter {
     "factTexts": ["사실1", "사실2"],
     "eventSummary": "사건 요약(해당 시)",
     "relatedNames": ["관련 이름1", "관련 이름2"],
-    "mentions": [{"utteranceId": "제공된 발화 ID", "kind": "initiated"}]
+    "mentions": [{"utteranceId": "제공된 발화 ID", "kind": "initiated"}],
+    "updateMemo": "기존 쩜의 실제 내용 수정이 있을 때만 짧은 설명",
+    "requestLayaReview": false
   }
 ]
 
@@ -112,7 +141,9 @@ export class AnthropicAdapter implements AIAdapter {
 - 사건은 하나의 사건으로 요약하세요
 - 함께 등장한 이름은 relatedNames에 포함하세요`;
 
-    const user = `대화 내용(JSON):
+    const user = `${formatLayaReviewContext(req.recalledJJums)}
+
+대화 내용(JSON):
 ${turnsText}
 
 이미 알고 있는 이름: ${knownNamesText}
@@ -122,28 +153,26 @@ ${hint}
 
     const response = await this.callAI('extract', system, user);
 
+    let parsed: unknown;
     try {
-      const parsed = JSON.parse(response);
-      return Array.isArray(parsed) ? parsed : [];
+      parsed = JSON.parse(response);
     } catch {
       throw new Error('Failed to parse AI response as JSON');
     }
+    if (!Array.isArray(parsed)) throw new Error('AI extraction response must be a JSON array');
+    return parsed;
   }
 
   async summarizeJJum(jjum: JJum, hint?: string): Promise<{ summary: string }> {
     const hintText = hint ? `\n\n추가 지시: ${hint}` : '';
 
-    const system = `당신은 점(JJum)의 요약을 생성하는 AI입니다.
-점(JJum)의 정보를 바탕으로 간결한 요약을 작성하세요.
-요약에는 해당 점의 핵심 정보와 관계를 포함해야 합니다.`;
+    const system = `${LAYA_REVIEW_PRIORITY_INSTRUCTIONS}
 
-    const user = `점(JJum) 정보:
-이름: ${jjum.jjumName}
-유형: ${jjum.type}
-별칭: ${jjum.aliases.join(', ')}
-태그: ${jjum.jjtags.join(', ')}
-사실: ${jjum.facts.map(f => f.text).join('\n')}
-${jjum.summary ? `기존 요약: ${jjum.summary}` : ''}
+당신은 쩜(JJum)의 요약을 생성하는 AI입니다.
+쩜(JJum)의 정보를 바탕으로 간결한 요약을 작성하세요.
+요약에는 해당 쩜의 핵심 정보와 관계를 포함해야 합니다.`;
+
+    const user = `${formatLayaReviewContext([jjum])}
 ${hintText}
 
 요약을 작성하세요.`;
