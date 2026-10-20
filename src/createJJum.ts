@@ -1,9 +1,10 @@
-// @editedBy SherrySherry 2026-09-13
+// @editedBy SherrySherry 2026-10-10
 /** 쩜(JJum) 생성 헬퍼 — 스키마 v4 기본값을 채워 새 쩜을 만든다. */
 
 import { randomUUID } from 'node:crypto';
 import type { JJum, JJumFact, JJumEvent, Seon, JJumEditEntry, JJumTimestamp } from './types/jjum.ts';
 import { SCHEMA_VERSION } from './types/jjum.ts';
+import { pendingLayaTag } from './layaReview.ts';
 
 export interface CreateJJumInput {
   ownerId: string;
@@ -41,6 +42,7 @@ export function createJJum(input: CreateJJumInput): JJum {
     status: 'active',
     mergedFrom: [] as string[],
     editHistory: [] as JJumEditEntry[],
+    layaTag: pendingLayaTag(now, '새로 생성된 쩜의 검토를 기다립니다.'),
     meta: input.meta ?? {},
     ownerId: input.ownerId,
     sourceService: input.sourceService ?? 'unknown',
