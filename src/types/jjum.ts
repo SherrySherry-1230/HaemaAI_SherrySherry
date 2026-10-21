@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-21
 /**
  * 쩜(JJum) 스키마 v4 — 단일 기준: docs/SCHEMA.md (2026-09-22 확정)
  * 쩜 = AI와 유저가 공유하는 생각·기억의 최소 단위. 쩜 사이 연관 = 쩜선(Seon),
@@ -98,6 +98,14 @@ export interface ResponseFeedback {
 /** 같은 쩜을 사용자 스스로 꺼냈는지, 호스트를 따라 언급했는지 구분한다. */
 export type MentionKind = 'initiated' | 'prompted' | 'host';
 
+/** 처음 처리할 때 확인한 관계 대상. 재전송의 다른 추출 결과로 대체하지 않는다. */
+export interface JJumMentionRelationTarget {
+  jjumId: JJumId;
+  /** 생성 도중 저장이 중단된 상대의 예약 ID를 같은 이름·발화 근거로만 복구한다. */
+  creation?: { names: string[]; utteranceIds: string[] };
+  [key: string]: unknown;
+}
+
 /** 확정 발화의 처리 이력. 원문은 저장하지 않으며 식별자는 호스트 또는 준비 단계가 발급한다. */
 export interface JJumMention {
   conversationId: string;
@@ -110,6 +118,8 @@ export interface JJumMention {
   /** 같은 ID로 다른 내용을 재전송했는지 확인하는 해시이며, 발화 ID가 아니다. */
   fingerprint: string;
   counted: boolean;
+  /** 빈 배열도 확정된 계획이다. 필드가 없는 과거 이력은 계획 미기록 상태다. */
+  relationTargets?: JJumMentionRelationTarget[];
   /** 이후 추가된 이력 정보도 읽기·저장 과정에서 보존한다. */
   [key: string]: unknown;
 }
