@@ -1,4 +1,5 @@
 // @editedBy YAONG1230 2026-10-18
+// @editedBy YAONG1230 2026-10-22: select restored input metadata without adding measured usage
 // TOKEN_USAGE v2 receiver. Server snapshots are authoritative conversation totals.
 // This cache contains identifiers/measurements only, never prompts or API keys.
 (function (global) {
@@ -321,6 +322,16 @@
             return mutate(scope, request?.conversationId, (located, checkedScope) => action(located, requestIds(request, checkedScope)));
         }
         return {
+            focus(scope, request) {
+                return requestAction(scope, request, ({ group, conversation }, ids) => {
+                    // Restoring a selected input is not a new processing attempt.
+                    // Keep every observed report and the authoritative total intact.
+                    const matches = conversation.reports.filter(report => equal(report.utteranceIds, ids.utteranceIds));
+                    conversation.latestRequest = { utteranceIds: ids.utteranceIds, pending: false, accepted: true, previousUsageIds: [] };
+                    conversation.latestUsageId = matches.length ? matches[matches.length - 1].usageId : null;
+                    group.currentConversationId = ids.conversationId;
+                });
+            },
             begin(scope, request) {
                 return requestAction(scope, request, ({ group, conversation }, ids) => {
                     conversation.latestRequest = { utteranceIds: ids.utteranceIds, pending: true, accepted: false,
