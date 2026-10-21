@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-10
+// @editedBy SherrySherry 2026-10-21
 /**
  * 쩜(JJum) 스키마 v4 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
@@ -23,6 +23,7 @@ import type {
 } from './jjum.ts';
 import { SCHEMA_VERSION } from './jjum.ts';
 import { isLayaTag, isLayaReviewText } from '../layaReview.ts';
+import { isMentionRelationTargets } from '../conversationRelationPlan.ts';
 
 export interface ValidationResult {
   ok: boolean;
@@ -92,6 +93,9 @@ function readMentionHistory(
     }
     if (typeof item.fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(item.fingerprint)) {
       errors.push(`${prefix}: 발화 변경 확인 해시 오류`);
+    }
+    if (item.relationTargets !== undefined && !isMentionRelationTargets(item.relationTargets)) {
+      errors.push(`${prefix}: 저장된 관계 계획 오류`);
     }
     history.push({ ...item } as JJumMention);
   }

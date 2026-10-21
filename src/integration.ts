@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-21
 /**
  * 대화-추출-저장 통합 파이프라인 (HaemaAI_SherrySherry/src/)
  *
@@ -16,12 +16,13 @@ import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
 import { upsertSeon } from './seons.ts';
 import { appendMentionHistory, iterateMentionHistory, DEFAULT_MENTION_HISTORY_CHUNK_SIZE } from './mentionHistory.ts';
+import { isMentionRelationTargets } from './conversationRelationPlan.ts';
 import { recall } from './recall.ts';
 import {
   captureLayaReviewIntent, invalidateLayaReview, layaContentSnapshot, pendingLayaTag,
   reviewStoredJJum, type LayaReviewEngine, type LayaReviewIntent,
 } from './layaReview.ts';
-import type { JJum, JJumMention } from './types/jjum.ts';
+import type { JJum, JJumMention, JJumMentionRelationTarget } from './types/jjum.ts';
 import {
   prepareConversationRequest,
   conversationReceipt,
@@ -282,6 +283,8 @@ export async function processConversationToStorage(
       const changed = new Map<string, JJum>();
       const created = new Set<string>();
       const related = new Map<string, string[]>();
+      const relationIds = new Map<string, Set<string>>();
+      const legacyRelated = new Map<string, string[]>();
       const evidenceByJJum = new Map<string, Map<string, PreparedConversationTurn>>();
       const updateMemos = new Map<string, string>();
       const requestedReviews = new Set<string>();
@@ -290,6 +293,32 @@ export async function processConversationToStorage(
         new Set(Array.from(iterateMentionHistory(jjum), (mention) => mentionKey(mention.conversationId, mention.utteranceId))),
       ]));
       const normalize = (name: string): string => name.trim().toLowerCase();
+      const directlyEdited = (jjum: JJum): boolean => {
+        const latest = [...jjum.editHistory].reverse().find((entry) => entry.reviewRequested);
+        return latest?.action === 'laya_review_invalidated' && latest.evidence === undefined;
+      };
+      // 같은 호출의 새 사실 갱신이 직접 수정의 보호 근거를 지우지 않게 고정한다.
+      const directlyEditedAtStart = new Set(stored.filter(directlyEdited).map((jjum) => jjum.jjumId));
+      // 첫 저장 도중 중단된 새 상대만 원래 ID로 이어 만든다. 현재 입력의 근거가 있어야 한다.
+      const plannedBindings = new Map<string, Map<string, Set<string>>>();
+      for (const jjum of stored) {
+        if (directlyEditedAtStart.has(jjum.jjumId)) continue;
+        for (const mention of iterateMentionHistory(jjum)) {
+          if (mention.conversationId !== prepared.conversationId || !turns.get(mention.utteranceId)?.final) continue;
+          if (mention.relationTargets === undefined) continue;
+          if (!isMentionRelationTargets(mention.relationTargets)) throw new Error('Invalid stored conversation relation plan');
+          for (const target of mention.relationTargets) {
+            if (!target.creation) continue;
+            for (const name of target.creation.names) {
+              const ids = plannedBindings.get(normalize(name)) ?? new Map<string, Set<string>>();
+              const evidence = ids.get(target.jjumId) ?? new Set<string>();
+              for (const id of target.creation.utteranceIds) evidence.add(id);
+              ids.set(target.jjumId, evidence);
+              plannedBindings.set(normalize(name), ids);
+            }
+          }
+        }
+      }
       const matches = (name: string): JJum[] => {
         const key = normalize(name);
         return [...all.values()].filter((jjum) =>
@@ -299,7 +328,26 @@ export async function processConversationToStorage(
         if (!isStorageDraft(draft)) continue;
         const candidates = matches(draft.jjumName);
         if (candidates.length > 1) continue;
-        const existing = candidates[0];
+        const claimed = new Set(draft.mentions!.filter((mention) => {
+          const turn = turns.get(mention?.utteranceId);
+          return turn?.final && (evidenceIds === undefined || evidenceIds.has(turn.utteranceId))
+            && (turn.role === 'assistant' ? mention.kind === 'host'
+              : mention.kind === 'initiated' || mention.kind === 'prompted');
+        }).map((mention) => mention.utteranceId));
+        const boundIds = [...(plannedBindings.get(normalize(draft.jjumName)) ?? [])]
+          .filter(([, ids]) => [...ids].some((id) => claimed.has(id))).map(([id]) => id);
+        if (boundIds.length > 1) throw new Error('Ambiguous stored conversation relation identity');
+        const boundId = boundIds[0];
+        if (boundId && inactive.some((jjum) => jjum.jjumId === boundId)) continue;
+        const bound = boundId ? all.get(boundId) : undefined;
+        // 저장된 쩜선은 상대가 한 번 저장됐다는 근거다. 사라진 기억을 생성 중단으로 간주하지 않는다.
+        if (boundId && !bound && stored.some((jjum) => jjum.seons.some((seon) => seon.targetId === boundId))) {
+          throw new Error('Stored conversation relation target is unavailable');
+        }
+        if (boundId && candidates.length && candidates[0].jjumId !== boundId) {
+          throw new Error('Stored conversation relation identity conflict');
+        }
+        const existing = bound ?? candidates[0];
         const previousKeys = existing ? persisted.get(existing.jjumId) : undefined;
         const evidence = new Map<string, { turn: PreparedConversationTurn; kind: JJumMention['kind'] }>();
         const conflictingKinds = new Set<string>();
@@ -329,7 +377,19 @@ export async function processConversationToStorage(
         const fullReplay = existing && [...evidence.keys()].every((utteranceId) =>
           previousKeys?.has(mentionKey(prepared.conversationId, utteranceId)));
         if (fullReplay) {
-          related.set(existing.jjumId, [...(related.get(existing.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
+          // 직접 정정한 내용·삭제한 관계를 옛 요청으로 다시 만들지 않는다.
+          if (directlyEditedAtStart.has(existing.jjumId)) continue;
+          const ids = relationIds.get(existing.jjumId) ?? new Set<string>();
+          let legacy = false;
+          for (const mention of iterateMentionHistory(existing)) {
+            if (mention.conversationId !== prepared.conversationId || !evidence.has(mention.utteranceId)) continue;
+            if (mention.relationTargets === undefined) { legacy = true; continue; }
+            if (!isMentionRelationTargets(mention.relationTargets)) throw new Error('Invalid stored conversation relation plan');
+            for (const target of mention.relationTargets) ids.add(target.jjumId);
+          }
+          relationIds.set(existing.jjumId, ids);
+          if (legacy) legacyRelated.set(existing.jjumId,
+            [...(legacyRelated.get(existing.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
           // 마지막 검토 요청의 근거가 모두 있는 재전송만 재개한다. 예전 대화가 새 대기를 가져가지 않는다.
           const requested = [...existing.editHistory].reverse().find((entry) => entry.reviewRequested)?.evidence;
           if (existing.layaTag?.state === 'pending' && requested?.conversationId === prepared.conversationId
@@ -339,6 +399,7 @@ export async function processConversationToStorage(
           continue;
         }
         const fresh = createJJumsFromDrafts(ownerId, [draft], options?.sourceService, now)[0];
+        if (!existing && boundId) fresh.jjumId = boundId;
         let jjum: JJum;
         if (existing) {
           const seenFacts = new Set(existing.facts.map((fact) => fact.text));
@@ -398,6 +459,77 @@ export async function processConversationToStorage(
         all.set(jjum.jjumId, jjum);
         changed.set(jjum.jjumId, jjum);
         related.set(jjum.jjumId, [...(related.get(jjum.jjumId) ?? []), ...(draft.relatedNames ?? [])]);
+      }
+
+      // 모두의 ID를 정한 뒤 유효한 첫 계획(빈 계획 포함)을 새 발화와 같은 payload에 보존한다.
+      const freshPlans = new Map<string, JJumMentionRelationTarget[]>();
+      const relationMatches = (name: string): JJum[] => {
+        const direct = matches(name);
+        if (direct.length) return direct;
+        return [...(plannedBindings.get(normalize(name)) ?? [])]
+          .filter(([, ids]) => [...ids].some((id) => turns.get(id)?.final && (evidenceIds === undefined || evidenceIds.has(id))))
+          .map(([id]) => all.get(id)).filter((jjum): jjum is JJum => jjum !== undefined);
+      };
+      for (const [sourceId, names] of related) {
+        const targets = new Map<string, JJumMentionRelationTarget>();
+        for (const name of names) {
+          const found = relationMatches(name);
+          if (found.length !== 1 || found[0].jjumId === sourceId) continue;
+          const target = found[0];
+          const ids = [...(evidenceByJJum.get(target.jjumId)?.keys() ?? [])];
+          targets.set(target.jjumId, {
+            jjumId: target.jjumId,
+            ...(created.has(target.jjumId) && ids.length > 0 ? { creation: {
+              names: [...new Map([target.jjumName, ...target.aliases].filter((value) => value.trim())
+                .map((value) => [normalize(value), value])).values()], utteranceIds: ids,
+            } } : {}),
+          });
+        }
+        const plan = [...targets.values()];
+        freshPlans.set(sourceId, plan);
+        const ids = relationIds.get(sourceId) ?? new Set<string>();
+        for (const target of plan) ids.add(target.jjumId);
+        relationIds.set(sourceId, ids);
+      }
+      for (const [sourceId, jjum] of changed) {
+        const freshIds = evidenceByJJum.get(sourceId)!;
+        const annotate = (entries: JJumMention[]): JJumMention[] => entries.map((mention) =>
+          mention.conversationId === prepared.conversationId && freshIds.has(mention.utteranceId)
+            ? { ...mention, relationTargets: structuredClone(freshPlans.get(sourceId) ?? []) } : mention);
+        const planned = { ...jjum,
+          ...(jjum.mentionHistory ? { mentionHistory: annotate(jjum.mentionHistory) } : {}),
+          ...(jjum.mentionHistoryChunks ? { mentionHistoryChunks: jjum.mentionHistoryChunks.map((chunk) =>
+            ({ ...chunk, entries: annotate(chunk.entries) })) } : {}),
+        };
+        changed.set(sourceId, planned);
+        all.set(sourceId, planned);
+      }
+      // 과거 파일의 미기록 계획은 기존 한 방향이 증명하는 연결만 복구한다.
+      // 양쪽 모두 없으면 완료 재전송과 중단을 구별할 수 없으므로 새 관계를 추측하지 않는다.
+      for (const [sourceId, names] of legacyRelated) {
+        const source = all.get(sourceId)!;
+        const ids = relationIds.get(sourceId) ?? new Set<string>();
+        for (const name of names) {
+          const targets = relationMatches(name);
+          if (targets.length !== 1 || targets[0].jjumId === sourceId) continue;
+          const target = targets[0];
+          if (directlyEditedAtStart.has(target.jjumId)) {
+            if (!evidenceByJJum.has(sourceId)) reviewTargets.delete(sourceId);
+            continue;
+          }
+          const linked = source.seons.some((seon) => seon.targetId === target.jjumId && !seon.label)
+            || target.seons.some((seon) => seon.targetId === sourceId && !seon.label);
+          if (!ids.has(target.jjumId) && !linked) throw new Error('Cannot recover unrecorded conversation relations');
+          ids.add(target.jjumId);
+        }
+        relationIds.set(sourceId, ids);
+      }
+      for (const ids of relationIds.values()) {
+        for (const id of ids) {
+          if (!all.has(id) && !inactive.some((jjum) => jjum.jjumId === id)) {
+            throw new Error('Stored conversation relation target is unavailable');
+          }
+        }
       }
 
       const content = [...changed.values()];
@@ -474,17 +606,22 @@ export async function processConversationToStorage(
         all.set(sourceId, updated);
         connections.set(sourceId, updated);
       };
-      for (const [sourceId, names] of related) {
-        for (const name of names) {
-          const targets = matches(name);
-          if (targets.length !== 1 || targets[0].jjumId === sourceId) continue;
+      for (const [sourceId, targets] of relationIds) {
+        for (const targetId of targets) {
+          if (!all.has(targetId) || targetId === sourceId) continue;
+          const freshRelation = freshPlans.get(sourceId)?.some((target) => target.jjumId === targetId);
+          if (!freshRelation && (directlyEditedAtStart.has(sourceId) || directlyEditedAtStart.has(targetId)
+            || directlyEdited(all.get(sourceId)!) || directlyEdited(all.get(targetId)!))) {
+            if (!evidenceByJJum.has(sourceId)) reviewTargets.delete(sourceId);
+            continue;
+          }
           const evidence = [...(evidenceByJJum.get(sourceId)?.values() ?? [])];
           // 부분 저장의 재시도라면 이미 저장된 발화 근거로 빠진 연결만 복구한다.
           const relationEvidence = evidence.length > 0 ? evidence : prepared.turns.filter((turn) =>
             turn.final && [...iterateMentionHistory(all.get(sourceId)!)].some((mention) =>
               mention.conversationId === prepared.conversationId && mention.utteranceId === turn.utteranceId));
-          connect(sourceId, targets[0].jjumId, relationEvidence);
-          connect(targets[0].jjumId, sourceId, relationEvidence);
+          connect(sourceId, targetId, relationEvidence);
+          connect(targetId, sourceId, relationEvidence);
         }
       }
       if (connections.size > 0) {
