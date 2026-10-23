@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-17
+// @editedBy SherrySherry 2026-10-23
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -18,6 +18,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
@@ -53,6 +54,12 @@ interface OwnerIndex {
 interface IndexFile {
   version: 1;
   owners: Record<string, OwnerIndex>;
+}
+
+interface DeletedJJumsRecord {
+  ownerId: string;
+  jjumIds: JJumId[];
+  [key: string]: unknown;
 }
 
 const normName = (s: string): string => s.trim().toLowerCase();
@@ -184,6 +191,40 @@ export class FileAdapter implements StorageAdapter {
 
   private indexPath(): string {
     return path.join(this.baseDir, '_index.jj');
+  }
+
+  /** 재색인과 별도로 보존하는 소유자별 명시 삭제 기록. 원문·이름은 넣지 않는다. */
+  private deletedJJumsPath(ownerId: string): string {
+    const ownerKey = createHash('sha256').update(ownerId).digest('hex');
+    return path.join(this.ownerDir(ownerId), `_deleted-${ownerKey}.jj`);
+  }
+
+  private loadDeletedJJums(ownerId: string): DeletedJJumsRecord {
+    let data: unknown;
+    try {
+      data = JSON.parse(fs.readFileSync(this.deletedJJumsPath(ownerId), 'utf-8'));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { ownerId, jjumIds: [] };
+      throw new Error('Cannot read JJum deletion record', { cause: error });
+    }
+    if (typeof data !== 'object' || data === null || Array.isArray(data)) {
+      throw new Error('Invalid JJum deletion record');
+    }
+    const record = data as Record<string, unknown>;
+    if (record.ownerId !== ownerId || !Array.isArray(record.jjumIds)
+      || !record.jjumIds.every((id) => typeof id === 'string' && id.trim() !== '')
+      || new Set(record.jjumIds).size !== record.jjumIds.length) {
+      throw new Error('Invalid JJum deletion record');
+    }
+    return record as DeletedJJumsRecord;
+  }
+
+  private recordDeletedJJum(ownerId: string, jjumId: JJumId): void {
+    const record = this.loadDeletedJJums(ownerId);
+    if (record.jjumIds.includes(jjumId)) return;
+    atomicWrite(this.deletedJJumsPath(ownerId), JSON.stringify({
+      ...record, jjumIds: [...record.jjumIds, jjumId],
+    }, null, 2));
   }
 
   // ── 인덱스 ────────────────────────────────────────────
@@ -423,6 +464,9 @@ export class FileAdapter implements StorageAdapter {
       throw new Error(`Cannot store invalid JJum: ${validation.errors.join(' / ')}`);
     }
     const existing = this.getJJumSync(ownerId, stored.jjumId);
+    if (!existing && this.loadDeletedJJums(ownerId).jjumIds.includes(stored.jjumId)) {
+      throw new Error('Cannot recreate an explicitly deleted JJum');
+    }
     if (existing && validation.jjum && layaContentSnapshot(existing) !== layaContentSnapshot(validation.jjum)) {
       invalidateLayaReview(this, ownerId, stored.jjumId);
       const hasNewReviewRequest = validation.jjum.editHistory.length > existing.editHistory.length
@@ -496,6 +540,8 @@ export class FileAdapter implements StorageAdapter {
     const index = this.loadIndex();
     const filename = this.jjumPath(ownerId, jjumId);
     if (filename) {
+      // 기록 실패 시 원본을 지우지 않는다. 삭제 뒤 인덱스 저장이 실패해도 이 기록은 남는다.
+      this.recordDeletedJJum(ownerId, jjumId);
       invalidateLayaReview(this, ownerId, jjumId);
       fs.unlinkSync(filename);
     }
