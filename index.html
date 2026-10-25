@@ -1,3 +1,4 @@
+<!-- @editedBy YAONG1230 2026-10-26: Figma 도구 버튼의 기본·호버·키보드 상태 -->
 <!-- @editedBy YAONG1230 2026-10-16: Figma 쩜 프레임·메타데이터·내부 스크롤 -->
 <!-- @editedBy YAONG1230 2026-10-18: 저장소 신원 검증 스크립트 캐시 갱신 -->
 <!-- @editedBy YAONG1230 2026-10-20: 자기소개와 호칭 버튼 -->
@@ -80,13 +81,30 @@
         .panel-left { padding: 12px 28px 24px 48px; }
         .panel-right { padding: 20px 20px 0 14px; }
         .conversation-toolbar { min-height: 46px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 9px; flex: 0 0 auto; }
-        .tool-button { position: relative; isolation: isolate; flex: 0 0 103px; width: 103px; min-width: 103px; height: 34px; padding: 4px 7px; display: flex; align-items: center; justify-content: center; overflow: visible; border: 0; background: transparent; color: var(--haema-white); font: 400 11px/1 Jua, Pretendard, sans-serif; cursor: pointer; white-space: nowrap; }
-        .tool-button img { position: absolute; z-index: -1; inset: 4px 0 auto; display: block; width: 103px; height: 26px; object-fit: contain; overflow: visible; }
-        .tool-button span { position: relative; display: block; max-width: 91px; overflow: hidden; text-overflow: ellipsis; }
-        .tool-button:hover { filter: brightness(1.04); }
-        .tool-button.introduction-button { flex: 0 1 auto; width: auto; min-width: 103px; max-width: min(240px, 100%); padding-inline: 14px; }
-        .introduction-button img { width: 100%; object-fit: fill; }
-        .introduction-button span { max-width: 212px; }
+        .tool-button { position: relative; isolation: isolate; flex: 0 0 101px; width: 101px; min-width: 101px; height: 34px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; overflow: visible; border: 0; background: transparent; color: var(--haema-white); font: 400 13px/18px Jua, Pretendard, sans-serif; cursor: pointer; white-space: nowrap; transition: color 140ms ease, transform 140ms ease; }
+        .tool-button-art { position: absolute; z-index: -1; left: -1px; top: calc(50% - 12px); display: block; width: 103px; height: 26px; object-fit: contain; overflow: visible; pointer-events: none; transition: opacity 140ms ease; }
+        .tool-button-art.has-glow, .tool-button-glow { left: -3px; top: calc(50% - 15px); width: 107px; height: 30px; }
+        .tool-button-glow { height: 29.9999px; }
+        .tool-button-art.is-hover, .tool-button-art.is-connected-hover { opacity: 0; }
+        .tool-button .tool-button-label { position: relative; display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) { color: var(--ink); }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) .tool-button-art.is-default { opacity: 0; }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) .tool-button-art.is-hover { opacity: 1; }
+        .tool-button.is-connected:not(:disabled):is(:hover, :focus-visible) .tool-button-art.is-connected-hover { opacity: 1; }
+        .tool-button:not(:disabled):active { transform: translateY(1px); }
+        .tool-button:disabled { cursor: not-allowed; }
+        .tool-button.api-key-button.is-connected { flex: 0 1 auto; width: max-content; min-width: 101px; max-width: 147px; }
+        .api-key-button .tool-button-art { width: calc(100% + 2px); object-fit: fill; }
+        .api-key-button .tool-button-art.has-glow, .api-key-button .tool-button-glow { width: calc(100% + 6px); }
+        .tool-button.introduction-button { flex: 0 1 auto; width: max-content; min-width: min(84px, 100%); max-width: min(240px, 100%); padding-inline: 14px; color: var(--ink); }
+        .introduction-button .tool-button-art { width: calc(100% + 2px); object-fit: fill; }
+        .introduction-button .tool-button-art.has-glow { width: calc(100% + 6px); }
+        .introduction-button .tool-button-label { max-width: 212px; }
+        .tool-button .tool-button-art.is-connected-hover { left: -4px; top: calc(50% - 16px); width: calc(100% + 8px); height: 32px; object-fit: fill; }
+        @media (prefers-reduced-motion: reduce) {
+            .tool-button, .tool-button-art { transition: none; }
+            .tool-button:not(:disabled):active { transform: none; }
+        }
         @media (min-width: 821px) {
             .panel { background: transparent; border-color: transparent; box-shadow: none; }
             .panel-left, .panel-right { overflow: visible; }
@@ -418,8 +436,7 @@
             .panel-left { padding: 9px 13px 13px; }
             .panel-right { padding: 15px 13px 14px; }
             .conversation-toolbar { min-height: 44px; gap: 9px; }
-            .tool-button { flex-basis: 103px; width: 103px; min-width: 103px; height: 44px; padding: 9px 7px; font-size: 11px; }
-            .tool-button img { inset-block-start: 9px; }
+            .tool-button { flex-basis: 101px; width: 101px; min-width: 101px; height: 44px; }
             .conversation-history { padding: 10px 5px 18px; gap: 13px; }
             .message-bubble { max-width: 91%; padding: 12px 14px; font-size: 13px; }
             .haema-history-card { width: 96%; }
@@ -460,7 +477,6 @@
         .result-detail-label { font-size: 11px; }
         @media (max-width: 820px) {
             .header-subtitle { font-size: 12px; }
-            .tool-button { font-size: 11px; }
             .jjum-name { font-size: 14px; }
             .haema-status-pill { font-size: 10px; }
         }
@@ -485,8 +501,8 @@
     <script src="web-console/haema-token-usage.js?v=4"></script>
     <script src="web-console/haema-token-meter.js?v=4"></script>
     <script src="web-console/haema-introduction.js?v=2"></script>
-    <script src="web-console/haema-introduction-modal.js?v=2"></script>
-    <script src="web-console/haema-console.js?v=28"></script>
+    <script src="web-console/haema-introduction-modal.js?v=3"></script>
+    <script src="web-console/haema-console.js?v=29"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=13"></script>
 </body>

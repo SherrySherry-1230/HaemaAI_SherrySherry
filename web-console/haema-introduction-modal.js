@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-10-26: independent introduction button artwork; server label preserved
 // @editedBy YAONG1230 2026-10-21
 // The confirmed HTTP contract is documented in docs/INTRODUCTION_API.md.
 (function(global) {
@@ -118,8 +119,9 @@
             record.attempted = true;
             Promise.resolve().then(() => load(consoleApp, record));
         }
-        const label = record.serverText.trim() ? '👤: ' + record.displayName : '👤: 자신을 소개해주세요';
-        return '<button class="tool-button introduction-button" id="introductionBtn" type="button" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><img src="Resources/haema-design/10-storage-button.svg" alt="" aria-hidden="true"><span>' + consoleApp.escapeHtml(label) + '</span></button>';
+        const hasIntroduction = record.serverText.trim().length > 0;
+        const label = hasIntroduction ? '👤: ' + record.displayName : '👤: 자신을 소개해주세요';
+        return '<button class="tool-button introduction-button' + (hasIntroduction ? ' is-connected' : '') + '" id="introductionBtn" type="button" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><img class="tool-button-art is-default" src="Resources/haema-design/toolbar-20261026/introduction-default.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover has-glow" src="Resources/haema-design/toolbar-20261026/introduction-hover-glow.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover" src="Resources/haema-design/toolbar-20261026/introduction-hover.svg" alt="" aria-hidden="true"><img class="tool-button-art is-connected-hover" src="Resources/haema-design/toolbar-20261026/introduction-connected-glow.svg" alt="" aria-hidden="true"><span class="tool-button-label">' + consoleApp.escapeHtml(label) + '</span></button>';
     }
     function open(consoleApp) {
         const record = currentRecord(consoleApp);
