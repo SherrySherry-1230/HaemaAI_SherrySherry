@@ -1,4 +1,5 @@
 // @editedBy YAONG1230 2026-10-26: Figma toolbar artwork; existing connection actions preserved
+// @editedBy YAONG1230 2026-10-28: 저장소 중첩 모달 DOM 보존
 // @editedBy SherrySherry 2026-10-05
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
@@ -81,7 +82,8 @@ HAEMA_CONSOLE.render = function() {
     const activeFocus = this.getFocusReference(document.activeElement);
     const selection = userInput ? [userInput.selectionStart, userInput.selectionEnd, userInput.selectionDirection] : null;
     const scrollPositions = [...document.querySelectorAll('[data-scroll-key]')].map(node => [node.dataset.scrollKey, node.scrollTop, node.scrollLeft]);
-    const storageOverlay = document.getElementById('storageModalOverlay');
+    const storageOverlays = ['storageModalOverlay', 'existingStorageModalOverlay']
+        .map(id => document.getElementById(id)).filter(Boolean);
     const sameModal = this.renderedModalMode === this.modalMode && this.renderedModalData === this.modalData;
     const modalDrafts = (sameModal ? [...document.querySelectorAll('.modal-overlay.active input, .modal-overlay.active textarea, .modal-overlay.active select')] : [])
         .filter(node => node.id).map(node => [node.id,
@@ -95,7 +97,7 @@ HAEMA_CONSOLE.render = function() {
     }
     this.renderedModalMode = this.modalMode;
     this.renderedModalData = this.modalData;
-    if (storageOverlay) app.appendChild(storageOverlay);
+    storageOverlays.forEach(overlay => app.appendChild(overlay));
 
     // 입력창 값 복원
     const restoredInput = document.getElementById("userInput");
