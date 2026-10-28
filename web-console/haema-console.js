@@ -2003,6 +2003,9 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const visibleHistory = this.conversationHistory.filter(item => !item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, conversationScope));
     const messages = visibleHistory.map(item => {
         if (item.type === 'user') {
+            const time = this.getResultTime(item);
+            const timeText = time.iso ? new Date(time.iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : time.text;
+            const timestamp = '<time class="message-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(timeText) + '</time>';
             if (item.incremental) {
                 const labels = { queued: '전송 대기', sending: '접수 확인 중', uncertain: '접수 확인 필요' };
                 const processingLabels = { pending: '접수됨 · 기억 처리 중', completed: '기억 처리 완료 · 회상 전달 대기',
@@ -2011,11 +2014,11 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
                 const retry = item.retryDelivery ? '<button class="conversation-retry" type="button" data-incremental-retry-delivery="' + this.escapeHtml(item.inputId) + '">같은 입력 다시 확인</button>' : '';
                 const retryProcessing = item.retryProcessing ? '<button class="conversation-retry" type="button" data-incremental-retry-processing="' + this.escapeHtml(item.inputId) + '">기억 처리 다시 시도</button>' : '';
                 const usage = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.badge(this.getTokenUsageStore()?.turn(item.scope, item.conversationId, item.inputId)) : '';
-                return '<div class="message-row user"><div class="message-bubble"><span class="message-meta">나 · ' + this.escapeHtml(new Date(item.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })) + usage + '</span>' +
-                    this.escapeHtml(item.text) + '<span class="message-meta">' + this.escapeHtml(item.error || notice) + '</span>' + retry + retryProcessing + '</div></div>';
+                return '<div class="message-row user"><div class="message-stack">' + timestamp + '<div class="message-bubble">' + (usage ? '<span class="message-meta">' + usage + '</span>' : '') +
+                    this.escapeHtml(item.text) + '<span class="message-meta">' + this.escapeHtml(item.error || notice) + '</span>' + retry + retryProcessing + '</div></div></div>';
             }
             const retry = item.failed && !item.acknowledged && item.request ? '<button class="conversation-retry" type="button" data-retry-utterance="' + this.escapeHtml(item.request.turns[0].utteranceId) + '"' + (this.sending ? ' disabled' : '') + '>다시 보내기</button>' : '';
-            return '<div class="message-row user"><div class="message-bubble' + (item.failed ? ' message-error' : '') + '"><span class="message-meta">나 · ' + this.escapeHtml(new Date(item.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })) + '</span>' + this.escapeHtml(item.text) + (item.failed || item.notice ? '<span class="message-meta">' + this.escapeHtml(item.error || item.notice || '') + '</span>' : '') + retry + '</div></div>';
+            return '<div class="message-row user"><div class="message-stack">' + timestamp + '<div class="message-bubble' + (item.failed ? ' message-error' : '') + '">' + this.escapeHtml(item.text) + (item.failed || item.notice ? '<span class="message-meta">' + this.escapeHtml(item.error || item.notice || '') + '</span>' : '') + retry + '</div></div></div>';
         }
         if (item.type === 'result') return this.renderConversationResult(item);
         return '';
@@ -2038,11 +2041,9 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
-    const result = this.getPreviewResult();
-    const count = (result?.candidates || []).length;
-    if (!count) return '';
-    return '<div class="jjum-section-heading"><span class="section-title">' + (this.selectedHistoryResult ? '선택한 결과의 회상' : '이번 대화의 회상') + '</span><span class="recall-count">' + count + '개</span></div>' +
-        (count ? '<div class="recall-note">회상 점수는 아직 전달되지 않았어요. <strong>—</strong>로 표시합니다.</div>' : '<div class="recall-note">메시지를 보내면 회상된 쩜이 여기에 표시됩니다.</div>');
+    const count = this.allJJums.length;
+    return '<div class="jjum-section-heading"><span class="section-title">저장된 모든 쩜</span><span class="recall-count">' + count + '개</span></div>' +
+        '<div class="recall-note">선택한 회상과 별도로 저장된 쩜을 모두 보여드려요.</div>';
 };
 
 HAEMA_CONSOLE.renderModal = function() {
