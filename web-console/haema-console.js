@@ -224,11 +224,11 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 };
 
 HAEMA_CONSOLE.renderRightPanel = function() {
-    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
+    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
         '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
         '</div><div class="panel-viewport haema-panel-viewport"><div class="haema-panel-scroll" data-scroll-key="haema-panel">' + this.renderHostPreview() +
-        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></div></div></section>';
+        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderJJumListSection() + '</div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderTransmissionStatus = function() {
@@ -360,7 +360,7 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         if (!activeRecallKeys.has(key)) this.recallShapeHistory.delete(key);
     }
     const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), this.previewState === 'loading') : '';
-    const liveUsage = meter ? '<div class="haema-preview-live-usage"><p class="haema-preview-usage-note">대화 전체 · 현재 누적</p>' + meter + '</div>' : '';
+    const liveUsage = meter ? '<div class="haema-preview-live-usage">' + meter + '</div>' : '';
     const time = this.getResultTime(result);
     const selectionHtml = result ? '<div class="haema-preview-selection"><span class="haema-preview-selection-label">' + (selected ? '선택한 회상 결과' : '최근 회상 결과') + '</span>' +
         '<time class="haema-preview-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(time.text) + '</time>' +
@@ -381,7 +381,7 @@ HAEMA_CONSOLE.renderHostPreview = function() {
     }
     return '<div class="haema-preview-group' + (expanded ? ' is-guide-open' : '') + (result ? ' is-selected' : '') + (selected ? ' is-history-selected' : '') + '" data-result-tone="' + this.getResultTone(result) + '"><div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '" data-live-preview-state="' + this.previewState + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title" id="haemaPreviewHeading" tabindex="-1">호스트에게 전달할 기억</strong></div>' + selectionHtml + '<div class="haema-preview-body">' + body + '</div>' + liveUsage + guideToggle + '</div></div>' + guideHtml + '</div>';
+        '<div class="haema-preview-content" tabindex="0" aria-label="호스트에게 전달할 기억"><div class="haema-preview-heading"><strong class="haema-preview-title" id="haemaPreviewHeading" tabindex="-1">호스트에게 전달할 기억</strong></div>' + selectionHtml + '<div class="haema-preview-body">' + body + '</div></div></div><div class="haema-preview-controls">' + liveUsage + guideToggle + '</div>' + guideHtml + '</div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {
@@ -1996,8 +1996,8 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const apiLabel = '🗝️ : ' + (this.apiConfigured ? (this.apiKeyName || '설정✅') : '없음❌');
     const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
     const apiTitle = this.apiConfigured ? 'AI 연결 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'AI 연결 설정';
-    const storageBtn = '<button class="tool-button' + (this.storageConnected ? ' is-connected' : '') + '" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><img class="tool-button-art is-default" src="Resources/haema-design/toolbar-20261026/storage-default.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover has-glow" src="Resources/haema-design/toolbar-20261026/storage-hover-glow.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover" src="Resources/haema-design/toolbar-20261026/storage-hover.svg" alt="" aria-hidden="true"><img class="tool-button-art is-connected-hover" src="Resources/haema-design/toolbar-20261026/storage-connected-glow.svg" alt="" aria-hidden="true"><span class="tool-button-label">' + this.escapeHtml(storageLabel) + '</span></button>';
-    const apiBtn = '<button class="tool-button api-key-button' + (this.apiConfigured ? ' is-connected' : '') + '" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><img class="tool-button-art is-default" src="Resources/haema-design/toolbar-20261026/key-default.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover" src="Resources/haema-design/toolbar-20261026/key-hover.svg" alt="" aria-hidden="true"><img class="tool-button-art is-hover tool-button-glow" src="Resources/haema-design/toolbar-20261026/key-hover-glow.svg" alt="" aria-hidden="true"><img class="tool-button-art is-connected-hover" src="Resources/haema-design/toolbar-20261026/key-connected-glow.svg" alt="" aria-hidden="true"><span class="tool-button-label api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
+    const storageBtn = '<button class="tool-button' + (this.storageConnected ? ' is-connected' : '') + '" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-default.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-hover-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-hover.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-connected-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-label">' + this.escapeHtml(storageLabel) + '</span></button>';
+    const apiBtn = '<button class="tool-button api-key-button' + (this.apiConfigured ? ' is-connected' : '') + '" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-default.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-hover.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover tool-button-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-hover-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-connected-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-label api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
     this.syncConversationPending();
     const conversationScope = this.getConversationScope();
     const visibleHistory = this.conversationHistory.filter(item => !item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, conversationScope));
@@ -2032,7 +2032,7 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
         (this.incrementalListWarning ? '<p class="message-meta" role="status">' + this.escapeHtml(this.incrementalListWarning) + '</p>' : '');
     const introductionBtn = typeof HAEMA_INTRODUCTION_MODAL !== 'undefined' ? HAEMA_INTRODUCTION_MODAL.button(this) : '';
     return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + introductionBtn + storageBtn + apiBtn + '</div>' +
-        '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
+        '<div class="chat-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' +
         '<div class="panel-viewport chat-panel-viewport"><div class="chat-panel-layout">' +
         '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + incrementalNotice + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
