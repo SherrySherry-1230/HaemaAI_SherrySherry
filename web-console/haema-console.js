@@ -1,6 +1,7 @@
 // @editedBy YAONG1230 2026-10-26: Figma toolbar artwork; existing connection actions preserved
 // @editedBy YAONG1230 2026-10-28: 저장소 중첩 모달 DOM 보존
 // @editedBy YAONG1230 2026-10-28: 회상 제목 프레임과 패널 아래 응답 가이드
+// @editedBy YAONG1230 2026-10-28: 대화 이력의 회상 결과 선택과 패널 내부 뷰포트
 // @editedBy SherrySherry 2026-10-05
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
@@ -24,6 +25,10 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     latestResult: null,
+    selectedHistoryResult: null,
+    selectedResultAnchor: null,
+    resultSelectionKeys: new WeakMap(),
+    nextResultSelectionKey: 0,
     previewGuideState: null,
     recallShapeHistory: new Map(),
     previewState: 'idle',
@@ -222,8 +227,8 @@ HAEMA_CONSOLE.renderRightPanel = function() {
     return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
         '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
-        '</div>' + this.renderHostPreview() +
-        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></section>';
+        '</div><div class="panel-viewport haema-panel-viewport"><div class="haema-panel-scroll" data-scroll-key="haema-panel">' + this.renderHostPreview() +
+        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderTransmissionStatus = function() {
@@ -241,9 +246,67 @@ HAEMA_CONSOLE.getTopicName = function(topic) {
     return topic?.jjum?.jjumName || topic?.jjumName || topic?.name || topic?.topic || '';
 };
 
+HAEMA_CONSOLE.getResultSelectionKey = function(result) {
+    if (!this.resultSelectionKeys.has(result)) this.resultSelectionKeys.set(result, 'result-' + (++this.nextResultSelectionKey));
+    return this.resultSelectionKeys.get(result);
+};
+
+HAEMA_CONSOLE.getResultTone = function(result) {
+    return result ? (Number(this.getResultSelectionKey(result).slice(7)) - 1) % 4 : 0;
+};
+
+HAEMA_CONSOLE.getResultTime = function(result) {
+    const at = result?.at;
+    const date = at == null || at === '' ? null : new Date(at);
+    return date && Number.isFinite(date.getTime()) ? {
+        text: date.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }),
+        iso: date.toISOString()
+    } : { text: '시각 미제공', iso: '' };
+};
+
+HAEMA_CONSOLE.getLatestHistoryResult = function() {
+    const latest = this.latestResult;
+    if (!latest) return null;
+    const scope = this.getConversationScope();
+    const history = this.conversationHistory.filter(item => item.type === 'result' &&
+        (!item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope)));
+    if (history.includes(latest)) return latest;
+    const hasIdentity = [latest.conversationId, latest.utteranceId].every(value => typeof value === 'string' && value.trim().length > 0);
+    if (!hasIdentity) return latest;
+    return history.reverse().find(item =>
+        item.conversationId === latest.conversationId && item.utteranceId === latest.utteranceId && item.at === latest.at) || latest;
+};
+
+HAEMA_CONSOLE.getPreviewResult = function() {
+    const selected = this.selectedHistoryResult;
+    if (selected) {
+        const sameScope = !selected.scope || HAEMA_CONVERSATION_SESSION.sameScope(selected.scope, this.getConversationScope());
+        const newerResult = this.latestResult && this.latestResult !== this.selectedResultAnchor;
+        if (sameScope && !newerResult && this.conversationHistory.includes(selected)) return selected;
+        this.selectedHistoryResult = null;
+        this.selectedResultAnchor = null;
+    }
+    return this.previewState === 'success' ? this.getLatestHistoryResult() : null;
+};
+
+HAEMA_CONSOLE.selectHistoryResult = function(key) {
+    const scope = this.getConversationScope();
+    const result = this.conversationHistory.find(item => item.type === 'result' && this.getResultSelectionKey(item) === key &&
+        (!item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope)));
+    if (!result) return;
+    this.selectedHistoryResult = result;
+    this.selectedResultAnchor = this.latestResult;
+    this.activeMobilePanel = 'haema';
+    this.render();
+    const scroll = document.querySelector('.haema-panel-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('haemaPreviewHeading')?.focus({ preventScroll: true });
+};
+
 HAEMA_CONSOLE.renderHostPreview = function() {
-    const state = this.previewState;
-    const result = state === 'success' ? this.latestResult : null;
+    const result = this.getPreviewResult();
+    const selected = this.selectedHistoryResult === result && !!result;
+    const state = result ? 'success' : this.previewState;
     const resultKey = result ? [result.conversationId || '', result.utteranceId || '', result.at ?? ''].join(':') : '';
     if (!this.previewGuideState || this.previewGuideState.result !== result || this.previewGuideState.key !== resultKey) {
         this.previewGuideState = { result, key: resultKey, expanded: false, scrollTop: 0 };
@@ -277,7 +340,7 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         const newCount = (result.newJJums || []).length;
         body = '<p class="haema-preview-summary">' + (candidates.length ? '회상된 쩜 ' + candidates.length + '개' : '이번 대화에서 회상된 쩜이 없어요.') + (newCount ? ' · 새 쩜 ' + newCount + '개' : '') + '</p>';
         if (candidates.length) {
-            const shapes = ['01', '02', '04', '12', '18', '31', '38'];
+            const shapes = ['01', '02', '04', '10', '12', '23', '32'];
             body += '<div class="haema-preview-chips" id="previewRecallTitles" tabindex="0" aria-label="회상된 쩜 제목" data-scroll-key="preview-titles:' + this.escapeHtml(resultKey) + '">' + candidates.map((candidate, index) => {
                 const name = this.maskJJumName(candidate.name);
                 const key = candidate.jjumId ? 'id:' + candidate.jjumId : 'fallback:' + index + ':' + name;
@@ -296,7 +359,12 @@ HAEMA_CONSOLE.renderHostPreview = function() {
     for (const key of this.recallShapeHistory.keys()) {
         if (!activeRecallKeys.has(key)) this.recallShapeHistory.delete(key);
     }
-    const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), state === 'loading') : '';
+    const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), this.previewState === 'loading') : '';
+    const liveUsage = meter ? '<div class="haema-preview-live-usage"><p class="haema-preview-usage-note">대화 전체 · 현재 누적</p>' + meter + '</div>' : '';
+    const time = this.getResultTime(result);
+    const selectionHtml = result ? '<div class="haema-preview-selection"><span class="haema-preview-selection-label">' + (selected ? '선택한 회상 결과' : '최근 회상 결과') + '</span>' +
+        '<time class="haema-preview-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(time.text) + '</time>' +
+        (selected ? '<button class="haema-preview-latest" id="previewLatestBtn" type="button">최신 상태로 돌아가기</button>' : '') + '</div>' : '';
     const guide = result?.guide;
     const hasGuide = typeof guide === 'string' ? !!guide.trim() : Array.isArray(guide) ? guide.some(item => typeof item === 'string' && item.trim()) : !!guide && typeof guide === 'object';
     const expanded = hasGuide && this.previewGuideState.expanded;
@@ -311,23 +379,19 @@ HAEMA_CONSOLE.renderHostPreview = function() {
             result ? '이번 결과에는 응답 가이드가 없어요.' : state === 'loading' ? '응답 가이드를 기다리고 있어요.' : '표시할 응답 가이드가 아직 없어요.';
         guideToggle = '<p class="haema-preview-guide-empty">' + notice + '</p>';
     }
-    return '<div class="haema-preview-group' + (expanded ? ' is-guide-open' : '') + '"><div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
+    return '<div class="haema-preview-group' + (expanded ? ' is-guide-open' : '') + (result ? ' is-selected' : '') + (selected ? ' is-history-selected' : '') + '" data-result-tone="' + this.getResultTone(result) + '"><div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '" data-live-preview-state="' + this.previewState + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong></div><div class="haema-preview-body">' + body + '</div>' + meter + guideToggle + '</div></div>' + guideHtml + '</div>';
+        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title" id="haemaPreviewHeading" tabindex="-1">호스트에게 전달할 기억</strong></div>' + selectionHtml + '<div class="haema-preview-body">' + body + '</div>' + liveUsage + guideToggle + '</div></div>' + guideHtml + '</div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {
-    if (!this.latestResult || this.previewState !== 'success') return;
-    this.activeMobilePanel = 'chat';
+    this.selectedHistoryResult = null;
+    this.selectedResultAnchor = null;
+    this.activeMobilePanel = 'haema';
     this.render();
-    const cards = [...document.querySelectorAll('.haema-history-card')];
-    const card = cards.reverse().find(item => item.dataset.resultAt === String(this.latestResult.at));
-    if (!card) return;
-    card.open = true;
-    const guide = card.querySelector('.guide-detail');
-    if (guide) guide.open = true;
-    card.scrollIntoView({ block: 'nearest' });
-    card.querySelector('summary')?.focus({ preventScroll: true });
+    const scroll = document.querySelector('.haema-panel-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    document.getElementById('haemaPreviewHeading')?.focus({ preventScroll: true });
 };
 
 // @editedBy YAONG1230 2026-10-16: Figma 52:547 / 25:46 / 49:526, 내부 스크롤
@@ -475,15 +539,6 @@ HAEMA_CONSOLE.updateSeonLayout = function() {
 
 // 접힘의 한 줄에는 테두리까지 온전히 들어가는 정보만 두고, 나머지는 펼침에서 읽는다.
 HAEMA_CONSOLE.updateJJumMetadataLayout = function() {
-    const scroll = document.querySelector('.haema-scroll');
-    const panelArt = document.querySelector('.right-panel-art');
-    if (scroll && panelArt) {
-        const artBounds = panelArt.getBoundingClientRect();
-        const scrollBounds = scroll.getBoundingClientRect();
-        scroll.style.setProperty('--list-mask-width', artBounds.width + 'px');
-        scroll.style.setProperty('--list-mask-height', artBounds.height + 'px');
-        scroll.style.setProperty('--list-mask-left', artBounds.left - scrollBounds.left + 'px');
-    }
     document.querySelectorAll('.jjum-card:not(.is-expanded)').forEach(card => {
         card.classList.remove('has-more-metadata');
         const metadata = card.querySelector('.jjum-header-metadata');
@@ -581,10 +636,12 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
     document.getElementById('previewGuideToggle')?.addEventListener('click', () => {
-        if (this.previewState !== 'success' || this.previewGuideState?.result !== this.latestResult) return;
+        if (!this.previewGuideState?.result || this.previewGuideState.result !== this.getPreviewResult()) return;
         this.previewGuideState.expanded = !this.previewGuideState.expanded;
         this.render();
     });
+    document.querySelectorAll('[data-result-key]').forEach(button => button.addEventListener('click', () => this.selectHistoryResult(button.dataset.resultKey)));
+    document.getElementById('previewLatestBtn')?.addEventListener('click', () => this.openLatestResult());
     if (storageBtn) storageBtn.addEventListener("click", () => {
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
@@ -831,6 +888,8 @@ HAEMA_CONSOLE.syncConversationPending = function() {
             this.tokenUsageRestoreKey = null;
         }
         if (!scope || (this.activeConversationScope && !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.activeConversationScope))) {
+            this.selectedHistoryResult = null;
+            this.selectedResultAnchor = null;
             this.latestResult = null;
             this.previewState = 'idle';
             this.recallResults = [];
@@ -1198,6 +1257,8 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         this.status = "resting";
         this.statusText = listRefreshed ? "대화를 보냈어요" : '대화는 보냈지만 기억 목록을 새로고침하지 못했어요.';
         message.notice = listRefreshed ? '' : this.statusText;
+        this.selectedHistoryResult = null;
+        this.selectedResultAnchor = null;
         this.latestResult = resultSnapshot;
         this.previewState = 'success';
         const historyPanel = document.querySelector('.conversation-history');
@@ -1251,6 +1312,8 @@ HAEMA_CONSOLE.handleClear = function() {
     this.answerGuide = null;
     this.recallResults = [];
     this.latestResult = null;
+    this.selectedHistoryResult = null;
+    this.selectedResultAnchor = null;
     this.previewState = 'idle';
     this.status = "resting";
     this.statusText = "해마 쉬는 중...";
@@ -1915,34 +1978,14 @@ HAEMA_CONSOLE.renderResponseGuide = function(guide) {
 };
 
 HAEMA_CONSOLE.renderConversationResult = function(item) {
-    const candidates = (item.candidates || []).map(candidate => {
-        const reasons = Array.isArray(candidate.reasons) ? candidate.reasons : candidate.reasons ? [candidate.reasons] : [];
-        const relations = Array.isArray(candidate.relations) ? candidate.relations : [];
-        return '<details class="result-jjum"><summary><span>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span><span class="result-score">—</span></summary>' +
-            '<div class="result-jjum-detail"><div class="result-full-name">' + this.escapeHtml(candidate.name) + '</div>' +
-            (candidate.summary ? '<p>' + this.escapeHtml(candidate.summary) + '</p>' : '') +
-            (reasons.length ? '<div class="result-detail-label">회상 근거</div><div class="history-jjum-list">' + reasons.map(reason => '<span class="history-jjum-chip">' + this.escapeHtml(typeof reason === 'string' ? reason : JSON.stringify(reason)) + '</span>').join('') + '</div>' : '') +
-            (relations.length ? '<div class="result-detail-label">쩜선 연결</div><div class="history-jjum-list">' + relations.map(relation => '<span class="history-jjum-chip">' + this.escapeHtml(relation.targetName || relation.label || '연결된 쩜') + '</span>').join('') + '</div>' : '') +
-            (candidate.tags?.length ? '<div class="history-jjum-list">' + candidate.tags.map(tag => '<span class="history-jjum-chip">' + this.escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
-            '</div></details>';
-    }).join('');
-    const topics = (item.topics || []).map(topic => {
-        const label = this.getTopicName(topic);
-        const reason = typeof topic?.reason === 'string' ? topic.reason : '';
-        return label ? '<span class="history-jjum-chip"' + (reason ? ' title="' + this.escapeHtml(reason) + '"' : '') + '>' + this.escapeHtml(label) + '</span>' : '';
-    }).join('');
-    const newJJums = (item.newJJums || []).map(jjum => {
-        const label = typeof jjum === 'string' ? jjum : jjum?.jjumName || jjum?.name || '';
-        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJJumName(label)) + '</span>' : '';
-    }).join('');
-    const guideHtml = item.guide ? '<details class="guide-detail"><summary>호스트 응답 가이드</summary><div class="response-guide-content">' + this.renderResponseGuide(item.guide) + '</div></details>' : '';
+    const key = this.getResultSelectionKey(item);
+    const selected = this.getPreviewResult() === item;
+    const time = this.getResultTime(item);
     const usageBadge = item.conversationId && item.utteranceId && typeof HAEMA_TOKEN_METER !== 'undefined'
         ? HAEMA_TOKEN_METER.badge(this.getTokenUsageStore()?.turn(item.scope, item.conversationId, item.utteranceId)) : '';
-    return '<details class="haema-history-card" data-result-at="' + this.escapeHtml(String(item.at || '')) + '"><summary><span class="haema-history-title">해마 회상 결과' + usageBadge + '</span><span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
-        (candidates ? '<div class="history-detail-title">회상된 쩜 · 회상 점수 —</div><div class="history-results">' + candidates + '</div>' : '<p class="recall-note">이번 대화에서 회상된 쩜이 없어요.</p>') +
-        (topics ? '<div class="history-detail-title">주제</div><div class="history-jjum-list">' + topics + '</div>' : '') +
-        (newJJums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJJums + '</div>' : '') +
-        guideHtml + '</div></details>';
+    return '<button class="haema-history-card haema-result-option' + (selected ? ' is-selected' : '') + '" id="history-' + key + '" type="button" data-result-key="' + key + '" data-result-tone="' + this.getResultTone(item) + '" data-result-at="' + this.escapeHtml(String(item.at ?? '')) + '" aria-pressed="' + selected + '">' +
+        '<span class="haema-history-header"><span class="haema-history-title">해마 회상 결과</span><time class="haema-history-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(time.text) + '</time></span>' +
+        '<span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견</span>' + usageBadge + '<span class="haema-result-action">' + (selected ? '선택한 결과' : '오른쪽에서 보기 →') + '</span></button>';
 };
 
 HAEMA_CONSOLE.renderLeftPanel = function() {
@@ -1987,16 +2030,18 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const introductionBtn = typeof HAEMA_INTRODUCTION_MODAL !== 'undefined' ? HAEMA_INTRODUCTION_MODAL.button(this) : '';
     return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + introductionBtn + storageBtn + apiBtn + '</div>' +
         '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
+        '<div class="panel-viewport chat-panel-viewport"><div class="chat-panel-layout">' +
         '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + incrementalNotice + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
         '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
-        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></section>';
+        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
-    const count = this.recallResults.length;
+    const result = this.getPreviewResult();
+    const count = (result?.candidates || []).length;
     if (!count) return '';
-    return '<div class="jjum-section-heading"><span class="section-title">이번 대화의 회상</span><span class="recall-count">' + (count ? count + '개' : '결과 대기') + '</span></div>' +
+    return '<div class="jjum-section-heading"><span class="section-title">' + (this.selectedHistoryResult ? '선택한 결과의 회상' : '이번 대화의 회상') + '</span><span class="recall-count">' + count + '개</span></div>' +
         (count ? '<div class="recall-note">회상 점수는 아직 전달되지 않았어요. <strong>—</strong>로 표시합니다.</div>' : '<div class="recall-note">메시지를 보내면 회상된 쩜이 여기에 표시됩니다.</div>');
 };
 
