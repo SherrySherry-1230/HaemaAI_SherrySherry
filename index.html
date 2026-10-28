@@ -3,6 +3,7 @@
 <!-- @editedBy YAONG1230 2026-10-28: 비정형 회상 제목과 아래로 펼치는 응답 가이드 -->
 <!-- @editedBy YAONG1230 2026-10-28: 결과 선택·원본 창 마스크·말풍선 방향·저장소 링크 Dongle -->
 <!-- @editedBy YAONG1230 2026-10-28: 원본 비정형 말풍선 전체와 사용자 외부 시각 -->
+<!-- @editedBy YAONG1230 2026-10-28: 원본 프레임 9분할 확대와 사용자 말풍선 배경색 -->
 <!-- @editedBy YAONG1230 2026-10-16: Figma 쩜 프레임·메타데이터·내부 스크롤 -->
 <!-- @editedBy YAONG1230 2026-10-18: 저장소 신원 검증 스크립트 캐시 갱신 -->
 <!-- @editedBy YAONG1230 2026-10-20: 자기소개와 호칭 버튼 -->
@@ -545,6 +546,63 @@
         .haema-result-option::before { transform: scaleX(-1); background: var(--result-color, #efe6f5); }
         .message-row.user .message-error { background: transparent !important; }
         .message-row.user .message-error::before { background: #fff1ec; }
+        .message-row.user .message-bubble::before { background: var(--paper); }
+        /* Keep corner/tail sizes fixed, stretching only the intervening strips.
+           Source slices are in native SVG units; output widths are CSS pixels.
+           Preserve the original masks as a fallback outside supported browsers. */
+        @supports (-webkit-mask-box-image: url("") 1 fill / 1px) {
+            .message-row.user .message-bubble::before, .haema-result-option::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--speech-shape) 56 100 44 100 fill / 28px 50px 22px 50px / 0 stretch;
+            }
+            .haema-preview-background {
+                background: none;
+                border-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
+            }
+            .haema-preview-group.is-selected[data-result-tone] .haema-preview-background::after {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
+            }
+            .jjum-card-art {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--card-shape) 40 72 40 72 fill / 30px 54px 30px 54px / 0 stretch;
+            }
+            /* Expanded originals use the same outline with native Y coordinates
+               multiplied by three. Sample 3x taller strips into the same corners. */
+            .jjum-card.is-expanded .jjum-card-art { -webkit-mask-box-image-slice: 120 72 120 72 fill; }
+            /* Variant 02 additionally has 3 source pixels above and 1 to the right. */
+            .jjum-card.is-expanded .jjum-card-art[data-card-shape="expanded-02.svg"] {
+                top: -.75px;
+                right: -.75px;
+                -webkit-mask-box-image-slice: 123 73 120 72 fill;
+                -webkit-mask-box-image-width: 30.75px 54.75px 30px 54px;
+            }
+            .jjum-name::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--name-shape) 12 44 12 44 fill / 12px 44px 12px 44px / 0 stretch;
+            }
+            .jjum-card.is-expanded .jjum-name::before { display: block; }
+            .jjum-card.is-expanded .jjum-name > span { display: block; background: none; line-height: 1.6; }
+            .jjum-chip::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--chip-outline) 10 30 10 30 fill / 10px 30px 10px 30px / 0 stretch;
+            }
+            .jjum-summary::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--summary-outline) 14 30 14 30 fill / 14px 30px 14px 30px / 0 stretch;
+            }
+            .jjum-card-content::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: url("Resources/haema-design/jjum-display/content-outline-expanded.svg") 24 30 24 30 fill / 24px 30px 24px 30px / 0 stretch;
+            }
+        }
         @media (max-width: 1280px) { .chat-panel-layout { padding: 28px 16px 22px; } }
         @media (max-width: 820px) {
             .panel { background: transparent; border-color: transparent; border-radius: 0; box-shadow: none; }
@@ -579,7 +637,7 @@
     <script src="web-console/haema-token-meter.js?v=4"></script>
     <script src="web-console/haema-introduction.js?v=2"></script>
     <script src="web-console/haema-introduction-modal.js?v=3"></script>
-    <script src="web-console/haema-console.js?v=33"></script>
+    <script src="web-console/haema-console.js?v=34"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=14"></script>
 </body>

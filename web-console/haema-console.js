@@ -477,7 +477,7 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
             '<div class="jjum-meta">' + (states[state] ? escape(states[state]) + ' · ' : '') + escape(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
             '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div></div></div>' : '';
         return '<article class="jjum-card state-' + state + (lightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + escape(id) + '">' +
-            '<span class="jjum-card-art" style="--card-shape:url(\'Resources/haema-design/jjum-display/' + shapeAsset + '\')" aria-hidden="true"></span>' +
+            '<span class="jjum-card-art" data-card-shape="' + shapeAsset + '" style="--card-shape:url(\'Resources/haema-design/jjum-display/' + shapeAsset + '\')" aria-hidden="true"></span>' +
             '<div class="jjum-card-scroll"' + (isExpanded ? ' tabindex="0" role="region" aria-label="' + escape(name) + ' 전체 정보" data-scroll-key="jjum:' + escape(id) + '" id="jjum-scroll-' + regionKey + '"' : '') + '>' +
             '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '"' + (isExpanded ? ' aria-controls="' + detailsId + '"' : '') + ' aria-label="' + escape(visibleName) + (isExpanded ? ' 접기' : ' 펼치기') + '">' +
                 '<span class="jjum-card-row">' + scoreHtml + '<span class="jjum-header-metadata">' + nameHtml + metadataHtml + '</span>' + ellipsisHtml + '</span>' +
