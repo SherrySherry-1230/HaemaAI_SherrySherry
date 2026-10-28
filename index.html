@@ -1,5 +1,6 @@
 <!-- @editedBy YAONG1230 2026-10-26: Figma 도구 버튼의 기본·호버·키보드 상태 -->
 <!-- @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원 스크립트 갱신 -->
+<!-- @editedBy YAONG1230 2026-10-28: 비정형 회상 제목과 아래로 펼치는 응답 가이드 -->
 <!-- @editedBy YAONG1230 2026-10-16: Figma 쩜 프레임·메타데이터·내부 스크롤 -->
 <!-- @editedBy YAONG1230 2026-10-18: 저장소 신원 검증 스크립트 캐시 갱신 -->
 <!-- @editedBy YAONG1230 2026-10-20: 자기소개와 호칭 버튼 -->
@@ -191,26 +192,42 @@
         .haema-status-pill::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url("Resources/haema-design/17-haema-status-pill.svg") center / 100% 100% no-repeat; }
         .haema-status-pill.status-working .status-emojis { color: #84b37d; }
         .haema-status-pill.status-error .status-emojis { color: #b75c69; }
-        .haema-preview { position: relative; width: calc(100% - 16px); max-width: 663.84px; height: 146.58px; min-height: 146.58px; margin: 0 0 4.4px 16px; padding: 0; flex: 0 0 auto; background: transparent; box-shadow: none; }
-        .haema-preview-background { position: absolute; left: 1.8132%; top: -2.5px; width: 97.5786%; height: 146.164px; background: url("Resources/haema-design/haema-preview-background.svg") left top / 100% 100% no-repeat; pointer-events: none; }
+        .haema-preview-group { width: calc(100% - 16px); max-width: 663.84px; min-width: 0; margin: 0 0 8px 16px; flex: 0 0 auto; }
+        .haema-preview { position: relative; width: 100%; min-height: 146.58px; padding: 0; background: transparent; box-shadow: none; }
+        .haema-preview-background { position: absolute; left: 1.8132%; top: -2.5px; width: 97.5786%; height: calc(100% - 3px); background: url("Resources/haema-design/haema-preview-background.svg") left top / 100% 100% no-repeat; pointer-events: none; }
         .haema-preview-avatar { position: absolute; z-index: 1; left: 4.8231%; top: 65.58px; width: 12.4074%; aspect-ratio: 82.3647 / 82.36; transform: translateY(-50%); background: var(--sent-strong); -webkit-mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; pointer-events: none; }
         .haema-preview-avatar img { position: absolute; left: -.3885%; top: -.3885%; width: 88.6302%; height: 160.272%; object-fit: cover; }
-        .haema-preview-content { position: absolute; z-index: 2; inset: 17px 7% 20px 20%; min-width: 0; color: var(--ink); }
+        .haema-preview-content { position: relative; z-index: 2; margin-left: 20%; padding: 20px 7% 30px 0; min-width: 0; color: var(--ink); }
         .haema-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
         .haema-preview-title { min-width: 0; font: 400 15px/1.3 Jua, Pretendard, sans-serif; }
-        .haema-preview-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; min-width: 0; }
-        .haema-preview-summary { grid-column: 1 / -1; margin: 0; color: #615c61; font-size: 11px; line-height: 1.45; }
-        .haema-preview-chips { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; min-width: 0; }
-        .haema-preview-chip { display: block; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border: 1px solid rgba(118,105,132,.16); border-radius: 10px; background: rgba(var(--haema-white-rgb),.75); font-size: 10px; line-height: 1.3; }
-        .haema-preview-more { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+        .haema-preview-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+        .haema-preview-summary { margin: 0; color: #615c61; font-size: 11px; line-height: 1.45; }
+        .haema-preview-chips { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 7px; min-width: 0; max-height: 74px; padding: 2px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b8a9c9 transparent; }
+        .haema-preview-chip { position: relative; isolation: isolate; display: grid; place-items: center; flex: 0 0 124px; width: 124px; height: 30px; max-width: 100%; min-width: 0; padding: 2px 15px; color: #54445f; font: 400 13px/1.35 Jua, Pretendard, sans-serif; }
+        .haema-preview-chip::before { content: ""; position: absolute; inset: 0; z-index: -1; background: #ded3e8; -webkit-mask: var(--recall-shape) center / contain no-repeat; mask: var(--recall-shape) center / contain no-repeat; mask-mode: alpha; }
+        .haema-preview-chip:nth-child(3n + 2)::before { background: #f3d1da; }
+        .haema-preview-chip:nth-child(3n)::before { background: #d7e2cf; }
+        .haema-preview-chip-label { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .haema-preview-topics { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #766984; font-size: 10px; line-height: 1.5; }
-        .haema-preview-details { grid-column: 2; padding: 3px 8px; border: 1px solid rgba(118,105,132,.25); border-radius: 10px; background: var(--panel); color: #64576e; font-size: 10px; line-height: 1.4; white-space: nowrap; cursor: pointer; }
-        .haema-preview-details:hover { background: #f0e7ec; }
-        .haema-preview.has-token-meter { height: 252px; min-height: 252px; }
-        .haema-preview.has-token-meter:has(.token-meter-value.is-long) { height: 276px; min-height: 276px; }
-        .has-token-meter .haema-preview-background { height: calc(100% - 3px); }
-        .has-token-meter .haema-preview-content { display: flex; flex-direction: column; bottom: 36px; }
-        .has-token-meter .haema-preview-body { flex: 0 0 auto; }
+        .haema-preview.has-token-meter { min-height: 244px; }
+        .haema-preview .token-meter { margin-top: 16px; }
+        .haema-preview-guide-toggle { display: flex; width: 100%; align-items: center; justify-content: center; gap: 9px; min-height: 36px; margin-top: 9px; padding: 6px 10px; border: 0; border-radius: 10px; color: #76618c; background: transparent; font: 400 13px/1.4 Jua, Pretendard, sans-serif; cursor: pointer; }
+        .haema-preview-guide-toggle:hover { background: rgba(184,169,201,.16); }
+        .haema-preview-guide-toggle:focus-visible, .haema-preview-guide-content:focus-visible { outline: 2px solid #927aaf; outline-offset: 2px; }
+        .haema-preview-guide-arrow { width: 8px; height: 8px; margin-top: -4px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .2s ease; }
+        .haema-preview-guide-toggle[aria-expanded="true"] .haema-preview-guide-arrow { margin-top: 4px; transform: rotate(225deg); }
+        .haema-preview-guide { margin: 5px 4% 8px; padding: 18px 20px; border: 1px solid rgba(118,105,132,.16); border-radius: 20px 24px 22px 18px; background: #fdfbf7; box-shadow: 0 7px 20px rgba(91,75,101,.06); }
+        .haema-preview-guide[hidden] { display: none; }
+        .haema-preview-guide-title { margin: 0 0 12px; color: #64576e; font: 400 16px/1.4 Jua, Pretendard, sans-serif; }
+        .haema-preview-guide-content { max-height: clamp(180px, 32vh, 360px); padding-right: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #b8a9c9 #f3efed; color: var(--ink); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .haema-preview-guide .response-guide-content { font-size: 13px; line-height: 1.8; }
+        .haema-preview-guide-content .result-detail-label { font-size: 12px; color: #76618c; font-weight: 650; }
+        .haema-preview-guide-content .response-guide-section + .response-guide-section { margin-top: 16px; }
+        .haema-preview-guide-content ul { margin: 6px 0 0; padding-left: 18px; }
+        .haema-preview-guide-content li + li { margin-top: 8px; }
+        .haema-preview-guide-empty { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+        .panel-right:has(.is-guide-open) { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #d4cbd1 transparent; }
+        .panel-right:has(.is-guide-open) .haema-scroll { min-height: 220px; flex: 1 0 220px; }
         .token-meter { margin-top: auto; padding-top: 9px; border-top: 1px solid rgba(118,105,132,.15); font-size: 11px; font-variant-numeric: tabular-nums; }
         .token-meter-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-weight: 650; }
         .token-meter-unit { color: var(--muted); font-size: 10px; font-weight: 400; cursor: help; }
@@ -450,7 +467,12 @@
             .panel-title { margin-top: 2px; font-size: 19px; }
             .panel-caption { font-size: 10px; }
             .haema-status-pill { padding: 4px 9px; font-size: 9px; }
-            .haema-preview { width: 100%; margin: 0 0 8px; }
+            .haema-preview-group { width: 100%; margin: 0 0 8px; }
+            .panel-right { overflow-y: auto; }
+            .haema-scroll { min-height: 140px; flex: 1 0 140px; }
+            .haema-preview-content { margin-left: 19%; padding-right: 6%; }
+            .haema-preview-chip { flex-basis: 112px; width: 112px; height: 27px; }
+            .haema-preview-guide { margin-inline: 2%; padding: 16px 14px; }
             .haema-scroll { padding-right: 2px; }
             .jjum-list { gap: 7px; padding-right: 24px; }
             .jjum-name { flex-basis: 112px; }
@@ -486,7 +508,9 @@
             .panel-left { padding-inline: 26px; }
             .conversation-toolbar { margin-right: 36px; }
             .panel-right { padding-inline: 14px; }
-            .haema-preview { max-width: 500px; }
+            .haema-preview-group { max-width: 500px; }
+            .panel-right { overflow-y: auto; }
+            .haema-scroll { min-height: 140px; flex: 1 0 140px; }
             .jjum-list { padding-right: 32px; }
         }
     </style>
@@ -503,7 +527,7 @@
     <script src="web-console/haema-token-meter.js?v=4"></script>
     <script src="web-console/haema-introduction.js?v=2"></script>
     <script src="web-console/haema-introduction-modal.js?v=3"></script>
-    <script src="web-console/haema-console.js?v=30"></script>
+    <script src="web-console/haema-console.js?v=31"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
     <script src="web-console/haema-storage-modal.js?v=14"></script>
 </body>

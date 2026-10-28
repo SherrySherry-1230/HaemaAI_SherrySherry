@@ -1,5 +1,6 @@
 // @editedBy YAONG1230 2026-10-26: Figma toolbar artwork; existing connection actions preserved
 // @editedBy YAONG1230 2026-10-28: 저장소 중첩 모달 DOM 보존
+// @editedBy YAONG1230 2026-10-28: 회상 제목 프레임과 패널 아래 응답 가이드
 // @editedBy SherrySherry 2026-10-05
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
@@ -23,6 +24,8 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     latestResult: null,
+    previewGuideState: null,
+    recallShapeHistory: new Map(),
     previewState: 'idle',
     allJJums: [],
     cardShapeHistory: new Map(),
@@ -82,6 +85,8 @@ HAEMA_CONSOLE.render = function() {
     const activeFocus = this.getFocusReference(document.activeElement);
     const selection = userInput ? [userInput.selectionStart, userInput.selectionEnd, userInput.selectionDirection] : null;
     const scrollPositions = [...document.querySelectorAll('[data-scroll-key]')].map(node => [node.dataset.scrollKey, node.scrollTop, node.scrollLeft]);
+    const previewGuide = document.getElementById('previewGuideContent');
+    if (previewGuide && !previewGuide.hidden && this.previewGuideState) this.previewGuideState.scrollTop = previewGuide.scrollTop;
     const storageOverlays = ['storageModalOverlay', 'existingStorageModalOverlay']
         .map(id => document.getElementById(id)).filter(Boolean);
     const sameModal = this.renderedModalMode === this.modalMode && this.renderedModalData === this.modalData;
@@ -114,6 +119,8 @@ HAEMA_CONSOLE.render = function() {
         const node = [...document.querySelectorAll('[data-scroll-key]')].find(item => item.dataset.scrollKey === key);
         if (node) { node.scrollTop = top; node.scrollLeft = left; }
     });
+    const restoredGuide = document.getElementById('previewGuideContent');
+    if (restoredGuide && !restoredGuide.hidden && this.previewGuideState) restoredGuide.scrollTop = this.previewGuideState.scrollTop;
     if (this.pendingConversationScroll) {
         const history = document.querySelector('.conversation-history');
         if (history) history.scrollTop = history.scrollHeight;
@@ -237,6 +244,11 @@ HAEMA_CONSOLE.getTopicName = function(topic) {
 HAEMA_CONSOLE.renderHostPreview = function() {
     const state = this.previewState;
     const result = state === 'success' ? this.latestResult : null;
+    const resultKey = result ? [result.conversationId || '', result.utteranceId || '', result.at ?? ''].join(':') : '';
+    if (!this.previewGuideState || this.previewGuideState.result !== result || this.previewGuideState.key !== resultKey) {
+        this.previewGuideState = { result, key: resultKey, expanded: false, scrollTop: 0 };
+    }
+    const activeRecallKeys = new Set();
     let body = '<p class="haema-preview-summary">대화를 보내면 호스트에게 전달할 기억을 확인할 수 있어요.</p>';
     if (state === 'loading') {
         body = '<p class="haema-preview-summary">이번 대화의 기억을 확인하고 있어요.</p>';
@@ -265,19 +277,43 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         const newCount = (result.newJJums || []).length;
         body = '<p class="haema-preview-summary">' + (candidates.length ? '회상된 쩜 ' + candidates.length + '개' : '이번 대화에서 회상된 쩜이 없어요.') + (newCount ? ' · 새 쩜 ' + newCount + '개' : '') + '</p>';
         if (candidates.length) {
-            body += '<div class="haema-preview-chips">' + candidates.slice(0, 3).map(candidate =>
-                '<span class="haema-preview-chip"' + (candidate.summary ? ' title="' + this.escapeHtml(candidate.summary) + '"' : '') + '>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span>'
-            ).join('') + (candidates.length > 3 ? '<span class="haema-preview-more">외 ' + (candidates.length - 3) + '개</span>' : '') + '</div>';
+            const shapes = ['01', '02', '04', '12', '18', '31', '38'];
+            body += '<div class="haema-preview-chips" id="previewRecallTitles" tabindex="0" aria-label="회상된 쩜 제목" data-scroll-key="preview-titles:' + this.escapeHtml(resultKey) + '">' + candidates.map((candidate, index) => {
+                const name = this.maskJJumName(candidate.name);
+                const key = candidate.jjumId ? 'id:' + candidate.jjumId : 'fallback:' + index + ':' + name;
+                activeRecallKeys.add(key);
+                const previous = this.recallShapeHistory.get(key);
+                const available = shapes.filter(shape => shape !== previous);
+                const shape = available[Math.floor(Math.random() * available.length)];
+                this.recallShapeHistory.set(key, shape);
+                return '<span class="haema-preview-chip" data-recall-shape="' + shape + '" style="--recall-shape:url(Resources/haema-design/irregular/shape-' + shape + '.svg)"><span class="haema-preview-chip-label">' + this.escapeHtml(name) + '</span></span>';
+            }).join('') + '</div>';
         }
         if (topics.length) {
             body += '<p class="haema-preview-topics">주제 · ' + topics.slice(0, 2).map(topic => this.escapeHtml(topic)).join(' · ') + (topics.length > 2 ? ' 외 ' + (topics.length - 2) + '개' : '') + '</p>';
         }
-        body += '<button class="haema-preview-details" id="previewDetailsBtn" type="button">' + (result.guide ? '응답 가이드 · 결과 보기' : '결과 보기') + '</button>';
+    }
+    for (const key of this.recallShapeHistory.keys()) {
+        if (!activeRecallKeys.has(key)) this.recallShapeHistory.delete(key);
     }
     const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), state === 'loading') : '';
-    return '<div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
+    const guide = result?.guide;
+    const hasGuide = typeof guide === 'string' ? !!guide.trim() : Array.isArray(guide) ? guide.some(item => typeof item === 'string' && item.trim()) : !!guide && typeof guide === 'object';
+    const expanded = hasGuide && this.previewGuideState.expanded;
+    let guideToggle;
+    let guideHtml = '';
+    if (hasGuide) {
+        guideToggle = '<button class="haema-preview-guide-toggle" id="previewGuideToggle" type="button" aria-expanded="' + expanded + '" aria-controls="previewGuideContent"><span class="haema-preview-guide-toggle-label">응답 가이드 ' + (expanded ? '접기' : '펼치기') + '</span><span class="haema-preview-guide-arrow" aria-hidden="true"></span></button>';
+        guideHtml = '<section class="haema-preview-guide' + (expanded ? ' is-expanded' : '') + '"' + (expanded ? '' : ' hidden') + '>' +
+            '<div class="haema-preview-guide-content" id="previewGuideContent" role="region" aria-labelledby="previewGuideTitle" tabindex="0" data-scroll-key="preview-guide:' + this.escapeHtml(resultKey) + '"' + (expanded ? '' : ' hidden') + '><h2 class="haema-preview-guide-title" id="previewGuideTitle">호스트 응답 가이드</h2><div class="response-guide-content">' + this.renderResponseGuide(guide) + '</div></div></section>';
+    } else {
+        const notice = state === 'incremental' ? '연속 입력의 응답 가이드는 아직 전달되지 않았어요.' :
+            result ? '이번 결과에는 응답 가이드가 없어요.' : state === 'loading' ? '응답 가이드를 기다리고 있어요.' : '표시할 응답 가이드가 아직 없어요.';
+        guideToggle = '<p class="haema-preview-guide-empty">' + notice + '</p>';
+    }
+    return '<div class="haema-preview-group' + (expanded ? ' is-guide-open' : '') + '"><div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong></div><div class="haema-preview-body">' + body + '</div>' + meter + '</div></div>';
+        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong></div><div class="haema-preview-body">' + body + '</div>' + meter + guideToggle + '</div></div>' + guideHtml + '</div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {
@@ -544,7 +580,11 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     if (storageBtn) storageBtn.disabled = this.sending;
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
-    document.getElementById('previewDetailsBtn')?.addEventListener('click', () => this.openLatestResult());
+    document.getElementById('previewGuideToggle')?.addEventListener('click', () => {
+        if (this.previewState !== 'success' || this.previewGuideState?.result !== this.latestResult) return;
+        this.previewGuideState.expanded = !this.previewGuideState.expanded;
+        this.render();
+    });
     if (storageBtn) storageBtn.addEventListener("click", () => {
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
