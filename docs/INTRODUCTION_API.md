@@ -1,7 +1,7 @@
 <!-- @editedBy SherrySherry 2026-10-20 -->
 # 자기소개·호칭 저장 API
 
-프론트 전용 커밋 `767b9d1`의 `docs/INTRODUCTION_API_PROPOSAL.md`에 맞춘 백엔드 계약이다. 자기소개 원문과 호칭 한 가지를 실제 연결 저장소의 `storageId`와 `ownerId`별로 보존한다. 저장소·모델 설정과 독립된 사용자 관계 데이터이며 일반 쩜으로 자동 변환하지 않는다.
+[프론트 자기소개 제안](INTRODUCTION_FRONTEND_PROPOSAL.md)에 맞춘 백엔드 계약이다. 자기소개 원문과 호칭 한 가지를 실제 연결 저장소의 `storageId`와 `ownerId`별로 보존한다. 저장소·모델 설정과 독립된 사용자 관계 데이터이며 일반 쩜으로 자동 변환하지 않는다.
 
 ## 조회·저장
 
