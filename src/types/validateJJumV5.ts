@@ -45,6 +45,20 @@ const OPTIONAL = ['sensitivity', 'hostKnowledge', 'typeDetails', 'powerCalculati
   'recallHistory', 'hostProactiveMentionHistory', 'lastRecalled', 'pinned', 'mergedFrom', 'mergedInto',
   'editHistory', 'responseFeedback', 'meta'] as const;
 
+/** 최상위 선택 키의 생략만 보존한다. 필수값과 공급된 객체·목록 내부는 보충하지 않는다. */
+export function preserveOmittedJJumV5Optionals(input: unknown, previous: JJumV5): unknown {
+  if (!object(input) || input.schemaVersion !== 5 || input.ownerId !== previous.ownerId
+    || input.jjumId !== previous.jjumId) return input;
+  const result = structuredClone(input);
+  for (const key of OPTIONAL) {
+    if (!Object.hasOwn(result, key) || result[key] === undefined) {
+      if (Object.hasOwn(previous, key)) result[key] = structuredClone(previous[key]);
+      else delete result[key];
+    }
+  }
+  return result;
+}
+
 function jsonValue(value: unknown, seen = new Set<object>()): boolean {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (finite(value)) return true;

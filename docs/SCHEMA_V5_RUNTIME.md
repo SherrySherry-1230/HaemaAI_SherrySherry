@@ -5,9 +5,11 @@
 
 ## 저장과 검토
 
-`FileJJumV5Store({memoryRoot, typeRequirements, maskedName})`는 `read/list/save`를 제공한다. 신규 저장에는 `createOnly:true`, 갱신에는 읽은 결과의 `expectedEtag`를 전달한다. 원본 전체를 갱신하므로 부분 요청은 호출자가 기존 자료와 병합해야 한다. 필수 정보·정책이 없으면 저장을 거절한다. 기존 ID·최초 출처·근거·이력은 보존한다.
+`FileJJumV5Store({memoryRoot, typeRequirements, maskedName})`는 `read/list/save`를 제공한다. 신규 저장에는 `createOnly:true`, 갱신에는 읽은 결과의 `expectedEtag`를 전달한다. 갱신에서 생략한 최상위 선택 키는 CAS로 확인한 현재 원본에서 보존한 뒤 공통·타입별·조건부 검사를 수행한다. 공통 필수 키는 매 요청에 필요하며 기존 값으로 보충하지 않는다. 기존 ID·최초 출처·근거·이력은 보존한다.
 
-`saveJJumV5Candidate({repository,input,typeRequirements,save,reviewer})`는 선택 빈값 정리, 공통·타입별 필수 검사, 저장, Laya 검토를 연결한다. 타입별 정책은 실제 확정 기준을 호출자가 제공해야 한다. 누락이나 정책 대기는 `needs_information`으로 반환하고 AI가 사실을 보충하지 않는다. 검토 전·실패는 정상 판정이 아니다. `retryReview:true`는 대기·실패 검토를 명시적으로 재개한다. 늦게 끝난 검토는 저장 당시 값과 일치할 때만 적용한다.
+공급한 객체·목록은 완성된 해당 값으로 검사하며 내부를 자동 병합하지 않는다. `meta` 내부도 해석하지 않는다. `0`·`false`는 실제 제공값으로 유지하며, SDK 갱신의 선택 `undefined`는 JSON의 키 생략과 동일하게 처리한다. 생략이나 후보의 빈값 정규화는 삭제 명령이 아니며, 이 경로에 선택 필드 삭제 API는 없다. 직접 저장의 `null`·빈 배열·빈 객체는 검증 오류다. 기존 이력·근거 보호와 동시 변경 거절은 갱신에도 적용한다.
+
+`saveJJumV5Candidate({repository,input,typeRequirements,save,reviewer})`는 선택 빈값 정리, 기존 최상위 선택값 보존, 공통·타입별 필수 검사, 저장, Laya 검토를 연결한다. 타입별 정책은 실제 확정 기준을 호출자가 제공해야 한다. 누락이나 정책 대기는 `needs_information`으로 반환하고 AI가 사실을 보충하지 않는다. 검토 전·실패는 정상 판정이 아니다. `retryReview:true`는 대기·실패 검토를 명시적으로 재개한다. 늦게 끝난 검토는 저장 당시 값과 일치할 때만 적용한다.
 
 `assessV5MemoryAccess`와 `buildV5HostMemory`는 공개 범위와 실제 인지 근거를 각각 판단한다. 호출 서비스가 대상의 인증·사용자 범위를 확인해야 한다. 전체 공개는 호스트 인지나 지금 직접 언급할 권한을 생성하지 않는다.
 
