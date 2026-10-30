@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-20
+// @editedBy SherrySherry 2026-10-30
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -17,11 +17,18 @@ export { IntroductionStoreError, type Introduction } from '../introduction.ts';
 
 const RELATION_FOLDER = '☺️♥️🤖엔드유저와의 관계를 위하여🤖♥️☺️';
 
+export interface UserSelfJJumBinding {
+  jjumId: string;
+  /** 마지막으로 쩜에 반영된 소개 revision. 0은 최초 저장 대기다. */
+  syncedRevision: number;
+}
+
 interface StoredIntroduction {
   schemaVersion: 1;
   storageId: string;
   ownerId: string;
   introduction: Introduction;
+  userSelfJJum?: UserSelfJJumBinding;
 }
 
 function hash(value: string): string {
@@ -77,7 +84,7 @@ export class FileIntroductionStore {
     return true;
   }
 
-  private readStored(ownerId: string): Introduction | null {
+  private readStored(ownerId: string): StoredIntroduction | null {
     const { directories, file } = this.location(ownerId);
     let text: string;
     let descriptor: number | undefined;
@@ -111,18 +118,32 @@ export class FileIntroductionStore {
       if (value.revision < 1 || typeof value.updatedAt !== 'string'
           || !Number.isFinite(Date.parse(value.updatedAt))
           || new Date(value.updatedAt).toISOString() !== value.updatedAt) throw new Error('Invalid persisted revision or time');
-      return { text: value.text, displayName: value.displayName, revision: value.revision, updatedAt: value.updatedAt };
+      if (stored.userSelfJJum !== undefined) {
+        const binding = stored.userSelfJJum;
+        if (!binding || typeof binding !== 'object' || Array.isArray(binding)) throw new Error('Invalid user JJum binding');
+        validateIntroductionOwnerId(binding.jjumId);
+        validateIntroductionRevision(binding.syncedRevision);
+        if (binding.syncedRevision > value.revision) throw new Error('Invalid user JJum synchronization revision');
+      }
+      return stored;
     } catch (cause) {
       throw new IntroductionStoreError('corrupt', 'Introduction is invalid; original file was preserved', { cause });
     }
   }
 
   read(ownerId: string): Introduction {
-    return this.readStored(ownerId) ?? emptyIntroduction();
+    const value = this.readStored(ownerId)?.introduction;
+    return value ? { text: value.text, displayName: value.displayName, revision: value.revision, updatedAt: value.updatedAt }
+      : emptyIntroduction();
+  }
+
+  readUserSelfJJum(ownerId: string): UserSelfJJumBinding | null {
+    const binding = this.readStored(ownerId)?.userSelfJJum;
+    return binding ? { ...binding } : null;
   }
 
   save(ownerId: string, value: { text: string; displayName: string }, expectedRevision: number,
-    beforeCommit?: () => void): Introduction {
+    beforeCommit?: () => void, options: { linkUserSelfJJum?: boolean } = {}): Introduction {
     validateIntroductionOwnerId(ownerId);
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       throw new IntroductionStoreError('invalid', 'Introduction save requires text and displayName');
@@ -145,7 +166,7 @@ export class FileIntroductionStore {
         throw cause;
       }
       const previous = this.readStored(ownerId);
-      if ((previous?.revision ?? 0) !== expectedRevision) {
+      if ((previous?.introduction.revision ?? 0) !== expectedRevision) {
         throw new IntroductionStoreError('conflict', 'Introduction was changed; reload before saving');
       }
       const revision = expectedRevision + 1;
@@ -155,7 +176,10 @@ export class FileIntroductionStore {
       const introduction: Introduction = {
         text: value.text, displayName: value.displayName, revision, updatedAt: new Date().toISOString(),
       };
-      const stored: StoredIntroduction = { schemaVersion: 1, storageId: this.storageId, ownerId, introduction };
+      const binding = previous?.userSelfJJum ?? (options.linkUserSelfJJum
+        ? { jjumId: randomUUID(), syncedRevision: 0 } : undefined);
+      const stored: StoredIntroduction = { ...previous, schemaVersion: 1, storageId: this.storageId, ownerId, introduction,
+        ...(binding ? { userSelfJJum: binding } : {}) };
       temporary = `${file}.${randomUUID()}.tmp`;
       const descriptor = fs.openSync(temporary, 'wx', 0o600);
       try {
@@ -184,5 +208,56 @@ export class FileIntroductionStore {
         }
       }
     }
+  }
+
+  /** 소개 revision을 늘리지 않고 같은 revision·같은 ID의 동기화 완료만 기록한다. */
+  markUserSelfJJumSynced(ownerId: string, jjumId: string, revision: number, beforeCommit?: () => void): void {
+    validateIntroductionRevision(revision);
+    const { directories, file } = this.location(ownerId);
+    const lock = `${file}.lock`;
+    let acquired = false;
+    let temporary: string | null = null;
+    try {
+      this.directories(directories, false);
+      try { fs.mkdirSync(lock, { mode: 0o700 }); acquired = true; }
+      catch (cause) {
+        if (errorCode(cause) === 'EEXIST') throw new IntroductionStoreError('locked', 'Introduction has another writer');
+        throw cause;
+      }
+      const stored = this.readStored(ownerId);
+      if (!stored || stored.introduction.revision !== revision || stored.userSelfJJum?.jjumId !== jjumId) {
+        throw new IntroductionStoreError('conflict', 'Introduction changed before user JJum synchronization completed');
+      }
+      if (stored.userSelfJJum.syncedRevision === revision) return;
+      stored.userSelfJJum = { jjumId, syncedRevision: revision };
+      temporary = `${file}.${randomUUID()}.tmp`;
+      const descriptor = fs.openSync(temporary, 'wx', 0o600);
+      try { fs.writeFileSync(descriptor, `${JSON.stringify(stored)}\n`, 'utf8'); fs.fsyncSync(descriptor); }
+      finally { fs.closeSync(descriptor); }
+      beforeCommit?.();
+      this.directories(directories, false);
+      fs.renameSync(temporary, file);
+      temporary = null;
+    } catch (cause) {
+      if (cause instanceof IntroductionStoreError) throw cause;
+      throw new IntroductionStoreError('unavailable', 'User JJum synchronization could not be recorded', { cause });
+    } finally {
+      if (temporary) { try { fs.unlinkSync(temporary); } catch { /* Pending files are never read. */ } }
+      if (acquired) { try { fs.rmdirSync(lock); } catch { /* A remaining lock blocks subsequent writes. */ } }
+    }
+  }
+
+  /** 소개와 자아쩜 연결에 참여하는 저장끼리 프로세스를 넘어 직렬화한다. */
+  async withUserSelfJJumLock<T>(ownerId: string, run: () => Promise<T>): Promise<T> {
+    const { directories, file } = this.location(ownerId);
+    this.directories(directories, true);
+    const lock = `${file}.user-jjum.lock`;
+    try { fs.mkdirSync(lock, { mode: 0o700 }); }
+    catch (cause) {
+      if (errorCode(cause) === 'EEXIST') throw new IntroductionStoreError('locked', 'User JJum has another writer or an unresolved lock');
+      throw new IntroductionStoreError('unavailable', 'User JJum writer lock is unavailable', { cause });
+    }
+    try { return await run(); }
+    finally { try { fs.rmdirSync(lock); } catch { /* 남은 잠금은 자동 제거하지 않고 후속 쓰기를 막는다. */ } }
   }
 }

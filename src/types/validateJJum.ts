@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-21
+// @editedBy SherrySherry 2026-10-30
 /**
  * 쩜(JJum) 스키마 v4 검증기 — 손으로 고친 JSON 파일도 안전하게 로드하기 위한 관용적 검증.
  *
@@ -35,6 +35,8 @@ export interface ValidationResult {
   invalidMentionHistory?: boolean;
   /** 손상된 검토·수정 근거를 조용히 버리지 않고 해당 소유자의 처리를 중단한다. */
   invalidLayaReview?: boolean;
+  /** 새 스키마를 v4 기본값으로 축소한 뒤 다시 쓰지 않는다. */
+  unsupportedSchemaVersion?: boolean;
 }
 
 const STATUSES: JJumStatus[] = ['active', 'resting', 'archived', 'merged'];
@@ -139,6 +141,9 @@ export function validateJJum(data: unknown, now: JJumTimestamp = Date.now()): Va
     }
   }
   if (errors.length > 0) return { ok: false, errors };
+  if (d.schemaVersion !== undefined && Number(d.schemaVersion) > SCHEMA_VERSION) {
+    return { ok: false, errors: ['지원하지 않는 스키마 버전: 버전별 저장 경로를 사용해야 함'], unsupportedSchemaVersion: true };
+  }
 
   const seenMentions = new Set<string>();
   const mentions = d.mentionHistory === undefined

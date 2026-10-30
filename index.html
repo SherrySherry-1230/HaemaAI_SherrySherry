@@ -1,6 +1,14 @@
+<!-- @editedBy YAONG1230 2026-10-26: Figma 도구 버튼의 기본·호버·키보드 상태 -->
+<!-- @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원 스크립트 갱신 -->
+<!-- @editedBy YAONG1230 2026-10-28: 비정형 회상 제목과 아래로 펼치는 응답 가이드 -->
+<!-- @editedBy YAONG1230 2026-10-28: 결과 선택·원본 창 마스크·말풍선 방향·저장소 링크 Dongle -->
+<!-- @editedBy YAONG1230 2026-10-28: 원본 비정형 말풍선 전체와 사용자 외부 시각 -->
+<!-- @editedBy YAONG1230 2026-10-28: 원본 프레임 9분할 확대와 사용자 말풍선 배경색 -->
 <!-- @editedBy YAONG1230 2026-10-16: Figma 쩜 프레임·메타데이터·내부 스크롤 -->
 <!-- @editedBy YAONG1230 2026-10-18: 저장소 신원 검증 스크립트 캐시 갱신 -->
 <!-- @editedBy YAONG1230 2026-10-20: 자기소개와 호칭 버튼 -->
+<!-- @editedBy YAONG1230 2026-10-21: 자기소개 원문·선택 방향 복원과 확정 계약 오류 안내 -->
+<!-- @editedBy YAONG1230 2026-10-22: 연속 입력 세션과 변경 스냅샷 연결 -->
 <!-- @editedBy YAONG1230 2026-10-03 -->
 <!-- @editedBy YAONG1230 2026-10-07: 실제 응답 미리보기 정렬 -->
 <!-- @editedBy YAONG1230 2026-10-07: 해마 캐릭터 확인·안내 모달 -->
@@ -26,6 +34,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Jua&family=Noto+Sans+KR:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
     <style>
+        @font-face { font-family: Dongle; font-style: normal; font-weight: 400; font-display: swap; src: url("Resources/haema-design/fonts/Dongle-Regular.ttf") format("truetype"); }
         :root {
             color-scheme: light;
             --paper: #F7F3EA;
@@ -66,7 +75,7 @@
         .header-subtitle + .header-subtitle { margin-top: 6px; }
         .status-bar { position: relative; isolation: isolate; width: 162px; height: 26px; padding: 4px 8px; display: flex; align-items: center; gap: 5px; overflow: hidden; border: 0; background: transparent; font-size: 10px; white-space: nowrap; }
         .status-art { position: absolute; z-index: -1; inset: 0; width: 161.83px; height: 26px; object-fit: contain; }
-        .repo-link { color: #766984; font-size: 11px; text-decoration-thickness: 1px; text-underline-offset: 3px; white-space: nowrap; }
+        .repo-link { color: #766984; font: 400 24px/1 Dongle, sans-serif; text-decoration-thickness: 1px; text-underline-offset: 3px; white-space: nowrap; }
         .status-emojis { letter-spacing: 1px; }
         .status-text { overflow: hidden; text-overflow: ellipsis; }
         .main-container { width: min(100% - 68px, 1659px); min-height: 0; flex: 1 1 auto; margin: 24px auto 80px; }
@@ -78,13 +87,30 @@
         .panel-left { padding: 12px 28px 24px 48px; }
         .panel-right { padding: 20px 20px 0 14px; }
         .conversation-toolbar { min-height: 46px; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 9px; flex: 0 0 auto; }
-        .tool-button { position: relative; isolation: isolate; flex: 0 0 103px; width: 103px; min-width: 103px; height: 34px; padding: 4px 7px; display: flex; align-items: center; justify-content: center; overflow: visible; border: 0; background: transparent; color: var(--haema-white); font: 400 11px/1 Jua, Pretendard, sans-serif; cursor: pointer; white-space: nowrap; }
-        .tool-button img { position: absolute; z-index: -1; inset: 4px 0 auto; display: block; width: 103px; height: 26px; object-fit: contain; overflow: visible; }
-        .tool-button span { position: relative; display: block; max-width: 91px; overflow: hidden; text-overflow: ellipsis; }
-        .tool-button:hover { filter: brightness(1.04); }
-        .tool-button.introduction-button { flex: 0 1 auto; width: auto; min-width: 103px; max-width: min(240px, 100%); padding-inline: 14px; }
-        .introduction-button img { width: 100%; object-fit: fill; }
-        .introduction-button span { max-width: 212px; }
+        .tool-button { position: relative; isolation: isolate; flex: 0 0 101px; width: 101px; min-width: 101px; height: 34px; padding: 4px 10px; display: flex; align-items: center; justify-content: center; overflow: visible; border: 0; background: transparent; color: var(--haema-white); font: 400 13px/18px Jua, Pretendard, sans-serif; cursor: pointer; white-space: nowrap; transition: color 140ms ease, transform 140ms ease; }
+        .tool-button-art { position: absolute; z-index: -1; left: -1px; top: calc(50% - 12px); display: block; width: 103px; height: 26px; object-fit: contain; overflow: visible; pointer-events: none; transition: opacity 140ms ease; }
+        .tool-button-art.has-glow, .tool-button-glow { left: -3px; top: calc(50% - 15px); width: 107px; height: 30px; }
+        .tool-button-glow { height: 29.9999px; }
+        .tool-button-art.is-hover, .tool-button-art.is-connected-hover { opacity: 0; }
+        .tool-button .tool-button-label { position: relative; display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) { color: var(--ink); }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) .tool-button-art.is-default { opacity: 0; }
+        .tool-button:not(:disabled):not(.is-connected):is(:hover, :focus-visible) .tool-button-art.is-hover { opacity: 1; }
+        .tool-button.is-connected:not(:disabled):is(:hover, :focus-visible) .tool-button-art.is-connected-hover { opacity: 1; }
+        .tool-button:not(:disabled):active { transform: translateY(1px); }
+        .tool-button:disabled { cursor: not-allowed; }
+        .tool-button.api-key-button.is-connected { flex: 0 1 auto; width: max-content; min-width: 101px; max-width: 147px; }
+        .api-key-button .tool-button-art { width: calc(100% + 2px); object-fit: fill; }
+        .api-key-button .tool-button-art.has-glow, .api-key-button .tool-button-glow { width: calc(100% + 6px); }
+        .tool-button.introduction-button { flex: 0 1 auto; width: max-content; min-width: min(84px, 100%); max-width: min(240px, 100%); padding-inline: 14px; color: var(--ink); }
+        .introduction-button .tool-button-art { width: calc(100% + 2px); object-fit: fill; }
+        .introduction-button .tool-button-art.has-glow { width: calc(100% + 6px); }
+        .introduction-button .tool-button-label { max-width: 212px; }
+        .tool-button .tool-button-art.is-connected-hover { left: -4px; top: calc(50% - 16px); width: calc(100% + 8px); height: 32px; object-fit: fill; }
+        @media (prefers-reduced-motion: reduce) {
+            .tool-button, .tool-button-art { transition: none; }
+            .tool-button:not(:disabled):active { transform: none; }
+        }
         @media (min-width: 821px) {
             .panel { background: transparent; border-color: transparent; box-shadow: none; }
             .panel-left, .panel-right { overflow: visible; }
@@ -170,26 +196,40 @@
         .haema-status-pill::before { content: ""; position: absolute; inset: 0; z-index: -1; background: url("Resources/haema-design/17-haema-status-pill.svg") center / 100% 100% no-repeat; }
         .haema-status-pill.status-working .status-emojis { color: #84b37d; }
         .haema-status-pill.status-error .status-emojis { color: #b75c69; }
-        .haema-preview { position: relative; width: calc(100% - 16px); max-width: 663.84px; height: 146.58px; min-height: 146.58px; margin: 0 0 4.4px 16px; padding: 0; flex: 0 0 auto; background: transparent; box-shadow: none; }
-        .haema-preview-background { position: absolute; left: 1.8132%; top: -2.5px; width: 97.5786%; height: 146.164px; background: url("Resources/haema-design/haema-preview-background.svg") left top / 100% 100% no-repeat; pointer-events: none; }
+        .haema-preview-group { width: calc(100% - 16px); max-width: 663.84px; min-width: 0; margin: 0 0 8px 16px; flex: 0 0 auto; }
+        .haema-preview { position: relative; width: 100%; min-height: 146.58px; padding: 0; background: transparent; box-shadow: none; }
+        .haema-preview-background { position: absolute; left: 1.8132%; top: -2.5px; width: 97.5786%; height: calc(100% - 3px); background: url("Resources/haema-design/haema-preview-background.svg") left top / 100% 100% no-repeat; pointer-events: none; }
         .haema-preview-avatar { position: absolute; z-index: 1; left: 4.8231%; top: 65.58px; width: 12.4074%; aspect-ratio: 82.3647 / 82.36; transform: translateY(-50%); background: var(--sent-strong); -webkit-mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; mask: url("Resources/haema-design/haema-preview-avatar-mask.svg") center / contain no-repeat; pointer-events: none; }
         .haema-preview-avatar img { position: absolute; left: -.3885%; top: -.3885%; width: 88.6302%; height: 160.272%; object-fit: cover; }
-        .haema-preview-content { position: absolute; z-index: 2; inset: 17px 7% 20px 20%; min-width: 0; color: var(--ink); }
+        .haema-preview-content { position: relative; z-index: 2; margin-left: 20%; padding: 20px 7% 30px 0; min-width: 0; color: var(--ink); }
         .haema-preview-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px; }
         .haema-preview-title { min-width: 0; font: 400 15px/1.3 Jua, Pretendard, sans-serif; }
-        .haema-preview-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 10px; align-items: center; min-width: 0; }
-        .haema-preview-summary { grid-column: 1 / -1; margin: 0; color: #615c61; font-size: 11px; line-height: 1.45; }
-        .haema-preview-chips { grid-column: 1 / -1; display: flex; align-items: center; gap: 5px; min-width: 0; }
-        .haema-preview-chip { display: block; min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border: 1px solid rgba(118,105,132,.16); border-radius: 10px; background: rgba(var(--haema-white-rgb),.75); font-size: 10px; line-height: 1.3; }
-        .haema-preview-more { flex: 0 0 auto; color: var(--muted); font-size: 10px; }
+        .haema-preview-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+        .haema-preview-summary { margin: 0; color: #615c61; font-size: 11px; line-height: 1.45; }
+        .haema-preview-chips { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px 7px; min-width: 0; max-height: 74px; padding: 2px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b8a9c9 transparent; }
+        .haema-preview-chip { position: relative; isolation: isolate; display: grid; place-items: center; flex: 0 0 124px; width: 124px; height: 30px; max-width: 100%; min-width: 0; padding: 2px 15px; color: #54445f; font: 400 13px/1.35 Jua, Pretendard, sans-serif; }
+        .haema-preview-chip::before { content: ""; position: absolute; inset: 0; z-index: -1; background: #ded3e8; -webkit-mask: var(--recall-shape) center / contain no-repeat; mask: var(--recall-shape) center / contain no-repeat; mask-mode: alpha; }
+        .haema-preview-chip:nth-child(3n + 2)::before { background: #f3d1da; }
+        .haema-preview-chip:nth-child(3n)::before { background: #d7e2cf; }
+        .haema-preview-chip-label { display: block; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .haema-preview-topics { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #766984; font-size: 10px; line-height: 1.5; }
-        .haema-preview-details { grid-column: 2; padding: 3px 8px; border: 1px solid rgba(118,105,132,.25); border-radius: 10px; background: var(--panel); color: #64576e; font-size: 10px; line-height: 1.4; white-space: nowrap; cursor: pointer; }
-        .haema-preview-details:hover { background: #f0e7ec; }
-        .haema-preview.has-token-meter { height: 252px; min-height: 252px; }
-        .haema-preview.has-token-meter:has(.token-meter-value.is-long) { height: 276px; min-height: 276px; }
-        .has-token-meter .haema-preview-background { height: calc(100% - 3px); }
-        .has-token-meter .haema-preview-content { display: flex; flex-direction: column; bottom: 36px; }
-        .has-token-meter .haema-preview-body { flex: 0 0 auto; }
+        .haema-preview.has-token-meter { min-height: 244px; }
+        .haema-preview .token-meter { margin-top: 16px; }
+        .haema-preview-guide-toggle { display: flex; width: 100%; align-items: center; justify-content: center; gap: 9px; min-height: 36px; margin-top: 9px; padding: 6px 10px; border: 0; border-radius: 10px; color: #76618c; background: transparent; font: 400 13px/1.4 Jua, Pretendard, sans-serif; cursor: pointer; }
+        .haema-preview-guide-toggle:hover { background: rgba(184,169,201,.16); }
+        .haema-preview-guide-toggle:focus-visible, .haema-preview-guide-content:focus-visible { outline: 2px solid #927aaf; outline-offset: 2px; }
+        .haema-preview-guide-arrow { width: 8px; height: 8px; margin-top: -4px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); transition: transform .2s ease; }
+        .haema-preview-guide-toggle[aria-expanded="true"] .haema-preview-guide-arrow { margin-top: 4px; transform: rotate(225deg); }
+        .haema-preview-guide { margin: 5px 4% 8px; padding: 18px 20px; border: 1px solid rgba(118,105,132,.16); border-radius: 20px 24px 22px 18px; background: #fdfbf7; box-shadow: 0 7px 20px rgba(91,75,101,.06); }
+        .haema-preview-guide[hidden] { display: none; }
+        .haema-preview-guide-title { margin: 0 0 12px; color: #64576e; font: 400 16px/1.4 Jua, Pretendard, sans-serif; }
+        .haema-preview-guide-content { max-height: clamp(180px, 32vh, 360px); padding-right: 12px; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #b8a9c9 #f3efed; color: var(--ink); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .haema-preview-guide .response-guide-content { font-size: 13px; line-height: 1.8; }
+        .haema-preview-guide-content .result-detail-label { font-size: 12px; color: #76618c; font-weight: 650; }
+        .haema-preview-guide-content .response-guide-section + .response-guide-section { margin-top: 16px; }
+        .haema-preview-guide-content ul { margin: 6px 0 0; padding-left: 18px; }
+        .haema-preview-guide-content li + li { margin-top: 8px; }
+        .haema-preview-guide-empty { margin: 9px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
         .token-meter { margin-top: auto; padding-top: 9px; border-top: 1px solid rgba(118,105,132,.15); font-size: 11px; font-variant-numeric: tabular-nums; }
         .token-meter-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-weight: 650; }
         .token-meter-unit { color: var(--muted); font-size: 10px; font-weight: 400; cursor: help; }
@@ -227,7 +267,6 @@
         .preview-copy { color: #554e46; font-size: 13px; line-height: 1.6; }
         .preview-copy strong { display: block; margin-bottom: 3px; color: var(--ink); font: 400 16px/1.3 Jua, Pretendard, sans-serif; }
         .haema-scroll { min-height: 0; flex: 1 1 auto; overflow: auto; overscroll-behavior: contain; padding: 2px 9px 10px 2px; scrollbar-color: #d4cbd1 transparent; scrollbar-width: thin; }
-        @media (min-width: 821px) { .haema-scroll { border-radius: 0; -webkit-mask: url("Resources/haema-design/jjum-display/list-mask.svg") var(--list-mask-left, 0px) bottom / var(--list-mask-width, 100%) var(--list-mask-height, 100%) no-repeat; mask: url("Resources/haema-design/jjum-display/list-mask.svg") var(--list-mask-left, 0px) bottom / var(--list-mask-width, 100%) var(--list-mask-height, 100%) no-repeat; mask-mode: alpha; } }
         .jjum-section-heading { margin: 2px 0 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
         .section-title { color: #6d6670; font: 400 15px/1.35 Jua, Pretendard, sans-serif; }
         .recall-count { color: var(--muted); font-size: 11px; }
@@ -401,7 +440,7 @@
             .header-title { font-size: 23px; }
             .header-subtitle { font-size: 12px; }
             .status-bar { width: min(135px, 37vw); }
-            .repo-link { font-size: 10px; }
+            .repo-link { font-size: 23px; }
             .status-art { width: 100%; height: auto; }
             .main-container { width: 100%; min-height: 0; flex: 1 1 auto; margin: 0; padding: 0 13px 9px; display: flex; flex-direction: column; }
             .mobile-tabs { height: 48px; padding: 5px 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--paper); }
@@ -416,8 +455,7 @@
             .panel-left { padding: 9px 13px 13px; }
             .panel-right { padding: 15px 13px 14px; }
             .conversation-toolbar { min-height: 44px; gap: 9px; }
-            .tool-button { flex-basis: 103px; width: 103px; min-width: 103px; height: 44px; padding: 9px 7px; font-size: 11px; }
-            .tool-button img { inset-block-start: 9px; }
+            .tool-button { flex-basis: 101px; width: 101px; min-width: 101px; height: 44px; }
             .conversation-history { padding: 10px 5px 18px; gap: 13px; }
             .message-bubble { max-width: 91%; padding: 12px 14px; font-size: 13px; }
             .haema-history-card { width: 96%; }
@@ -430,7 +468,11 @@
             .panel-title { margin-top: 2px; font-size: 19px; }
             .panel-caption { font-size: 10px; }
             .haema-status-pill { padding: 4px 9px; font-size: 9px; }
-            .haema-preview { width: 100%; margin: 0 0 8px; }
+            .haema-preview-group { width: 100%; margin: 0 0 8px; }
+            .haema-scroll { min-height: 140px; flex: 1 0 140px; }
+            .haema-preview-content { margin-left: 19%; padding-right: 6%; }
+            .haema-preview-chip { flex-basis: 112px; width: 112px; height: 27px; }
+            .haema-preview-guide { margin-inline: 2%; padding: 16px 14px; }
             .haema-scroll { padding-right: 2px; }
             .jjum-list { gap: 7px; padding-right: 24px; }
             .jjum-name { flex-basis: 112px; }
@@ -458,7 +500,6 @@
         .result-detail-label { font-size: 11px; }
         @media (max-width: 820px) {
             .header-subtitle { font-size: 12px; }
-            .tool-button { font-size: 11px; }
             .jjum-name { font-size: 14px; }
             .haema-status-pill { font-size: 10px; }
         }
@@ -467,23 +508,183 @@
             .panel-left { padding-inline: 26px; }
             .conversation-toolbar { margin-right: 36px; }
             .panel-right { padding-inline: 14px; }
-            .haema-preview { max-width: 500px; }
+            .haema-preview-group { max-width: 500px; }
+            .haema-scroll { min-height: 140px; flex: 1 0 140px; }
             .jjum-list { padding-right: 32px; }
         }
+        /* Fixed original silhouettes clip the moving contents, including an expanded guide. */
+        .panel-left, .panel-right { overflow: visible; }
+        .panel > .panel-viewport { position: absolute; z-index: 1; min-width: 0; min-height: 0; overflow: hidden; -webkit-mask: var(--panel-mask) center / 100% 100% no-repeat; mask: var(--panel-mask) center / 100% 100% no-repeat; mask-mode: alpha; }
+        .chat-panel-viewport { inset: 29px -2px -1px 1px; --panel-mask: url("Resources/haema-design/13-chat-panel-shape.svg"); }
+        .haema-panel-viewport { inset: 36px -1px -2px; --panel-mask: url("Resources/haema-design/jjum-display/list-mask.svg"); }
+        .chat-panel-layout { height: 100%; min-height: 0; display: flex; flex-direction: column; padding: 28px 28px 24px 48px; }
+        .haema-panel-scroll { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 20px 20px 32px 14px; scrollbar-width: thin; scrollbar-color: #b8a9c9 transparent; }
+        .haema-panel-scroll .haema-scroll { height: auto; min-height: 220px; flex: none; overflow: visible; border-radius: 0; }
+        .haema-preview-group[data-result-tone="0"], .haema-result-option[data-result-tone="0"] { --result-color: #efe6f5; --result-edge: #ac91bf; --result-ink: #685279; }
+        .haema-preview-group[data-result-tone="1"], .haema-result-option[data-result-tone="1"] { --result-color: #f8e4e8; --result-edge: #ce96a9; --result-ink: #8e5669; }
+        .haema-preview-group[data-result-tone="2"], .haema-result-option[data-result-tone="2"] { --result-color: #e5eee0; --result-edge: #9bb18c; --result-ink: #576d4d; }
+        .haema-preview-group[data-result-tone="3"], .haema-result-option[data-result-tone="3"] { --result-color: #e2edf1; --result-edge: #91b3c1; --result-ink: #526e7a; }
+        .haema-preview-group.is-selected[data-result-tone] .haema-preview-background::after { content: ""; position: absolute; inset: 0; background: var(--result-color); opacity: .65; -webkit-mask: url("Resources/haema-design/haema-preview-background.svg") center / 100% 100% no-repeat; mask: url("Resources/haema-design/haema-preview-background.svg") center / 100% 100% no-repeat; }
+        .haema-result-option { position: relative; isolation: isolate; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 14px; margin: 0 0 0 auto; padding: 18px 26px 24px; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; color: var(--ink); text-align: left; cursor: pointer; --speech-shape: url("Resources/haema-design/irregular/shape-15.svg"); }
+        .haema-result-option:hover, .haema-result-option.is-selected { filter: drop-shadow(0 0 3px var(--result-edge, #ac91bf)); }
+        .haema-history-header { display: flex; min-width: 0; flex-direction: column; gap: 5px; }
+        .haema-history-time { color: var(--result-ink, #685279); font-size: 11px; line-height: 1.4; }
+        .haema-result-action { color: var(--result-ink, #685279); font-size: 12px; font-weight: 650; justify-self: end; }
+        .haema-history-count { align-self: end; }
+        .haema-preview-selection { display: flex; flex-wrap: wrap; gap: 5px 12px; align-items: center; margin-bottom: 10px; padding: 8px 12px; border: 1px solid var(--result-edge, #ac91bf); border-radius: 12px; background: var(--result-color, #efe6f5); color: var(--result-ink, #685279); font-size: 12px; line-height: 1.4; }
+        .haema-preview-selection button { margin-left: auto; border: 0; border-bottom: 1px solid currentColor; padding: 2px 0; background: transparent; color: inherit; font-size: 11px; cursor: pointer; }
+        .haema-preview-group[data-result-tone] .haema-preview-guide { border-color: var(--result-edge); background: color-mix(in srgb, var(--result-color) 35%, #fdfbf7); }
+        .haema-preview-usage-note { margin: 4px 0 0; font-size: 10px; line-height: 1.4; color: var(--muted); }
+        /* Use the complete preserved body-and-tail path; mirror only the artwork. */
+        .message-row.user { justify-content: flex-start; }
+        .message-stack { min-width: 0; max-width: min(90%, 620px); display: flex; flex-direction: column; gap: 5px; }
+        .message-time { margin-left: 18px; color: #858080; font-size: 11px; line-height: 1.3; }
+        .message-row.user .message-bubble { position: relative; isolation: isolate; width: 100%; min-width: 120px; max-width: none; padding: 18px 22px 24px; border: 0; border-radius: 0; background: transparent; box-shadow: none; --speech-shape: url("Resources/haema-design/irregular/shape-15.svg"); }
+        .message-row.user:nth-of-type(3n + 2) .message-bubble, .haema-result-option[data-result-tone="1"] { --speech-shape: url("Resources/haema-design/irregular/shape-22.svg"); }
+        .message-row.user:nth-of-type(3n) .message-bubble, .haema-result-option[data-result-tone="2"] { --speech-shape: url("Resources/haema-design/irregular/shape-42.svg"); }
+        .message-row.user .message-bubble::before, .haema-result-option::before { content: ""; position: absolute; z-index: -1; inset: 0; background: #fff8e2; -webkit-mask: var(--speech-shape) center / 100% 100% no-repeat; mask: var(--speech-shape) center / 100% 100% no-repeat; pointer-events: none; }
+        .haema-result-option::before { transform: scaleX(-1); background: var(--result-color, #efe6f5); }
+        .message-row.user .message-error { background: transparent !important; }
+        .message-row.user .message-error::before { background: #fff1ec; }
+        .message-row.user .message-bubble::before { background: var(--paper); }
+        /* Keep corner/tail sizes fixed, stretching only the intervening strips.
+           Source slices are in native SVG units; output widths are CSS pixels.
+           Preserve the original masks as a fallback outside supported browsers. */
+        @supports (-webkit-mask-box-image: url("") 1 fill / 1px) {
+            .message-row.user .message-bubble::before, .haema-result-option::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--speech-shape) 56 100 44 100 fill / 28px 50px 22px 50px / 0 stretch;
+            }
+            .haema-preview-background {
+                background: none;
+                border-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
+            }
+            .haema-preview-group.is-selected[data-result-tone] .haema-preview-background::after {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
+            }
+            .jjum-card-art {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--card-shape) 40 72 40 72 fill / 30px 54px 30px 54px / 0 stretch;
+            }
+            /* Expanded originals use the same outline with native Y coordinates
+               multiplied by three. Sample 3x taller strips into the same corners. */
+            .jjum-card.is-expanded .jjum-card-art { -webkit-mask-box-image-slice: 120 72 120 72 fill; }
+            /* Variant 02 additionally has 3 source pixels above and 1 to the right. */
+            .jjum-card.is-expanded .jjum-card-art[data-card-shape="expanded-02.svg"] {
+                top: -.75px;
+                right: -.75px;
+                -webkit-mask-box-image-slice: 123 73 120 72 fill;
+                -webkit-mask-box-image-width: 30.75px 54.75px 30px 54px;
+            }
+            .jjum-name::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--name-shape) 12 44 12 44 fill / 12px 44px 12px 44px / 0 stretch;
+            }
+            .jjum-card.is-expanded .jjum-name::before { display: block; }
+            .jjum-card.is-expanded .jjum-name > span { display: block; background: none; line-height: 1.6; }
+            .jjum-chip::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--chip-outline) 10 30 10 30 fill / 10px 30px 10px 30px / 0 stretch;
+            }
+            .jjum-summary::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: var(--summary-outline) 14 30 14 30 fill / 14px 30px 14px 30px / 0 stretch;
+            }
+            .jjum-card-content::before {
+                -webkit-mask: none;
+                mask: none;
+                -webkit-mask-box-image: url("Resources/haema-design/jjum-display/content-outline-expanded.svg") 24 30 24 30 fill / 24px 30px 24px 30px / 0 stretch;
+            }
+        }
+        @media (max-width: 1280px) { .chat-panel-layout { padding: 28px 16px 22px; } }
+        @media (max-width: 820px) {
+            .panel { background: transparent; border-color: transparent; border-radius: 0; box-shadow: none; }
+            .chat-panel-art, .right-panel-art { display: flex; inset: 54px 0 0; }
+            .chat-panel-art img, .right-panel-art img { width: 100%; height: 100%; object-fit: fill; }
+            .chat-panel-viewport, .haema-panel-viewport { inset: 54px 0 0; }
+            .console-panels[data-mobile-panel="chat"] .panel-left { display: grid; grid-template-rows: auto minmax(0, 1fr); row-gap: 10px; }
+            .panel-left > .conversation-toolbar { grid-area: 1 / 1; }
+            .panel-left > .chat-panel-art, .panel-left > .chat-panel-viewport { position: relative !important; grid-area: 2 / 1; inset: auto; min-height: 0; min-width: 0; }
+            .panel-left > .chat-panel-art img { position: absolute; inset: 0; }
+            .chat-panel-layout { padding: 18px 13px 20px; }
+            .haema-panel-scroll { padding: 22px 14px 32px; }
+            .haema-result-option { width: calc(100% - 10px); grid-template-columns: 1fr; gap: 5px; padding: 18px 22px 24px; }
+            .message-stack { max-width: 94%; }
+            .message-row.user .message-bubble { padding: 16px 20px 22px; }
+            .haema-preview-selection { font-size: 11px; }
+            .haema-preview-group { margin-top: 6px; }
+            .panel-right > .top-state-area { position: absolute; top: -2px; right: 2px; width: auto; padding: 0; min-height: 24px; height: 24px; }
+            .panel-right > .panel-heading { margin-top: 16px; }
+        }
+        /* @editedBy YAONG1230 2026-10-28: fixed feedback and original vector slices. */
+        .haema-panel-scroll { display: flex; flex-direction: column; overflow: hidden; container-type: size; }
+        .haema-panel-scroll .haema-scroll { flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain; padding-bottom: 28px; }
+        .haema-preview-group { position: relative; z-index: 2; max-width: none; margin-bottom: 12px; }
+        .haema-preview, .haema-preview.has-token-meter { height: 133.164px; min-height: 133.164px; max-height: 133.164px; }
+        .haema-preview-content { height: 115px; margin-top: 10px; padding: 3px 6% 4px 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #b8a9c9 transparent; }
+        .haema-preview-heading { margin-bottom: 3px; }
+        .haema-preview-selection { gap: 3px 8px; padding: 0; margin-bottom: 3px; border: 0; background: transparent; font-size: 10px; }
+        .haema-preview-body { gap: 3px; }
+        .haema-preview-chips { flex-wrap: nowrap; align-items: center; max-height: none; min-height: 28px; padding: 1px 0; overflow-x: auto; overflow-y: hidden; }
+        .haema-preview-chip { flex: 0 0 96px; width: 96px; height: 26px; min-height: 26px; padding: 2px 13px; }
+        .haema-preview-chip::before { -webkit-mask-size: 100% 100%; mask-size: 100% 100%; }
+        .haema-preview-controls { padding: 6px 6% 0; }
+        .haema-preview-controls .token-meter { margin: 0; padding-top: 0; border: 0; }
+        .haema-preview-controls .token-meter-track { height: 22px; }
+        .haema-preview-guide-toggle { min-height: 32px; margin: 3px 0 0; padding: 4px 10px; }
+        .haema-preview-guide { position: absolute; z-index: 5; top: 100%; left: 0; right: 0; margin: 0 3%; padding: 18px; display: flex; max-height: min(340px, calc(100cqh - 280px)); overflow: hidden; box-shadow: 0 8px 18px rgba(91,75,101,.14); }
+        .haema-preview-guide-content { flex: 1 1 auto; min-height: 0; max-height: none; }
+        .input-area { min-height: 52px; width: 94%; align-self: center; padding: 3px 6px; gap: 7px; }
+        .user-input { min-height: 38px; max-height: 100px; padding-block: 8px; }
+        .user-avatar-frame { width: 36px; height: 36px; }
+        .user-bubble-art { min-height: 40px; }
+        .chat-panel-art, .right-panel-art { --panel-slices: 140 140 160 140; --panel-edges: 70px 70px 80px 70px; }
+        .chat-panel-art { --panel-art: url("Resources/haema-design/13-chat-panel-shape.svg"); }
+        .right-panel-art { --panel-art: url("Resources/haema-design/18-haema-panel-shape.svg"); }
+        .panel-art-slices { position: absolute; inset: 0; border-image: var(--panel-art) var(--panel-slices) fill / var(--panel-edges) / 0 stretch; }
+        @supports (-webkit-mask-box-image: url("") 1 fill / 1px) {
+            .panel > .panel-viewport { -webkit-mask: none; mask: none; -webkit-mask-box-image: var(--panel-mask) 140 140 160 140 fill / 70px 70px 80px 70px / 0 stretch; }
+            .haema-preview-chip::before { -webkit-mask: none; mask: none; -webkit-mask-box-image: var(--recall-shape) 20% 56 20% 56 fill / 5.2px 26px 5.2px 26px / 0 stretch; }
+        }
+        @media (min-width: 821px) {
+            .main-container { width: 92%; }
+            .console-panels { width: 100%; }
+        }
+        @media (max-width: 820px) {
+            .haema-preview-group { margin-top: 0; }
+            .haema-preview-content { margin-left: 20%; padding-right: 7%; }
+            .haema-preview-selection button { min-height: 44px; }
+            .haema-preview-guide-toggle { min-height: 44px; }
+            .haema-preview-guide { max-height: min(300px, calc(100cqh - 295px)); }
+            .input-area { min-height: 50px; width: 100%; padding: 2px 4px; }
+            .user-input { min-height: 36px; max-height: 90px; }
+            .send-button { width: 48px; height: 44px; }
+            .haema-preview-controls { padding-inline: 3%; }
+        }
     </style>
+    <link rel="stylesheet" href="web-console/haema-toolbar.css?v=1">
 </head>
 <body>
     <div id="app"></div>
     <script src="web-console/haema-dialog.js?v=1"></script>
     <script src="web-console/configStore.js?v=12"></script>
     <script src="web-console/haema-api-key-modal.js?v=13"></script>
-    <script src="web-console/haema-conversation-session.js?v=3"></script>
-    <script src="web-console/haema-token-usage.js?v=3"></script>
+    <script src="web-console/haema-conversation-session.js?v=4"></script>
+    <script src="web-console/haema-incremental-client.js?v=1"></script>
+    <script src="web-console/haema-incremental-controller.js?v=1"></script>
+    <script src="web-console/haema-token-usage.js?v=4"></script>
     <script src="web-console/haema-token-meter.js?v=4"></script>
-    <script src="web-console/haema-introduction.js?v=1"></script>
-    <script src="web-console/haema-introduction-modal.js?v=1"></script>
-    <script src="web-console/haema-console.js?v=26"></script>
+    <script src="web-console/haema-introduction.js?v=2"></script>
+    <script src="web-console/haema-introduction-modal.js?v=6"></script>
+    <script src="web-console/haema-console.js?v=35"></script>
     <script src="web-console/haema-storage-db.js?v=11"></script>
-    <script src="web-console/haema-storage-modal.js?v=13"></script>
+    <script src="web-console/haema-storage-modal.js?v=14"></script>
 </body>
 </html>

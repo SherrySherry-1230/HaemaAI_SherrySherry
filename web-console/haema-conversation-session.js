@@ -1,4 +1,5 @@
 // @editedBy YAONG1230 2026-10-18
+// @editedBy YAONG1230 2026-10-22: share conversation identity with incremental delivery
 // Pending requests live only in this tab. A retry reuses the original request.
 (function (global) {
     'use strict';
@@ -96,6 +97,13 @@
         }
         return {
             current,
+            ensure(scope) {
+                if (!validScope(scope)) throw recordError();
+                const conversationId = current(scope) || uuid();
+                if (!validId(conversationId)) throw recordError();
+                rememberIdentity(scope, conversationId);
+                return conversationId;
+            },
             prepare(scope, text) {
                 if (!validScope(scope) || typeof text !== 'string' || !text.trim()) throw recordError();
                 const data = read();

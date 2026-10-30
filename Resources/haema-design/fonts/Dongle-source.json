@@ -1,0 +1,24 @@
+{
+  "family": "Dongle",
+  "style": "Regular",
+  "weight": 400,
+  "usage": "Only the GitHub repository link",
+  "source": "https://fonts.google.com/specimen/Dongle",
+  "download": "https://fonts.gstatic.com/s/dongle/v16/sJoF3Ltdjt6VPkqmvQ.ttf",
+  "license": "SIL Open Font License 1.1",
+  "licenseSource": "https://raw.githubusercontent.com/google/fonts/main/ofl/dongle/OFL.txt",
+  "files": [
+    {
+      "file": "Dongle-Regular.ttf",
+      "bytes": 4456124,
+      "sha256": "6154bec33ca01ed289d06beab822f8e2aac8215f04c443f5e1db548b9c8a8f13"
+    },
+    {
+      "file": "Dongle-OFL.txt",
+      "bytes": 4384,
+      "sha256": "8e5675c4c7311158db56d93f25d88de638751ade01c6fc66794a0d92bd73fec3"
+    }
+  ],
+  "formattingNote": "Only trailing spaces in the OFL text were removed for the repository whitespace check; license wording is unchanged.",
+  "originalLicenseSha256": "f9e59049e824264bffd626d0901cfcaac9d5ba756988b904d3e3e0e233493607"
+}

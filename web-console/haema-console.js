@@ -1,3 +1,7 @@
+// @editedBy YAONG1230 2026-10-26: Figma toolbar artwork; existing connection actions preserved
+// @editedBy YAONG1230 2026-10-28: 저장소 중첩 모달 DOM 보존
+// @editedBy YAONG1230 2026-10-28: 회상 제목 프레임과 패널 아래 응답 가이드
+// @editedBy YAONG1230 2026-10-28: 대화 이력의 회상 결과 선택과 패널 내부 뷰포트
 // @editedBy SherrySherry 2026-10-05
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-03
@@ -12,6 +16,8 @@
 // @editedBy YAONG1230 2026-10-17: 토큰 v2 응답과 서버 누적 복원 연결
 // @editedBy YAONG1230 2026-10-18: 연결된 저장소 식별자와 최초 사용량 응답 대조
 // @editedBy YAONG1230 2026-10-20: 자기소개 입력과 저장 호칭 버튼
+// @editedBy YAONG1230 2026-10-21: 모달 편집 선택 방향 보존
+// @editedBy YAONG1230 2026-10-22: 연속 제출·변경 스냅샷·접수와 처리 상태 분리
 // HAEMA_CONSOLE - 해마.AI 콘솔 애플리케이션
 HAEMA_CONSOLE = {
     status: 'resting',
@@ -19,6 +25,12 @@ HAEMA_CONSOLE = {
     recallResults: [],
     answerGuide: null,
     latestResult: null,
+    selectedHistoryResult: null,
+    selectedResultAnchor: null,
+    resultSelectionKeys: new WeakMap(),
+    nextResultSelectionKey: 0,
+    previewGuideState: null,
+    recallShapeHistory: new Map(),
     previewState: 'idle',
     allJJums: [],
     cardShapeHistory: new Map(),
@@ -78,12 +90,15 @@ HAEMA_CONSOLE.render = function() {
     const activeFocus = this.getFocusReference(document.activeElement);
     const selection = userInput ? [userInput.selectionStart, userInput.selectionEnd, userInput.selectionDirection] : null;
     const scrollPositions = [...document.querySelectorAll('[data-scroll-key]')].map(node => [node.dataset.scrollKey, node.scrollTop, node.scrollLeft]);
-    const storageOverlay = document.getElementById('storageModalOverlay');
+    const previewGuide = document.getElementById('previewGuideContent');
+    if (previewGuide && !previewGuide.hidden && this.previewGuideState) this.previewGuideState.scrollTop = previewGuide.scrollTop;
+    const storageOverlays = ['storageModalOverlay', 'existingStorageModalOverlay']
+        .map(id => document.getElementById(id)).filter(Boolean);
     const sameModal = this.renderedModalMode === this.modalMode && this.renderedModalData === this.modalData;
     const modalDrafts = (sameModal ? [...document.querySelectorAll('.modal-overlay.active input, .modal-overlay.active textarea, .modal-overlay.active select')] : [])
         .filter(node => node.id).map(node => [node.id,
             node.id === 'modalApiModel' ? node.value || node.dataset.selectedModel || '' : node.value,
-            node.selectionStart, node.selectionEnd]);
+            node.selectionStart, node.selectionEnd, node.selectionDirection]);
 
     app.innerHTML = this.renderHeader() + this.renderMainContainer() + this.renderModal();
     if (typeof HAEMA_TOKEN_METER !== 'undefined' && typeof HAEMA_TOKEN_METER.animate === 'function') {
@@ -92,32 +107,36 @@ HAEMA_CONSOLE.render = function() {
     }
     this.renderedModalMode = this.modalMode;
     this.renderedModalData = this.modalData;
-    if (storageOverlay) app.appendChild(storageOverlay);
+    storageOverlays.forEach(overlay => app.appendChild(overlay));
 
     // 입력창 값 복원
     const restoredInput = document.getElementById("userInput");
     if (restoredInput && preservedValue !== undefined) {
-        restoredInput.value = preservedValue;
+        const draftRestore = this.incrementalDraftRestore;
+        restoredInput.value = draftRestore ? draftRestore.text : preservedValue;
+        this.incrementalDraftRestore = null;
         if (preservedFocus) {
             restoredInput.focus();
-            if (selection) restoredInput.setSelectionRange(selection[0], selection[1], selection[2]);
+            if (selection && !draftRestore) restoredInput.setSelectionRange(selection[0], selection[1], selection[2]);
         }
     }
     scrollPositions.forEach(([key, top, left]) => {
         const node = [...document.querySelectorAll('[data-scroll-key]')].find(item => item.dataset.scrollKey === key);
         if (node) { node.scrollTop = top; node.scrollLeft = left; }
     });
+    const restoredGuide = document.getElementById('previewGuideContent');
+    if (restoredGuide && !restoredGuide.hidden && this.previewGuideState) restoredGuide.scrollTop = this.previewGuideState.scrollTop;
     if (this.pendingConversationScroll) {
         const history = document.querySelector('.conversation-history');
         if (history) history.scrollTop = history.scrollHeight;
         this.pendingConversationScroll = false;
     }
-    modalDrafts.forEach(([id, value, start, end]) => {
+    modalDrafts.forEach(([id, value, start, end, direction]) => {
         const node = document.getElementById(id);
         if (node) {
             node.value = value;
             if (id === 'modalApiModel') node.dataset.selectedModel = value;
-            if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end);
+            if (typeof start === 'number' && node.setSelectionRange) node.setSelectionRange(start, end, direction || 'none');
             if (id === activeElementId) node.focus();
         }
     });
@@ -205,11 +224,11 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 };
 
 HAEMA_CONSOLE.renderRightPanel = function() {
-    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><img src="Resources/haema-design/18-haema-panel-shape.svg" width="726.119" height="847" alt=""></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
+    return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
         '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.allJJums || []).length + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
-        '</div>' + this.renderHostPreview() +
-        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderRecallSection() + this.renderJJumListSection() + '</div></section>';
+        '</div><div class="panel-viewport haema-panel-viewport"><div class="haema-panel-scroll" data-scroll-key="haema-panel">' + this.renderHostPreview() +
+        '<div class="haema-scroll" data-scroll-key="haema">' + this.renderJJumListSection() + '</div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderTransmissionStatus = function() {
@@ -227,12 +246,90 @@ HAEMA_CONSOLE.getTopicName = function(topic) {
     return topic?.jjum?.jjumName || topic?.jjumName || topic?.name || topic?.topic || '';
 };
 
+HAEMA_CONSOLE.getResultSelectionKey = function(result) {
+    if (!this.resultSelectionKeys.has(result)) this.resultSelectionKeys.set(result, 'result-' + (++this.nextResultSelectionKey));
+    return this.resultSelectionKeys.get(result);
+};
+
+HAEMA_CONSOLE.getResultTone = function(result) {
+    return result ? (Number(this.getResultSelectionKey(result).slice(7)) - 1) % 4 : 0;
+};
+
+HAEMA_CONSOLE.getResultTime = function(result) {
+    const at = result?.at;
+    const date = at == null || at === '' ? null : new Date(at);
+    return date && Number.isFinite(date.getTime()) ? {
+        text: date.toLocaleString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }),
+        iso: date.toISOString()
+    } : { text: '시각 미제공', iso: '' };
+};
+
+HAEMA_CONSOLE.getLatestHistoryResult = function() {
+    const latest = this.latestResult;
+    if (!latest) return null;
+    const scope = this.getConversationScope();
+    const history = this.conversationHistory.filter(item => item.type === 'result' &&
+        (!item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope)));
+    if (history.includes(latest)) return latest;
+    const hasIdentity = [latest.conversationId, latest.utteranceId].every(value => typeof value === 'string' && value.trim().length > 0);
+    if (!hasIdentity) return latest;
+    return history.reverse().find(item =>
+        item.conversationId === latest.conversationId && item.utteranceId === latest.utteranceId && item.at === latest.at) || latest;
+};
+
+HAEMA_CONSOLE.getPreviewResult = function() {
+    const selected = this.selectedHistoryResult;
+    if (selected) {
+        const sameScope = !selected.scope || HAEMA_CONVERSATION_SESSION.sameScope(selected.scope, this.getConversationScope());
+        const newerResult = this.latestResult && this.latestResult !== this.selectedResultAnchor;
+        if (sameScope && !newerResult && this.conversationHistory.includes(selected)) return selected;
+        this.selectedHistoryResult = null;
+        this.selectedResultAnchor = null;
+    }
+    return this.previewState === 'success' ? this.getLatestHistoryResult() : null;
+};
+
+HAEMA_CONSOLE.selectHistoryResult = function(key) {
+    const scope = this.getConversationScope();
+    const result = this.conversationHistory.find(item => item.type === 'result' && this.getResultSelectionKey(item) === key &&
+        (!item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope)));
+    if (!result) return;
+    this.selectedHistoryResult = result;
+    this.selectedResultAnchor = this.latestResult;
+    this.activeMobilePanel = 'haema';
+    this.render();
+    const scroll = document.querySelector('.haema-panel-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    if (window.matchMedia('(max-width: 820px)').matches) document.getElementById('haemaPreviewHeading')?.focus({ preventScroll: true });
+};
+
 HAEMA_CONSOLE.renderHostPreview = function() {
-    const state = this.previewState;
-    const result = state === 'success' ? this.latestResult : null;
+    const result = this.getPreviewResult();
+    const selected = this.selectedHistoryResult === result && !!result;
+    const state = result ? 'success' : this.previewState;
+    const resultKey = result ? [result.conversationId || '', result.utteranceId || '', result.at ?? ''].join(':') : '';
+    if (!this.previewGuideState || this.previewGuideState.result !== result || this.previewGuideState.key !== resultKey) {
+        this.previewGuideState = { result, key: resultKey, expanded: false, scrollTop: 0 };
+    }
+    const activeRecallKeys = new Set();
     let body = '<p class="haema-preview-summary">대화를 보내면 호스트에게 전달할 기억을 확인할 수 있어요.</p>';
     if (state === 'loading') {
         body = '<p class="haema-preview-summary">이번 대화의 기억을 확인하고 있어요.</p>';
+    } else if (state === 'incremental') {
+        const local = this.incrementalState;
+        const session = local?.session;
+        const target = local?.draft || local?.entries?.at(-1)?.input || session?.draft || session?.submissions?.at(-1);
+        const matches = target && session?.recallScores?.inputId === target.inputId && session.recallScores.revision === target.revision;
+        const recall = matches ? session.recallScores.status : 'uncomputed';
+        const recallLabel = { uncomputed: '미계산', pending: '탐색 중', ready: '잠정 탐색 완료', error: '탐색 확인 필요' }[recall] || '결과 대기';
+        body = '<p class="haema-preview-summary">현재 입력의 회상 점수 <strong>—</strong> · ' + recallLabel + '</p>' +
+            '<p class="haema-preview-summary">회상 전달 대기 · 호스트 답변은 실행하지 않았어요.</p>';
+        const candidates = matches ? (session?.candidates || []).filter(candidate => candidate.inputId === target.inputId && candidate.revision === target.revision && candidate.generation === session.analysisGeneration) : [];
+        if (candidates.length) body += '<p class="haema-preview-topics">입력 중 임시 후보 ' + candidates.length + '개 · 저장된 쩜과 구분해 보관 중</p>';
+        const remoteInput = session?.draft || session?.submissions?.at(-1);
+        const contextCurrent = target && remoteInput?.inputId === target.inputId && remoteInput.revision === target.revision;
+        const readiness = contextCurrent && { wait: '이야기 이어 듣기', ready: '답변 가능 권고', uncertain: '판단 대기' }[session?.responseReadiness?.status];
+        if (readiness) body += '<p class="haema-preview-topics">' + readiness + ' · 잠정 권고</p>';
     } else if (state === 'result-error') {
         body = '<p class="haema-preview-summary">대화는 보냈지만 결과를 표시하지 못했어요. 기억 목록을 다시 확인해 주세요.</p>';
     } else if (state === 'error') {
@@ -243,33 +340,58 @@ HAEMA_CONSOLE.renderHostPreview = function() {
         const newCount = (result.newJJums || []).length;
         body = '<p class="haema-preview-summary">' + (candidates.length ? '회상된 쩜 ' + candidates.length + '개' : '이번 대화에서 회상된 쩜이 없어요.') + (newCount ? ' · 새 쩜 ' + newCount + '개' : '') + '</p>';
         if (candidates.length) {
-            body += '<div class="haema-preview-chips">' + candidates.slice(0, 3).map(candidate =>
-                '<span class="haema-preview-chip"' + (candidate.summary ? ' title="' + this.escapeHtml(candidate.summary) + '"' : '') + '>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span>'
-            ).join('') + (candidates.length > 3 ? '<span class="haema-preview-more">외 ' + (candidates.length - 3) + '개</span>' : '') + '</div>';
+            const shapes = ['01', '02', '04', '10', '12', '23', '32'];
+            body += '<div class="haema-preview-chips" id="previewRecallTitles" tabindex="0" aria-label="회상된 쩜 제목" data-scroll-key="preview-titles:' + this.escapeHtml(resultKey) + '">' + candidates.map((candidate, index) => {
+                const name = this.maskJJumName(candidate.name);
+                const key = candidate.jjumId ? 'id:' + candidate.jjumId : 'fallback:' + index + ':' + name;
+                activeRecallKeys.add(key);
+                const previous = this.recallShapeHistory.get(key);
+                const available = shapes.filter(shape => shape !== previous);
+                const shape = available[Math.floor(Math.random() * available.length)];
+                this.recallShapeHistory.set(key, shape);
+                return '<span class="haema-preview-chip" data-recall-shape="' + shape + '" style="--recall-shape:url(Resources/haema-design/irregular/shape-' + shape + '.svg)"><span class="haema-preview-chip-label">' + this.escapeHtml(name) + '</span></span>';
+            }).join('') + '</div>';
         }
         if (topics.length) {
             body += '<p class="haema-preview-topics">주제 · ' + topics.slice(0, 2).map(topic => this.escapeHtml(topic)).join(' · ') + (topics.length > 2 ? ' 외 ' + (topics.length - 2) + '개' : '') + '</p>';
         }
-        body += '<button class="haema-preview-details" id="previewDetailsBtn" type="button">' + (result.guide ? '응답 가이드 · 결과 보기' : '결과 보기') + '</button>';
     }
-    const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), state === 'loading') : '';
-    return '<div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
+    for (const key of this.recallShapeHistory.keys()) {
+        if (!activeRecallKeys.has(key)) this.recallShapeHistory.delete(key);
+    }
+    const meter = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.render(this.readTokenUsage(), this.previewState === 'loading') : '';
+    const liveUsage = meter ? '<div class="haema-preview-live-usage">' + meter + '</div>' : '';
+    const time = this.getResultTime(result);
+    const selectionHtml = result ? '<div class="haema-preview-selection"><span class="haema-preview-selection-label">' + (selected ? '선택한 회상 결과' : '최근 회상 결과') + '</span>' +
+        '<time class="haema-preview-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(time.text) + '</time>' +
+        (selected ? '<button class="haema-preview-latest" id="previewLatestBtn" type="button">최신 상태로 돌아가기</button>' : '') + '</div>' : '';
+    const guide = result?.guide;
+    const hasGuide = typeof guide === 'string' ? !!guide.trim() : Array.isArray(guide) ? guide.some(item => typeof item === 'string' && item.trim()) : !!guide && typeof guide === 'object';
+    const expanded = hasGuide && this.previewGuideState.expanded;
+    let guideToggle;
+    let guideHtml = '';
+    if (hasGuide) {
+        guideToggle = '<button class="haema-preview-guide-toggle" id="previewGuideToggle" type="button" aria-expanded="' + expanded + '" aria-controls="previewGuideContent"><span class="haema-preview-guide-toggle-label">응답 가이드 ' + (expanded ? '접기' : '펼치기') + '</span><span class="haema-preview-guide-arrow" aria-hidden="true"></span></button>';
+        guideHtml = '<section class="haema-preview-guide' + (expanded ? ' is-expanded' : '') + '"' + (expanded ? '' : ' hidden') + '>' +
+            '<div class="haema-preview-guide-content" id="previewGuideContent" role="region" aria-labelledby="previewGuideTitle" tabindex="0" data-scroll-key="preview-guide:' + this.escapeHtml(resultKey) + '"' + (expanded ? '' : ' hidden') + '><h2 class="haema-preview-guide-title" id="previewGuideTitle">호스트 응답 가이드</h2><div class="response-guide-content">' + this.renderResponseGuide(guide) + '</div></div></section>';
+    } else {
+        const notice = state === 'incremental' ? '연속 입력의 응답 가이드는 아직 전달되지 않았어요.' :
+            result ? '이번 결과에는 응답 가이드가 없어요.' : state === 'loading' ? '응답 가이드를 기다리고 있어요.' : '표시할 응답 가이드가 아직 없어요.';
+        guideToggle = '<p class="haema-preview-guide-empty">' + notice + '</p>';
+    }
+    return '<div class="haema-preview-group' + (expanded ? ' is-guide-open' : '') + (result ? ' is-selected' : '') + (selected ? ' is-history-selected' : '') + '" data-result-tone="' + this.getResultTone(result) + '"><div class="haema-preview' + (meter ? ' has-token-meter' : '') + '" data-preview-state="' + state + '" data-live-preview-state="' + this.previewState + '"><span class="haema-preview-background" aria-hidden="true"></span>' +
         '<span class="haema-preview-avatar" aria-hidden="true"><img src="Resources/haema-design/haema-preview-character.png" width="244" height="441" alt=""></span>' +
-        '<div class="haema-preview-content"><div class="haema-preview-heading"><strong class="haema-preview-title">호스트에게 전달할 기억</strong></div><div class="haema-preview-body">' + body + '</div>' + meter + '</div></div>';
+        '<div class="haema-preview-content" tabindex="0" aria-label="호스트에게 전달할 기억"><div class="haema-preview-heading"><strong class="haema-preview-title" id="haemaPreviewHeading" tabindex="-1">호스트에게 전달할 기억</strong></div>' + selectionHtml + '<div class="haema-preview-body">' + body + '</div></div></div><div class="haema-preview-controls">' + liveUsage + guideToggle + '</div>' + guideHtml + '</div>';
 };
 
 HAEMA_CONSOLE.openLatestResult = function() {
-    if (!this.latestResult || this.previewState !== 'success') return;
-    this.activeMobilePanel = 'chat';
+    this.selectedHistoryResult = null;
+    this.selectedResultAnchor = null;
+    this.activeMobilePanel = 'haema';
     this.render();
-    const cards = [...document.querySelectorAll('.haema-history-card')];
-    const card = cards.reverse().find(item => item.dataset.resultAt === String(this.latestResult.at));
-    if (!card) return;
-    card.open = true;
-    const guide = card.querySelector('.guide-detail');
-    if (guide) guide.open = true;
-    card.scrollIntoView({ block: 'nearest' });
-    card.querySelector('summary')?.focus({ preventScroll: true });
+    const scroll = document.querySelector('.haema-panel-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    document.getElementById('haemaPreviewHeading')?.focus({ preventScroll: true });
 };
 
 // @editedBy YAONG1230 2026-10-16: Figma 52:547 / 25:46 / 49:526, 내부 스크롤
@@ -355,7 +477,7 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
             '<div class="jjum-meta">' + (states[state] ? escape(states[state]) + ' · ' : '') + escape(this.formatDate(jjum.firstSeen)) + (jjum.pinned ? ' · 고정' : '') + '</div>' +
             '<div class="card-actions"><button class="card-action" type="button" data-action="edit">수정</button><button class="card-action" type="button" data-action="hide">목록에서 숨기기</button></div></div></div>' : '';
         return '<article class="jjum-card state-' + state + (lightParts ? ' has-light-card-parts' : '') + (isExpanded ? ' is-expanded' : '') + '" data-jjum-id="' + escape(id) + '">' +
-            '<span class="jjum-card-art" style="--card-shape:url(\'Resources/haema-design/jjum-display/' + shapeAsset + '\')" aria-hidden="true"></span>' +
+            '<span class="jjum-card-art" data-card-shape="' + shapeAsset + '" style="--card-shape:url(\'Resources/haema-design/jjum-display/' + shapeAsset + '\')" aria-hidden="true"></span>' +
             '<div class="jjum-card-scroll"' + (isExpanded ? ' tabindex="0" role="region" aria-label="' + escape(name) + ' 전체 정보" data-scroll-key="jjum:' + escape(id) + '" id="jjum-scroll-' + regionKey + '"' : '') + '>' +
             '<button class="jjum-card-head" type="button" data-action="toggle" aria-expanded="' + isExpanded + '"' + (isExpanded ? ' aria-controls="' + detailsId + '"' : '') + ' aria-label="' + escape(visibleName) + (isExpanded ? ' 접기' : ' 펼치기') + '">' +
                 '<span class="jjum-card-row">' + scoreHtml + '<span class="jjum-header-metadata">' + nameHtml + metadataHtml + '</span>' + ellipsisHtml + '</span>' +
@@ -417,15 +539,6 @@ HAEMA_CONSOLE.updateSeonLayout = function() {
 
 // 접힘의 한 줄에는 테두리까지 온전히 들어가는 정보만 두고, 나머지는 펼침에서 읽는다.
 HAEMA_CONSOLE.updateJJumMetadataLayout = function() {
-    const scroll = document.querySelector('.haema-scroll');
-    const panelArt = document.querySelector('.right-panel-art');
-    if (scroll && panelArt) {
-        const artBounds = panelArt.getBoundingClientRect();
-        const scrollBounds = scroll.getBoundingClientRect();
-        scroll.style.setProperty('--list-mask-width', artBounds.width + 'px');
-        scroll.style.setProperty('--list-mask-height', artBounds.height + 'px');
-        scroll.style.setProperty('--list-mask-left', artBounds.left - scrollBounds.left + 'px');
-    }
     document.querySelectorAll('.jjum-card:not(.is-expanded)').forEach(card => {
         card.classList.remove('has-more-metadata');
         const metadata = card.querySelector('.jjum-header-metadata');
@@ -494,11 +607,41 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     document.querySelectorAll('[data-retry-utterance]').forEach(button => {
         button.addEventListener('click', () => this.retryConversation(button.dataset.retryUtterance));
     });
+    document.querySelectorAll('[data-incremental-retry-delivery]').forEach(button => {
+        button.addEventListener('click', () => this.incrementalController?.retryDelivery(button.dataset.incrementalRetryDelivery));
+    });
+    document.querySelectorAll('[data-incremental-retry-processing]').forEach(button => {
+        button.addEventListener('click', () => {
+            const result = this.incrementalController?.retry(button.dataset.incrementalRetryProcessing);
+            if (result?.ok) this.trackTokenTurn('begin', this.getConversationScope(), this.incrementalUsageRequest(result.input));
+        });
+    });
+    document.getElementById('incrementalRefreshBtn')?.addEventListener('click', () => {
+        const controller = this.incrementalController;
+        if (!controller) return;
+        const scope = this.getConversationScope();
+        if (!HAEMA_CONVERSATION_SESSION.sameScope(scope, controller.getState().scope)) { this.render(); return; }
+        const text = document.getElementById('userInput')?.value || '';
+        controller.stop();
+        this.incrementalController = null;
+        // A new local controller reads the same saved session ID. A restarted
+        // server is never silently assigned the old submissions as fresh work.
+        this.syncIncrementalConversation(scope);
+        this.incrementalDraftRestore = { text };
+        this.draftVersion += 1;
+        this.render();
+    });
     // The server connection is shared: do not switch this tab's storage during a send.
     if (storageBtn) storageBtn.disabled = this.sending;
     if (clearBtn) clearBtn.addEventListener("click", () => this.handleClear());
     if (createBtn) createBtn.addEventListener("click", () => this.openCreateModal());
-    document.getElementById('previewDetailsBtn')?.addEventListener('click', () => this.openLatestResult());
+    document.getElementById('previewGuideToggle')?.addEventListener('click', () => {
+        if (!this.previewGuideState?.result || this.previewGuideState.result !== this.getPreviewResult()) return;
+        this.previewGuideState.expanded = !this.previewGuideState.expanded;
+        this.render();
+    });
+    document.querySelectorAll('[data-result-key]').forEach(button => button.addEventListener('click', () => this.selectHistoryResult(button.dataset.resultKey)));
+    document.getElementById('previewLatestBtn')?.addEventListener('click', () => this.openLatestResult());
     if (storageBtn) storageBtn.addEventListener("click", () => {
         if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
             HAEMA_STORAGE_MODAL.open();
@@ -739,11 +882,14 @@ HAEMA_CONSOLE.syncConversationPending = function() {
     try {
         if (!this.conversationSession) this.conversationSession = HAEMA_CONVERSATION_SESSION.create();
         const scope = this.getConversationScope();
+        this.syncIncrementalConversation(scope);
         if (JSON.stringify(scope) !== JSON.stringify(this.activeConversationScope)) {
             this.conversationScopeEpoch += 1;
             this.tokenUsageRestoreKey = null;
         }
         if (!scope || (this.activeConversationScope && !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.activeConversationScope))) {
+            this.selectedHistoryResult = null;
+            this.selectedResultAnchor = null;
             this.latestResult = null;
             this.previewState = 'idle';
             this.recallResults = [];
@@ -797,7 +943,145 @@ HAEMA_CONSOLE.waitForConversationComposition = function() {
     return new Promise(resolve => input.addEventListener('compositionend', () => { this.isComposing = false; resolve(); }, { once: true }));
 };
 
-HAEMA_CONSOLE.handleSend = async function() {
+// A storage switch stops local delivery, never deletes the server's session or
+// silently submits old text into another physical store.
+HAEMA_CONSOLE.syncIncrementalConversation = function(scope) {
+    if (!scope || !this.hasStorageId(scope)) {
+        if (this.incrementalController) {
+            this.incrementalController.stop();
+            this.incrementalDraftRestore = { text: '' };
+        }
+        this.incrementalController = null;
+        this.incrementalState = null;
+        clearTimeout(this.incrementalUsageTimer);
+        this.incrementalUsageTimer = null;
+        return null;
+    }
+    if (this.incrementalController && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.incrementalState?.scope)) return this.incrementalController;
+    this.incrementalController?.stop();
+    this.incrementalController = null;
+    this.incrementalState = null;
+    clearTimeout(this.incrementalUsageTimer);
+    this.incrementalUsageTimer = null;
+    this.incrementalListWarning = '';
+    const conversationId = this.conversationSession.ensure(scope);
+    let controller;
+    const current = () => this.incrementalController === controller && HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope());
+    controller = HAEMA_INCREMENTAL_CONTROLLER.create({
+        client: HAEMA_INCREMENTAL_CLIENT.create(), scope, conversationId,
+        verifyScope: checked => this.verifyConversationScope(checked),
+        onChange: state => Promise.resolve().then(() => {
+            if (current()) this.receiveIncrementalState(controller, state);
+        }),
+        onResult: event => Promise.resolve().then(() => {
+            if (current()) return this.receiveIncrementalResult(controller, event);
+        })
+    });
+    this.incrementalController = controller;
+    this.incrementalState = controller.getState();
+    this.incrementalDraftRestore = { text: this.incrementalState.draft?.text || '' };
+    this.incrementalStateSignature = '';
+    const startingDraftVersion = this.draftVersion;
+    Promise.resolve().then(() => controller.start()).then(() => {
+        if (!current() || this.isComposing) return;
+        const input = document.getElementById('userInput');
+        if (!input || !controller.getState().session) return;
+        const restored = controller.getState().draft;
+        if (restored && this.draftVersion === startingDraftVersion) {
+            input.value = restored.text;
+            this.lastInputValue = restored.text;
+        } else {
+            // Typing during the handshake wins over a remotely restored draft,
+            // while the controller keeps that draft's identity and revision.
+            controller.sample(input.value);
+        }
+    }).catch(() => { /* Controller keeps the original queue and reports the error. */ });
+    return controller;
+};
+
+HAEMA_CONSOLE.incrementalUsageRequest = function(input) {
+    return { ownerId: this.incrementalState.scope.ownerId, conversationId: this.incrementalState.conversationId,
+        turns: [{ utteranceId: input.inputId }] };
+};
+
+HAEMA_CONSOLE.receiveIncrementalState = function(controller, state) {
+    if (this.incrementalController !== controller || !HAEMA_CONVERSATION_SESSION.sameScope(state.scope, this.getConversationScope())) return;
+    const signature = JSON.stringify(state);
+    if (signature === this.incrementalStateSignature) return;
+    this.incrementalStateSignature = signature;
+    this.incrementalState = state;
+    const submissions = state.session?.submissions || [];
+    const inputs = new Map(submissions.map(submission => [submission.inputId, { input: submission, delivery: 'accepted', processing: submission.processing }]));
+    state.entries.forEach(entry => inputs.set(entry.input.inputId, entry));
+    [...inputs.values()].sort((a, b) => a.input.sequence - b.input.sequence).forEach(entry => {
+        let message = this.conversationHistory.find(item => item.incremental && item.inputId === entry.input.inputId &&
+            item.conversationId === state.conversationId && HAEMA_CONVERSATION_SESSION.sameScope(item.scope, state.scope));
+        if (!message) {
+            message = { type: 'user', incremental: true, scope: state.scope, conversationId: state.conversationId, inputId: entry.input.inputId };
+            this.conversationHistory.push(message);
+        }
+        Object.assign(message, { text: entry.input.text, at: entry.input.at ?? entry.input.receivedAt ?? Date.now(),
+            sequence: entry.input.sequence, delivery: entry.delivery, processing: entry.processing?.status || null,
+            retryDelivery: entry.delivery === 'uncertain' || entry.retry?.delivery === 'uncertain',
+            retryProcessing: submissions.at(-1)?.inputId === entry.input.inputId && entry.processing?.status === 'failed' &&
+                !state.entries.some(item => item.delivery !== 'accepted') && (!entry.retry || entry.retry.delivery === 'accepted'),
+            error: entry.error?.message || (entry.processing?.result?.code === 'AI_NOT_CONFIGURED'
+                ? 'AI 연결을 확인한 뒤 기억 처리를 다시 시도해 주세요.' : ''),
+            acknowledged: entry.delivery === 'accepted', failed: false });
+    });
+    this.latestResult = null;
+    this.recallResults = [];
+    this.answerGuide = null;
+    this.previewState = 'incremental';
+    const queued = state.entries.filter(entry => entry.delivery !== 'accepted').length;
+    const pending = submissions.some(entry => entry.processing.status === 'pending');
+    this.status = state.error ? 'error' : queued || pending ? 'working' : 'resting';
+    const latestStatus = submissions.at(-1)?.processing.status;
+    this.statusText = state.error ? '연결 확인 필요' : queued ? '전송 대기 ' + queued + '건' : pending ? '접수 완료 · 기억 처리 중' :
+        latestStatus === 'failed' ? '접수 완료 · 처리 확인 필요' : submissions.length ? '기억 처리 확인' : '해마 쉬는 중...';
+    this.scheduleIncrementalUsage(controller);
+    this.render();
+};
+
+HAEMA_CONSOLE.receiveIncrementalResult = async function(controller, event) {
+    const current = () => this.incrementalController === controller && HAEMA_CONVERSATION_SESSION.sameScope(event.scope, this.getConversationScope());
+    if (!current()) return;
+    const request = this.incrementalUsageRequest(event.input);
+    const live = controller.getState();
+    const latestSequence = Math.max(0, ...(live.entries || []).map(entry => entry.input.sequence),
+        ...(live.session?.submissions || []).map(entry => entry.sequence));
+    if (event.isLatest && event.input.sequence === latestSequence &&
+        this.getTokenUsageStore()?.current(event.scope)?.latest?.utteranceId !== event.input.inputId) {
+        this.trackTokenTurn('focus', event.scope, request);
+    }
+    this.trackTokenTurn(event.processing.status === 'failed' ? 'fail' : 'accept', event.scope, request);
+    if (event.result?.tokenUsage) this.receiveTokenUsage(event.scope, request, event.result.tokenUsage, {
+        conversationUsage: event.result.conversationUsage, usagePersistence: event.result.usagePersistence
+    });
+    // Superseded processing can still consume tokens. Read the authoritative
+    // ledger instead of guessing its cost from whether a result was applied.
+    await this.restoreTokenUsage(event.scope, event.conversationId);
+    if (!current()) return;
+    if (event.processing.status === 'completed') {
+        try { await this.loadLocalServerData(); }
+        catch { if (current()) this.incrementalListWarning = '기억 처리는 끝났지만 목록을 새로 읽지 못했어요.'; }
+    }
+    if (current()) { this.scheduleIncrementalUsage(controller); this.render(); }
+};
+
+HAEMA_CONSOLE.scheduleIncrementalUsage = function(controller) {
+    if (this.incrementalUsageTimer || this.incrementalController !== controller) return;
+    const state = controller.getState();
+    if (!state.session?.submissions.some(entry => entry.processing.status === 'pending') && !this.readTokenUsage().pendingUsageIds?.length) return;
+    this.incrementalUsageTimer = setTimeout(async () => {
+        this.incrementalUsageTimer = null;
+        if (this.incrementalController !== controller) return;
+        await this.restoreTokenUsage(state.scope, state.conversationId);
+        if (this.incrementalController === controller) this.scheduleIncrementalUsage(controller);
+    }, 1000);
+};
+
+HAEMA_CONSOLE.handleSend = function() {
     if (this.sending || this.isComposing) return;
     if (!this.isStorageReady() || !this.isApiKeyReady()) {
         this.handleInputAreaClick();
@@ -805,8 +1089,8 @@ HAEMA_CONSOLE.handleSend = async function() {
     }
     const input = document.getElementById("userInput");
     if (!input) return;
-    const text = input.value.trim();
-    if (!text) {
+    const text = input.value;
+    if (!text.trim()) {
         this.status = "error";
         this.statusText = "⚠️ 입력할 내용을 작성해주세요!";
         this.render();
@@ -819,27 +1103,27 @@ HAEMA_CONSOLE.handleSend = async function() {
         this.render();
         return;
     }
-    const draftVersion = this.draftVersion;
-    this.sending = true;
-    this.status = 'working';
-    this.statusText = '전송 준비 중이에요';
-    this.render();
     try {
-        const scope = this.getConversationScope();
-        await this.verifyConversationScope(scope);
-        const request = this.conversationSession.prepare(scope, text);
-        const message = { type: 'user', text, at: request.turns[0].at, request, scope, draftVersion, failed: false };
-        this.conversationHistory.push(message);
-        await this.sendConversationRequest(message, false, true);
+        const controller = this.incrementalController;
+        const outcome = controller?.enqueue(text);
+        if (!outcome?.ok) throw new Error(outcome?.message || '연속 입력 연결을 확인하고 있어요. 입력은 그대로 두었습니다.');
+        this.trackTokenTurn('begin', this.getConversationScope(), this.incrementalUsageRequest(outcome.input));
+        input.value = '';
+        this.draftVersion += 1;
+        this.lastInputValue = '';
+        this.pendingConversationScroll = true;
+        this.recallResults = [];
+        this.answerGuide = null;
+        this.latestResult = null;
+        this.previewState = 'incremental';
+        this.receiveIncrementalState(controller, controller.getState());
     } catch (error) {
-        this.sending = false;
         this.status = 'error';
         this.statusText = error.message || '전송을 준비하지 못했어요.';
         if (error.code === 'CONVERSATION_SESSION') {
             this.conversationSessionError = this.statusText;
             this.conversationPersistenceBlocked = true;
         }
-        await this.waitForConversationComposition();
         this.render();
     }
 };
@@ -973,6 +1257,8 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
         this.status = "resting";
         this.statusText = listRefreshed ? "대화를 보냈어요" : '대화는 보냈지만 기억 목록을 새로고침하지 못했어요.';
         message.notice = listRefreshed ? '' : this.statusText;
+        this.selectedHistoryResult = null;
+        this.selectedResultAnchor = null;
         this.latestResult = resultSnapshot;
         this.previewState = 'success';
         const historyPanel = document.querySelector('.conversation-history');
@@ -1019,19 +1305,25 @@ HAEMA_CONSOLE.sendConversationRequest = async function(message, retry, alreadyVe
 HAEMA_CONSOLE.handleClear = function() {
     const input = document.getElementById("userInput");
     if (input) input.value = "";
+    this.draftVersion += 1;
+    this.lastInputValue = '';
+    this.incrementalController?.sample('');
     localStorage.removeItem("haema_input");
     this.answerGuide = null;
     this.recallResults = [];
     this.latestResult = null;
+    this.selectedHistoryResult = null;
+    this.selectedResultAnchor = null;
     this.previewState = 'idle';
     this.status = "resting";
     this.statusText = "해마 쉬는 중...";
     this.render();
 };
 
-// 입력 표시만 제어한다. 실제 회상 요청은 전송 버튼 또는 Enter를 눌렀을 때 시작한다.
+// Only changed, non-composing drafts are sampled; submitting is a separate event.
 HAEMA_CONSOLE.handleInput = function(inputValue) {
     this.lastInputValue = inputValue;
+    this.incrementalController?.sample(inputValue);
     const indicator = document.getElementById('typingIndicator');
     if (!inputValue || !inputValue.trim()) {
         if (this.typingTimer) clearTimeout(this.typingTimer);
@@ -1686,34 +1978,14 @@ HAEMA_CONSOLE.renderResponseGuide = function(guide) {
 };
 
 HAEMA_CONSOLE.renderConversationResult = function(item) {
-    const candidates = (item.candidates || []).map(candidate => {
-        const reasons = Array.isArray(candidate.reasons) ? candidate.reasons : candidate.reasons ? [candidate.reasons] : [];
-        const relations = Array.isArray(candidate.relations) ? candidate.relations : [];
-        return '<details class="result-jjum"><summary><span>' + this.escapeHtml(this.maskJJumName(candidate.name)) + '</span><span class="result-score">—</span></summary>' +
-            '<div class="result-jjum-detail"><div class="result-full-name">' + this.escapeHtml(candidate.name) + '</div>' +
-            (candidate.summary ? '<p>' + this.escapeHtml(candidate.summary) + '</p>' : '') +
-            (reasons.length ? '<div class="result-detail-label">회상 근거</div><div class="history-jjum-list">' + reasons.map(reason => '<span class="history-jjum-chip">' + this.escapeHtml(typeof reason === 'string' ? reason : JSON.stringify(reason)) + '</span>').join('') + '</div>' : '') +
-            (relations.length ? '<div class="result-detail-label">쩜선 연결</div><div class="history-jjum-list">' + relations.map(relation => '<span class="history-jjum-chip">' + this.escapeHtml(relation.targetName || relation.label || '연결된 쩜') + '</span>').join('') + '</div>' : '') +
-            (candidate.tags?.length ? '<div class="history-jjum-list">' + candidate.tags.map(tag => '<span class="history-jjum-chip">' + this.escapeHtml(tag) + '</span>').join('') + '</div>' : '') +
-            '</div></details>';
-    }).join('');
-    const topics = (item.topics || []).map(topic => {
-        const label = this.getTopicName(topic);
-        const reason = typeof topic?.reason === 'string' ? topic.reason : '';
-        return label ? '<span class="history-jjum-chip"' + (reason ? ' title="' + this.escapeHtml(reason) + '"' : '') + '>' + this.escapeHtml(label) + '</span>' : '';
-    }).join('');
-    const newJJums = (item.newJJums || []).map(jjum => {
-        const label = typeof jjum === 'string' ? jjum : jjum?.jjumName || jjum?.name || '';
-        return label ? '<span class="history-jjum-chip">' + this.escapeHtml(this.maskJJumName(label)) + '</span>' : '';
-    }).join('');
-    const guideHtml = item.guide ? '<details class="guide-detail"><summary>호스트 응답 가이드</summary><div class="response-guide-content">' + this.renderResponseGuide(item.guide) + '</div></details>' : '';
+    const key = this.getResultSelectionKey(item);
+    const selected = this.getPreviewResult() === item;
+    const time = this.getResultTime(item);
     const usageBadge = item.conversationId && item.utteranceId && typeof HAEMA_TOKEN_METER !== 'undefined'
         ? HAEMA_TOKEN_METER.badge(this.getTokenUsageStore()?.turn(item.scope, item.conversationId, item.utteranceId)) : '';
-    return '<details class="haema-history-card" data-result-at="' + this.escapeHtml(String(item.at || '')) + '"><summary><span class="haema-history-title">해마 회상 결과' + usageBadge + '</span><span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견 · 펼쳐보기</span></summary><div class="haema-history-detail">' +
-        (candidates ? '<div class="history-detail-title">회상된 쩜 · 회상 점수 —</div><div class="history-results">' + candidates + '</div>' : '<p class="recall-note">이번 대화에서 회상된 쩜이 없어요.</p>') +
-        (topics ? '<div class="history-detail-title">주제</div><div class="history-jjum-list">' + topics + '</div>' : '') +
-        (newJJums ? '<div class="history-detail-title">새 쩜</div><div class="history-jjum-list">' + newJJums + '</div>' : '') +
-        guideHtml + '</div></details>';
+    return '<button class="haema-history-card haema-result-option' + (selected ? ' is-selected' : '') + '" id="history-' + key + '" type="button" data-result-key="' + key + '" data-result-tone="' + this.getResultTone(item) + '" data-result-at="' + this.escapeHtml(String(item.at ?? '')) + '" aria-pressed="' + selected + '">' +
+        '<span class="haema-history-header"><span class="haema-history-title">해마 회상 결과</span><time class="haema-history-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(time.text) + '</time></span>' +
+        '<span class="haema-history-count">쩜 ' + (item.candidates || []).length + '개 발견</span>' + usageBadge + '<span class="haema-result-action">' + (selected ? '선택한 결과' : '오른쪽에서 보기 →') + '</span></button>';
 };
 
 HAEMA_CONSOLE.renderLeftPanel = function() {
@@ -1724,15 +1996,29 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const apiLabel = '🗝️ : ' + (this.apiConfigured ? (this.apiKeyName || '설정✅') : '없음❌');
     const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
     const apiTitle = this.apiConfigured ? 'AI 연결 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'AI 연결 설정';
-    const storageBtn = '<button class="tool-button" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><img src="Resources/haema-design/10-storage-button.svg" width="103" height="26" alt=""><span>' + this.escapeHtml(storageLabel) + '</span></button>';
-    const apiBtn = '<button class="tool-button" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><img src="Resources/haema-design/09-api-key-button.svg" width="103" height="26" alt=""><span class="api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
+    const storageBtn = '<button class="tool-button' + (this.storageConnected ? ' is-connected' : '') + '" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-default.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-hover-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-hover.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/storage-connected-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-label">' + this.escapeHtml(storageLabel) + '</span></button>';
+    const apiBtn = '<button class="tool-button api-key-button' + (this.apiConfigured ? ' is-connected' : '') + '" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-default.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-hover.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover tool-button-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-hover-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/key-connected-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-label api-key-label">' + this.escapeHtml(apiLabel) + '</span></button>';
     this.syncConversationPending();
     const conversationScope = this.getConversationScope();
     const visibleHistory = this.conversationHistory.filter(item => !item.scope || HAEMA_CONVERSATION_SESSION.sameScope(item.scope, conversationScope));
     const messages = visibleHistory.map(item => {
         if (item.type === 'user') {
+            const time = this.getResultTime(item);
+            const timeText = time.iso ? new Date(time.iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : time.text;
+            const timestamp = '<time class="message-time"' + (time.iso ? ' datetime="' + this.escapeHtml(time.iso) + '"' : '') + '>' + this.escapeHtml(timeText) + '</time>';
+            if (item.incremental) {
+                const labels = { queued: '전송 대기', sending: '접수 확인 중', uncertain: '접수 확인 필요' };
+                const processingLabels = { pending: '접수됨 · 기억 처리 중', completed: '기억 처리 완료 · 회상 전달 대기',
+                    failed: '접수됨 · 기억 처리 실패', superseded: '접수됨 · 다음 입력으로 처리 전환' };
+                const notice = item.delivery === 'accepted' ? processingLabels[item.processing] || '접수됨' : labels[item.delivery] || '전송 대기';
+                const retry = item.retryDelivery ? '<button class="conversation-retry" type="button" data-incremental-retry-delivery="' + this.escapeHtml(item.inputId) + '">같은 입력 다시 확인</button>' : '';
+                const retryProcessing = item.retryProcessing ? '<button class="conversation-retry" type="button" data-incremental-retry-processing="' + this.escapeHtml(item.inputId) + '">기억 처리 다시 시도</button>' : '';
+                const usage = typeof HAEMA_TOKEN_METER !== 'undefined' ? HAEMA_TOKEN_METER.badge(this.getTokenUsageStore()?.turn(item.scope, item.conversationId, item.inputId)) : '';
+                return '<div class="message-row user"><div class="message-stack">' + timestamp + '<div class="message-bubble">' + (usage ? '<span class="message-meta">' + usage + '</span>' : '') +
+                    this.escapeHtml(item.text) + '<span class="message-meta">' + this.escapeHtml(item.error || notice) + '</span>' + retry + retryProcessing + '</div></div></div>';
+            }
             const retry = item.failed && !item.acknowledged && item.request ? '<button class="conversation-retry" type="button" data-retry-utterance="' + this.escapeHtml(item.request.turns[0].utteranceId) + '"' + (this.sending ? ' disabled' : '') + '>다시 보내기</button>' : '';
-            return '<div class="message-row user"><div class="message-bubble' + (item.failed ? ' message-error' : '') + '"><span class="message-meta">나 · ' + this.escapeHtml(new Date(item.at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })) + '</span>' + this.escapeHtml(item.text) + (item.failed || item.notice ? '<span class="message-meta">' + this.escapeHtml(item.error || item.notice || '') + '</span>' : '') + retry + '</div></div>';
+            return '<div class="message-row user"><div class="message-stack">' + timestamp + '<div class="message-bubble' + (item.failed ? ' message-error' : '') + '">' + this.escapeHtml(item.text) + (item.failed || item.notice ? '<span class="message-meta">' + this.escapeHtml(item.error || item.notice || '') + '</span>' : '') + retry + '</div></div></div>';
         }
         if (item.type === 'result') return this.renderConversationResult(item);
         return '';
@@ -1740,20 +2026,24 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const empty = visibleHistory.length ? '' : '<div class="conversation-empty"><span class="conversation-empty-mark">~</span><strong>해마와 대화를 시작해 보세요</strong><br>보낸 메시지는 이곳에 차곡차곡 쌓여요.</div>';
     const sessionError = this.conversationSessionError ? '<p class="conversation-session-error" role="alert">' + this.escapeHtml(this.conversationSessionError) + '</p>' : '';
     const sessionNotice = this.conversationSessionNotice ? '<p class="message-meta" role="status">' + this.escapeHtml(this.conversationSessionNotice) + '</p>' : '';
+    const incrementalError = this.incrementalState?.error;
+    const incrementalNotice = (incrementalError ? '<p class="conversation-session-error" role="alert">' + this.escapeHtml(incrementalError.message) +
+        ' <button class="conversation-retry" id="incrementalRefreshBtn" type="button">연결 다시 확인</button></p>' : '') +
+        (this.incrementalListWarning ? '<p class="message-meta" role="status">' + this.escapeHtml(this.incrementalListWarning) + '</p>' : '');
     const introductionBtn = typeof HAEMA_INTRODUCTION_MODAL !== 'undefined' ? HAEMA_INTRODUCTION_MODAL.button(this) : '';
     return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + introductionBtn + storageBtn + apiBtn + '</div>' +
-        '<div class="chat-panel-art" aria-hidden="true"><img src="Resources/haema-design/13-chat-panel-shape.svg" width="725.44" height="853" alt=""></div>' +
-        '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + empty + messages + '</div>' +
+        '<div class="chat-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' +
+        '<div class="panel-viewport chat-panel-viewport"><div class="chat-panel-layout">' +
+        '<div class="conversation-history" data-scroll-key="history" aria-live="polite">' + sessionError + sessionNotice + incrementalNotice + empty + messages + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
         '<div class="input-area' + (isInputDisabled ? ' input-area-disabled' : '') + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" placeholder="챗봇AI와 대화하는 것처럼 입력해주세요." aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
-        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></section>';
+        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
-    const count = this.recallResults.length;
-    if (!count) return '';
-    return '<div class="jjum-section-heading"><span class="section-title">이번 대화의 회상</span><span class="recall-count">' + (count ? count + '개' : '결과 대기') + '</span></div>' +
-        (count ? '<div class="recall-note">회상 점수는 아직 전달되지 않았어요. <strong>—</strong>로 표시합니다.</div>' : '<div class="recall-note">메시지를 보내면 회상된 쩜이 여기에 표시됩니다.</div>');
+    const count = this.allJJums.length;
+    return '<div class="jjum-section-heading"><span class="section-title">저장된 모든 쩜</span><span class="recall-count">' + count + '개</span></div>' +
+        '<div class="recall-note">선택한 회상과 별도로 저장된 쩜을 모두 보여드려요.</div>';
 };
 
 HAEMA_CONSOLE.renderModal = function() {
@@ -1898,10 +2188,17 @@ HAEMA_CONSOLE.init = async function() {
 
 // 선택한 서버 저장소의 쩜을 읽고, 완료 후 다음 처리를 진행한다.
 HAEMA_CONSOLE.loadLocalServerData = async function() {
-    const response = await fetch('/api/owners/demo/jjums');
+    const scope = this.getConversationScope();
+    const epoch = this.conversationScopeEpoch;
+    if (!scope) throw new Error('연결된 저장소를 확인해 주세요.');
+    await this.verifyConversationScope(scope);
+    const response = await fetch('/api/owners/' + encodeURIComponent(scope.ownerId) + '/jjums', { cache: 'no-store' });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || '저장소를 읽을 수 없습니다.');
-    this.allJJums = data.jjums || [];
+    await this.verifyConversationScope(scope);
+    if (epoch !== this.conversationScopeEpoch || !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 이전 목록은 적용하지 않았어요.');
+    if (!Array.isArray(data.jjums)) throw new Error('기억 목록을 확인하지 못했어요.');
+    this.allJJums = data.jjums;
     this.render();
     return this.allJJums;
 };

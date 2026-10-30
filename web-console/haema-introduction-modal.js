@@ -1,5 +1,7 @@
-// @editedBy YAONG1230 2026-10-20
-// The HTTP contract is proposed in docs/INTRODUCTION_API_PROPOSAL.md.
+// @editedBy YAONG1230 2026-10-28: original SVG nine-slice artwork; server label and dialog behavior preserved
+// @editedBy YAONG1230 2026-10-26: independent introduction button artwork; server label preserved
+// @editedBy YAONG1230 2026-10-21
+// The confirmed HTTP contract is documented in docs/INTRODUCTION_API.md.
 (function(global) {
     'use strict';
     const records = new Map();
@@ -118,8 +120,9 @@
             record.attempted = true;
             Promise.resolve().then(() => load(consoleApp, record));
         }
-        const label = record.serverText.trim() ? '👤: ' + record.displayName : '👤: 자신을 소개해주세요';
-        return '<button class="tool-button introduction-button" id="introductionBtn" type="button" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><img src="Resources/haema-design/10-storage-button.svg" alt="" aria-hidden="true"><span>' + consoleApp.escapeHtml(label) + '</span></button>';
+        const hasIntroduction = record.serverText.trim().length > 0;
+        const label = hasIntroduction ? '👤: ' + record.displayName : '👤: 자신을 소개해주세요';
+        return '<button class="tool-button introduction-button' + (hasIntroduction ? ' is-connected' : '') + '" id="introductionBtn" type="button" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/introduction-default.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/introduction-hover-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/introduction-hover.svg);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/toolbar-20261026/introduction-connected-glow.svg);border-image-source:var(--button-art)"></span><span class="tool-button-label">' + consoleApp.escapeHtml(label) + '</span></button>';
     }
     function open(consoleApp) {
         const record = currentRecord(consoleApp);
@@ -140,6 +143,9 @@
     function bind(consoleApp) {
         const record = consoleApp.modalData;
         const input = document.getElementById('modalIntroduction');
+        // HTML parsing drops the first LF immediately after <textarea>. Restore
+        // via the value property without resetting an already-correct selection.
+        if (input && input.value !== record.text.replace(/\r\n?/g, '\n')) input.value = record.text;
         input?.addEventListener('compositionstart', () => { consoleApp.isComposing = true; });
         input?.addEventListener('compositionend', () => {
             consoleApp.isComposing = false;
