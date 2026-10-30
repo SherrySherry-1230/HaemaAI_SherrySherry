@@ -1,7 +1,7 @@
-<!-- @editedBy SherrySherry 2026-10-20 -->
+<!-- @editedBy SherrySherry 2026-10-30 -->
 # 자기소개·호칭 저장 API
 
-[프론트 자기소개 제안](INTRODUCTION_FRONTEND_PROPOSAL.md)에 맞춘 백엔드 계약이다. 자기소개 원문과 호칭 한 가지를 실제 연결 저장소의 `storageId`와 `ownerId`별로 보존한다. 저장소·모델 설정과 독립된 사용자 관계 데이터이며 일반 쩜으로 자동 변환하지 않는다.
+[프론트 자기소개 제안](INTRODUCTION_FRONTEND_PROPOSAL.md)에 맞춘 백엔드 계약이다. 자기소개 원문과 공통 닉네임 한 가지를 실제 연결 저장소의 `storageId`와 `ownerId`별로 보존한다. 소개 원문은 일반 쩜으로 자동 변환하지 않는다. 로컬 서버의 PUT은 확정된 공통 닉네임을 해당 사용자의 자아쩜 이름에도 반영한다.
 
 ## 조회·저장
 
@@ -45,6 +45,25 @@ PUT 예시:
 
 미등록 GET은 HTTP200에 `text:""`, `displayName:"사용자"`, `revision:0`, `updatedAt:null`이다. 조회는 파일을 만들거나 AI를 호출하지 않는다. PUT에는 마지막 조회의 revision을 보내며, 성공하면 1 증가한다. 줄바꿈·CRLF·앞뒤 공백을 포함한 `text`는 보낸 값과 정확히 같게 저장된다.
 
+## 공통 닉네임과 사용자 자아쩜
+
+현재 프론트 `haema-introduction.js`는 `{storageId, text, revision}`을 보내고 서버가 반환한 `introduction.displayName`을 표시한다. 닉네임 변경도 같은 경로를 사용한다. 로컬 서버는 저장소·사용자별 소개 파일에 `userSelfJJum: {jjumId, syncedRevision}` 연결을 보존하고, 이 ID를 닉네임·모델·호스트 변경과 무관하게 재사용한다.
+
+- 최초 연결에서는 시스템이 ID를 예약하고 v4 사용자 자아쩜을 만든다. 이름만 같은 일반 쩜을 본인으로 자동 채택하지 않는다. 과거 수동·AI 생성 자아쩜과의 명시적 연결·통합은 별도 작업이다.
+- 이름이 바뀌면 같은 쩜의 이름·이전 이름 별칭·편집 이력과 Laya 대기 상태만 갱신한다. 기억·사건·쩜선·기존 이력·통계·최초 시각·확장 데이터는 보존한다. 닉네임 저장은 실제 발화가 아니므로 언급 횟수를 늘리지 않는다.
+- 동일 이름 재저장·부분 저장 재시도는 쩜이나 이름 변경 이력을 중복 생성하지 않는다. 완료된 연결 대상이 삭제되었거나 병합·미지원 스키마 상태이면 자동 재생성·변환하지 않고 확인을 요청한다.
+- 공통 닉네임과 호스트별 호칭은 별개다. 이 API는 호스트 쩜이나 호스트별 호칭 정보를 덮어쓰지 않는다. 호스트 전달 지시에서도 별도로 확인된 해당 호스트의 호칭을 구분한다. 호스트별 호칭 저장 API를 새로 제공하는 변경은 아니다.
+
+GET/PUT 응답에는 추가로 아래 상태가 있다. 미연결 GET은 `userSelfJJum: null`이고, GET만으로 연결을 만들거나 동기화하지 않는다. `syncedRevision`은 마지막으로 반영 완료한 소개 revision을 뜻한다.
+
+```ts
+userSelfJJum: { jjumId: string, status: 'synced' | 'pending', syncedRevision: number } | null
+```
+
+소개와 쩜은 서로 다른 파일이다. 소개 저장 후 쩜 반영에 실패하면 HTTP503 `INTRODUCTION_USER_JJUM_PENDING`, `introductionSaved: true`, 저장된 `introduction`, `userSelfJJum: {jjumId, status:'pending'}`을 반환한다. 전체 성공이나 전체 미저장으로 표시하지 않는다. 같은 본문·닉네임·이전 revision의 재시도는 예약한 ID로 미완료 작업을 이어가며 소개 revision을 다시 늘리지 않는다. 이미 동기화가 끝난 오래된 요청은 기존처럼409다.
+
+참여하는 작업은 소유자별 대화 잠금과 소개별 파일 잠금으로 조정한다. 프로세스 종료 뒤 남은 잠금은 자동 삭제하지 않는다. 다른 프로세스의 직접 쩜 파일 수정까지 묶는 전체 트랜잭션은 제공하지 않는다. 코어 직접 사용자는 `saveIntroductionWithUserSelfJJum()`을 사용하며, `FileIntroductionStore.save()`만 호출하면 소개 저장만 수행한다.
+
 본문은 UTF-8 1MiB까지 지원하고 초과하면 명시적으로 거부한다. HTTP JSON 요청 본문 상한은 8MiB다. 잘라내거나 공백을 정리하지 않는다. 빈 문자열·공백뿐인 본문 저장은400이며 삭제 기능을 뜻하지 않는다. 호칭은 앞뒤 공백·줄바꿈·제어문자·고립 서로게이트가 없는 단일 문자열이고 Unicode 코드포인트512개 이하다.
 
 ## 충돌·실패·보존
@@ -57,6 +76,7 @@ PUT 예시:
 | 잘못된 ID·본문·호칭·revision·JSON/UTF-8 | 400 `INTRODUCTION_INVALID` |
 | HTTP 요청 본문 상한 초과 | 413 `INTRODUCTION_TOO_LARGE` |
 | 손상 원본·권한·저장 실패 | 503 `INTRODUCTION_STORAGE`, 원본 보존 |
+| 소개 저장 후 자아쩜 반영 실패 | 503 `INTRODUCTION_USER_JJUM_PENDING`, 저장된 소개·고정 쩜 ID와 미완료 상태 반환 |
 | 지원하지 않는 메서드 | 405 |
 
 서버는 요청 당시 저장소 객체를 고정하고 비동기 호칭 선정 후와 실제 파일 교체 직전에 연결 신원을 다시 확인한다. 사용자 파일별 잠금과 revision 비교 후 임시 파일을 fsync하고 원자 교체한다. 이전 중단 작업의 임시 파일·손상 원본·기존 잠금은 임의 정리하지 않으며, 이번 실패에서 새로 만든 임시 파일은 정리한다. 성공 후 응답이 유실되면 자동 PUT 재시도 대신 GET으로 원문·revision을 확인한다.
