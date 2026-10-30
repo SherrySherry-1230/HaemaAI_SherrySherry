@@ -1,5 +1,6 @@
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
+// @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원
 // ============================================================
 // haema-storage-modal.js
 // 로컬 저장소(쩜통) 연결/생성 모달
@@ -9,6 +10,67 @@ window.HAEMA_STORAGE_MODAL = (function () {
     let consoleRef = null;
     let storageRequestGeneration = 0;
     let pendingInit = null;
+    const modalFocus = new WeakMap();
+
+    function isOpen(overlay) {
+        return !!overlay && overlay.isConnected && overlay.classList.contains("active");
+    }
+
+    function availableControl(element) {
+        return element && element !== document.body && !element.disabled && element.isConnected && element.getClientRects().length &&
+            getComputedStyle(element).visibility !== "hidden";
+    }
+
+    function focusReference(element) {
+        return { element, id: element?.id || "" };
+    }
+
+    function focusInside(overlay) {
+        if (!isOpen(overlay) || document.querySelector("dialog[open]")) return;
+        const preferred = overlay.querySelector("#storagePathInput:not(:disabled), #storageDirectInputBtn, #existingStorageConnectBtn");
+        const target = availableControl(preferred) ? preferred : overlay.querySelector("button:not(:disabled)");
+        if (availableControl(target)) target.focus({ preventScroll: true });
+    }
+
+    function restoreFocus(reference, fallbackOverlay) {
+        if (document.querySelector("dialog[open]")) return;
+        const target = availableControl(reference?.element) ? reference.element :
+            reference?.id ? document.getElementById(reference.id) : null;
+        if (availableControl(target) && (!fallbackOverlay || fallbackOverlay.contains(target))) {
+            target.focus({ preventScroll: true });
+        } else if (isOpen(fallbackOverlay)) {
+            focusInside(fallbackOverlay);
+        } else {
+            const storageButton = document.getElementById("storageBtn");
+            if (availableControl(storageButton)) storageButton.focus({ preventScroll: true });
+        }
+    }
+
+    function bindModalKeyboard(overlay, close) {
+        overlay.addEventListener("keydown", function(event) {
+            const top = [...document.querySelectorAll(".modal-overlay.active")].at(-1);
+            if (!isOpen(overlay) || top !== overlay || event.defaultPrevented || event.isComposing ||
+                event.keyCode === 229 || document.querySelector("dialog[open]")) return;
+            if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                close();
+                return;
+            }
+            if (event.key !== "Tab") return;
+            const controls = [...overlay.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
+                .filter(element => element.tabIndex >= 0 && availableControl(element));
+            const first = controls[0], last = controls.at(-1);
+            if (!first) return;
+            if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus();
+            }
+        });
+    }
 
     // 폴더명 상수
     // 추후 영문명 전환 시 이 부분만 변경
@@ -80,12 +142,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     // 브라우저 폴더 선택은 전체 경로를 제공하지 않으므로 서버 연결 경로를 별도로 받는다.
-    async function handleFolderSelect() {
-        const pathInput = document.getElementById("storagePathInput");
-        const hint = document.getElementById("storageFolderHint");
+    async function handleFolderSelect(overlay) {
+        const pathInput = overlay.querySelector("#storagePathInput");
+        const hint = overlay.querySelector("#storageFolderHint");
         if (typeof window.showDirectoryPicker === "function") {
             try {
                 const selected = await window.showDirectoryPicker();
+                if (!isOpen(overlay)) return;
                 hint.textContent = '선택한 "' + selected.name + '" 폴더의 전체 경로를 입력한 뒤 [생성 + 연결]을 눌러주세요.';
             } catch (error) {
                 if (error.name === "AbortError") return;
@@ -139,19 +202,27 @@ window.HAEMA_STORAGE_MODAL = (function () {
     function openModal() {
         const app = document.getElementById("app");
         if (!app) return;
+        const existing = document.getElementById("storageModalOverlay");
+        if (isOpen(existing)) {
+            focusInside(document.getElementById("existingStorageModalOverlay") || existing);
+            return;
+        }
+        // 닫힘 전환 중 재열어도 같은 ID의 폼이 두 개 남지 않는다.
+        if (existing) existing.remove();
+        const returnFocus = focusReference(document.activeElement);
 
         const modalHtml = [
             '<div class="modal-overlay" id="storageModalOverlay">',
-            '  <div class="modal" id="storageModal">',
+            '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">',
             '    <div class="modal-header">',
-            '      <div class="modal-title">🪣 저장 폴더 연결</div>',
-            '      <button class="modal-close" id="storageModalClose">&times;</button>',
+            '      <div class="modal-title" id="storageModalTitle">🪣 저장 폴더 연결</div>',
+            '      <button class="modal-close" id="storageModalClose" type="button" aria-label="저장 폴더 연결 닫기">&times;</button>',
             '    </div>',
 
             '    <div class="modal-body">',
 
             '      <div class="form-group">',
-            '        <label class="form-label">저장소 경로</label>',
+            '        <label class="form-label" for="storagePathInput">저장소 경로</label>',
             '        <div class="input-group">',
             '          <input type="text" class="form-input" id="storagePathInput" placeholder="/Users/yourname/Documents/해마" />',
             '          <button class="btn" id="storageFolderSelectBtn" type="button">',
@@ -236,6 +307,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
 
         overlay.classList.add("active");
+        modalFocus.set(overlay, { returnFocus });
 
         // 이미 저장된 경로가 있으면 불러오기
         const storedPath = getStoredPath();
@@ -252,9 +324,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
             try {
                 createBtn.disabled = true;
                 createBtn.textContent = "처리 중...";
-                await handleFolderSelect();
+                await handleFolderSelect(overlay);
             } catch (error) {
-                await HAEMA_DIALOG.alert("폴더 선택에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert("폴더 선택에 실패했습니다: " + error.message, { tone: 'error' });
             } finally {
                 createBtn.disabled = false;
                 createBtn.textContent = "생성 + 연결";
@@ -291,16 +363,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
             folderHint.textContent = "캐시가 지워졌습니다. 새로운 저장소를 설정하세요.";
         });
 
-        closeBtn.addEventListener("click", closeModal);
+        closeBtn.addEventListener("click", () => closeModal(overlay));
+        bindModalKeyboard(overlay, () => closeModal(overlay));
 
         overlay.addEventListener("click", function (e) {
             if (e.target === overlay) {
-                closeModal();
+                closeModal(overlay);
             }
         });
 
         createBtn.addEventListener("click", async function() {
-            const pathInput = document.getElementById("storagePathInput");
             const storagePath = pathInput ? pathInput.value.trim() : "";
 
             if (!storagePath) {
@@ -315,17 +387,18 @@ window.HAEMA_STORAGE_MODAL = (function () {
             try {
                 // 직접입력 방식 사용
                 const result = await handleDirectInput(storagePath);
-                if (result.stale) return;
+                if (result.stale || !isOpen(overlay)) return;
 
                 if (result.exists) {
                     // 기존 저장소 존재 - 중첩 모달 표시
-                    showExistingStorageModal(result.path);
+                    showExistingStorageModal(result.path, overlay, createBtn);
                 } else {
                     // 새 저장소 생성 성공
-                    closeModal();
+                    closeModal(overlay);
                 }
 
             } catch (error) {
+                if (!isOpen(overlay)) return;
                 console.error(
                     "HAEMA_STORAGE_MODAL: 저장소 초기화 실패",
                     error
@@ -342,28 +415,41 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 createBtn.textContent = "생성 + 연결";
             }
         });
+        focusInside(overlay);
     }
 
-    function closeModal() {
-        const overlay = document.getElementById("storageModalOverlay");
-
-        if (overlay) {
+    function closeModal(overlay) {
+        if (isOpen(overlay)) {
+            const child = document.getElementById("existingStorageModalOverlay");
+            if (modalFocus.get(child)?.parent === overlay) closeExistingModal(child, false);
             overlay.classList.remove("active");
             setTimeout(() => overlay.remove(), 180);
+            restoreFocus(modalFocus.get(overlay)?.returnFocus);
         }
     }
 
+    function closeExistingModal(overlay, restore = true) {
+        if (!isOpen(overlay)) return;
+        const state = modalFocus.get(overlay);
+        overlay.classList.remove("active");
+        overlay.remove();
+        if (restore) restoreFocus(state?.returnFocus, state?.parent);
+    }
+
     // 기존 저장소 중첩 모달 표시
-    function showExistingStorageModal(existingPath) {
+    function showExistingStorageModal(existingPath, parent, trigger) {
         const app = document.getElementById("app");
-        if (!app) return;
+        if (!app || !isOpen(parent)) return;
+        const existing = document.getElementById("existingStorageModalOverlay");
+        if (isOpen(existing)) { focusInside(existing); return; }
+        const returnFocus = focusReference(trigger || document.activeElement);
 
         const modalHtml = [
             '<div class="modal-overlay active" id="existingStorageModalOverlay">',
-            '  <div class="modal" id="existingStorageModal">',
+            '  <div class="modal" id="existingStorageModal" role="dialog" aria-modal="true" aria-labelledby="existingStorageModalTitle">',
             '    <div class="modal-header">',
-            '      <div class="modal-title">⚠️ 기존 저장소 발견</div>',
-            '      <button class="modal-close" id="existingStorageModalClose">&times;</button>',
+            '      <div class="modal-title" id="existingStorageModalTitle">⚠️ 기존 저장소 발견</div>',
+            '      <button class="modal-close" id="existingStorageModalClose" type="button" aria-label="기존 저장소 확인 닫기">&times;</button>',
             '    </div>',
             '    <div class="modal-body">',
             '      <div class="haema-modal-character"><img src="Resources/haema-emoji/haema-default.svg" width="104" height="104" alt="" aria-hidden="true"></div>',
@@ -389,14 +475,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const closeBtn = document.getElementById("existingStorageModalClose");
         const connectBtn = document.getElementById("existingStorageConnectBtn");
         const createBtn = document.getElementById("existingStorageCreateBtn");
+        modalFocus.set(overlay, { returnFocus, parent });
+        bindModalKeyboard(overlay, () => closeExistingModal(overlay));
 
         closeBtn.addEventListener("click", function() {
-            overlay.remove();
+            closeExistingModal(overlay);
         });
 
         overlay.addEventListener("click", function (e) {
             if (e.target === overlay) {
-                overlay.remove();
+                closeExistingModal(overlay);
             }
         });
 
@@ -404,11 +492,11 @@ window.HAEMA_STORAGE_MODAL = (function () {
         connectBtn.addEventListener("click", async function() {
             try {
                 const result = await handleDirectInput(existingPath, false, true);
-                if (result.stale) return;
-                overlay.remove();
-                closeModal();
+                if (result.stale || !isOpen(overlay) || !isOpen(parent)) return;
+                closeExistingModal(overlay, false);
+                closeModal(parent);
             } catch (error) {
-                await HAEMA_DIALOG.alert("기존 저장소 연결에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert("기존 저장소 연결에 실패했습니다: " + error.message, { tone: 'error' });
             }
         });
 
@@ -416,13 +504,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
         createBtn.addEventListener("click", async function() {
             try {
                 const result = await handleDirectInput(existingPath, true);
-                if (result.stale) return;
-                overlay.remove();
-                closeModal();
+                if (result.stale || !isOpen(overlay) || !isOpen(parent)) return;
+                closeExistingModal(overlay, false);
+                closeModal(parent);
             } catch (error) {
-                await HAEMA_DIALOG.alert("새 저장소 생성에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert("새 저장소 생성에 실패했습니다: " + error.message, { tone: 'error' });
             }
         });
+        focusInside(overlay);
     }
 
     // API 키 이관 함수

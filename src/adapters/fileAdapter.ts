@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-23
+// @editedBy SherrySherry 2026-10-30
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
+import { validateDisplayName } from '../introduction.ts';
 import { invalidateLayaReview, isLayaTag, layaContentSnapshot, pendingLayaTag } from '../layaReview.ts';
 import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
 
@@ -42,6 +43,13 @@ export interface FileAdapterOptions {
 export interface LoadError {
   file: string;
   reason: string;
+}
+
+export class UnsupportedJJumSchemaError extends Error {
+  constructor(jjumId: string) {
+    super(`Unsupported stored schema version for JJum ${jjumId}: explicit reconciliation is required`);
+    this.name = 'UnsupportedJJumSchemaError';
+  }
 }
 
 interface OwnerIndex {
@@ -302,6 +310,7 @@ export class FileAdapter implements StorageAdapter {
     error?: string;
     invalidMentionHistory?: { ownerId: string; jjumId: string };
     invalidLayaReview?: { ownerId: string; jjumId: string };
+    unsupportedSchemaVersion?: { ownerId: string; jjumId: string };
   } {
     let raw: string;
     try {
@@ -325,6 +334,9 @@ export class FileAdapter implements StorageAdapter {
         } : {}),
         ...(result.invalidLayaReview ? {
           invalidLayaReview: { ownerId: identity.ownerId.trim(), jjumId: identity.jjumId.trim() },
+        } : {}),
+        ...(result.unsupportedSchemaVersion ? {
+          unsupportedSchemaVersion: { ownerId: identity.ownerId.trim(), jjumId: identity.jjumId.trim() },
         } : {}),
       };
     }
@@ -366,7 +378,7 @@ export class FileAdapter implements StorageAdapter {
     }
     for (const entry of entries) {
       if (!entry.endsWith('.jj') || entry.startsWith('_')) continue;
-      const { jjum, error, invalidMentionHistory, invalidLayaReview } = this.readJJumFile(path.join(dir, entry));
+      const { jjum, error, invalidMentionHistory, invalidLayaReview, unsupportedSchemaVersion } = this.readJJumFile(path.join(dir, entry));
       if (error) {
         this.loadErrors.push({ file: path.join(dir, entry), reason: error });
         // 중복 방지 이력을 제외한 채 새 쩜을 만드는 것을 막는다. 다른 소유자의 처리는 계속한다.
@@ -375,6 +387,9 @@ export class FileAdapter implements StorageAdapter {
         }
         if (invalidLayaReview?.ownerId === ownerId) {
           throw new Error(`Stored Laya review is invalid for JJum ${invalidLayaReview.jjumId}: ${error}`);
+        }
+        if (unsupportedSchemaVersion?.ownerId === ownerId) {
+          throw new UnsupportedJJumSchemaError(unsupportedSchemaVersion.jjumId);
         }
         continue;
       }
@@ -509,6 +524,73 @@ export class FileAdapter implements StorageAdapter {
     const existing = this.getJJumSync(ownerId, jjumId);
     if (!existing) throw new Error(`patchJJum: 쩜 없음 — ${ownerId}/${jjumId}`);
     this.putJJumSync(ownerId, { ...existing, ...partial, jjumId: existing.jjumId, ownerId });
+  }
+
+  /** 최신 원문을 다시 읽고 이름·별칭·수정 기록만 바꾼다. 호출부가 소유자별 잠금을 조정한다. */
+  async renameJJumPreservingContent(
+    ownerId: string,
+    jjumId: string,
+    displayName: string,
+    options?: { introductionRevision?: number },
+  ): Promise<JJum> {
+    validateDisplayName(displayName);
+    const revision = options?.introductionRevision;
+    if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) {
+      throw new Error('Nickname synchronization requires a positive introduction revision');
+    }
+    // 이 구간에는 await가 없다. 같은 프로세스의 다른 수정이 읽기와 저장 사이에 끼어들지 않는다.
+    const filename = this.jjumPath(ownerId, jjumId);
+    if (!filename) throw new Error('Nickname synchronization target does not exist');
+    const raw: unknown = JSON.parse(fs.readFileSync(filename, 'utf-8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error('Nickname synchronization requires a valid stored JJum');
+    }
+    const original = raw as Record<string, unknown>;
+    const checked = validateJJum(original);
+    if (original.ownerId !== ownerId || original.jjumId !== jjumId || original.schemaVersion !== 4
+      || !checked.ok || !checked.jjum || checked.errors.length > 0 || checked.jjum.status === 'merged') {
+      throw new Error('Nickname synchronization target has an incompatible identity, version, or contents');
+    }
+    // 이름 변경 과정에서 잘못된 기존 배열을 정규화하거나 이력을 버리지 않는다.
+    if (original.aliases !== undefined && (!Array.isArray(original.aliases)
+      || original.aliases.some(value => typeof value !== 'string' || !value.trim()))
+      || original.editHistory !== undefined && (!Array.isArray(original.editHistory)
+        || original.editHistory.some(value => !value || typeof value !== 'object' || Array.isArray(value)
+          || typeof value.action !== 'string' || !value.action.trim()
+          || typeof value.date !== 'number' || !Number.isFinite(value.date)
+          || !['user', 'ai', 'batch'].includes(value.by)))) {
+      throw new Error('Nickname synchronization cannot repair malformed aliases or edit history');
+    }
+    if (original.jjumName === displayName) {
+      // 앞선 파일 저장 후 인덱스 저장만 실패했다면 조회가 인덱스를 복구한다. 이력은 추가하지 않는다.
+      return this.getJJumSync(ownerId, jjumId)!;
+    }
+    const now = Date.now();
+    const seen = new Set([normName(displayName)]);
+    const aliases = [...(original.aliases as string[] | undefined ?? []), original.jjumName as string]
+      .filter(value => {
+        const key = normName(value);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    const { verdict: _oldVerdict, ...tagExtensions } = checked.jjum.layaTag ?? {};
+    const renamed = {
+      ...original,
+      jjumName: displayName,
+      aliases,
+      editHistory: [...(original.editHistory as JJum['editHistory'] | undefined ?? []), {
+        date: now,
+        action: 'user_display_name_changed',
+        field: 'jjumName',
+        by: 'user' as const,
+        reviewRequested: true,
+        ...(revision !== undefined ? { introductionRevision: revision } : {}),
+      }],
+      layaTag: { ...tagExtensions, ...pendingLayaTag(now) },
+    } as unknown as JJum;
+    this.putJJumSync(ownerId, renamed);
+    return renamed;
   }
 
   /** 같은 프로세스에서는 다시 읽기·비교·태그 저장 사이에 다른 작업을 실행하지 않는다. */

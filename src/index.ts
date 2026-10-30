@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-20
+// @editedBy SherrySherry 2026-10-30
 /** @haema/core 공개 진입점 */
 
 export * from './types/jjum.ts';
@@ -27,7 +27,7 @@ export {
   type MentionCoefficients,
 } from './mentionScore.ts';
 export type { JJumQuery, JJumSortKey, StorageAdapter } from './adapters/storageAdapter.ts';
-export { FileAdapter, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
+export { FileAdapter, UnsupportedJJumSchemaError, type FileAdapterOptions, type LoadError } from './adapters/fileAdapter.ts';
 export type {
   AIAdapter,
   AIAdapterConfig,
@@ -72,6 +72,17 @@ export {
   type IntroductionDisplayNameSelection,
   type ResolvedIntroductionDisplayName,
 } from './introductionName.ts';
+export * from './userSelfJJum.ts';
+export * from './types/jjumV5.ts';
+export * from './types/validateJJumV5.ts';
+export * from './calculationProfiles.ts';
+export * from './adapters/localCalculationProfileProvider.ts';
+export * from './adapters/fileJJumV5Store.ts';
+export * from './v5Calculations.ts';
+export * from './v5Memory.ts';
+export * from './v5Seons.ts';
+export * from './profileRecalculation.ts';
+export * from './adapters/fileProfileRecalculationJournal.ts';
 export {
   prepareConversationRequest,
   type PreparedConversationRequest,

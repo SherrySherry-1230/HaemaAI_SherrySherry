@@ -1,0 +1,114 @@
+{
+  "editedBy": "YAONG1230",
+  "date": "2026-10-26",
+  "fileKey": "a3PU74yLzhQDHLN2WWzWG2",
+  "sourceNodeId": "237:912",
+  "connectedKeySource": "39:318",
+  "sourceGlowNodes": {
+    "storage": "39:306",
+    "key": "39:308"
+  },
+  "workingFrameId": "241:996",
+  "componentSetId": "241:1022",
+  "sourcePreserved": true,
+  "typography": {
+    "button": {
+      "family": "Jua",
+      "weight": 400,
+      "size": 13,
+      "lineHeight": 18
+    },
+    "mediumTitleProposal": {
+      "family": "Gowun Dodum",
+      "weight": 400,
+      "size": 20,
+      "lineHeight": 28
+    },
+    "smallBodyProposal": {
+      "family": "Noto Sans KR",
+      "weight": 400,
+      "size": 13,
+      "lineHeight": 21
+    }
+  },
+  "layout": {
+    "buttonHeight": 34,
+    "mobileHitHeight": 44,
+    "storageWidth": 101,
+    "keyWidth": [
+      101,
+      147
+    ],
+    "introductionWidth": [
+      84,
+      240
+    ],
+    "introductionPaddingInline": 14,
+    "backgroundHeight": 24,
+    "hoverTransitionMs": 140,
+    "connectedGlow": "Original outline + 2px blur + 3px outer shadow, no blink",
+    "longText": "CSS ellipsis; full title and accessible label preserved"
+  },
+  "assets": [
+    {
+      "file": "introduction-default.svg",
+      "figmaRef": "imgVector",
+      "nodeId": "241:1000"
+    },
+    {
+      "file": "introduction-hover-glow.svg",
+      "figmaRef": "imgGroup6",
+      "nodeId": "249:985"
+    },
+    {
+      "file": "introduction-hover.svg",
+      "figmaRef": "imgGroup7",
+      "nodeId": "249:986"
+    },
+    {
+      "file": "storage-default.svg",
+      "figmaRef": "imgVector1",
+      "nodeId": "241:1008"
+    },
+    {
+      "file": "storage-hover-glow.svg",
+      "figmaRef": "imgGroup8",
+      "nodeId": "249:988"
+    },
+    {
+      "file": "storage-hover.svg",
+      "figmaRef": "imgGroup9",
+      "nodeId": "249:989"
+    },
+    {
+      "file": "key-default.svg",
+      "figmaRef": "imgVector2",
+      "nodeId": "241:1016"
+    },
+    {
+      "file": "key-hover.svg",
+      "figmaRef": "imgVector3",
+      "nodeId": "241:1019"
+    },
+    {
+      "file": "key-hover-glow.svg",
+      "figmaRef": "img",
+      "nodeId": "241:1020"
+    },
+    {
+      "file": "introduction-connected-glow.svg",
+      "figmaRef": "img1",
+      "nodeId": "249:993"
+    },
+    {
+      "file": "storage-connected-glow.svg",
+      "figmaRef": "img2",
+      "nodeId": "249:997"
+    },
+    {
+      "file": "key-connected-glow.svg",
+      "figmaRef": "img3",
+      "nodeId": "249:1001"
+    }
+  ]
+}
