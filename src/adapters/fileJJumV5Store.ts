@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { JJumV5, TypeRequirementCatalogV5 } from '../types/jjumV5.ts';
-import { validateJJumV5, type JJumV5Issue } from '../types/validateJJumV5.ts';
+import { preserveOmittedJJumV5Optionals, validateJJumV5, type JJumV5Issue } from '../types/validateJJumV5.ts';
 import { FileAdapter } from './fileAdapter.ts';
 
 export interface FileJJumV5Record { jjum: JJumV5; etag: string }
@@ -251,20 +251,28 @@ export class FileJJumV5Store {
     return path.join(this.bucket, `${safeStem}-${hash(JSON.stringify([jjum.ownerId, jjum.jjumId]))}.jj`);
   }
 
-  async save(jjum: JJumV5, options: SaveJJumV5Options = {}): Promise<FileJJumV5Record> {
+  private validateForSave(jjum: unknown): JJumV5 {
     const validation = validateJJumV5(jjum, { typeRequirements: this.typeRequirements });
     if (!validation.ok || !validation.jjum) {
       const pending = validation.validStructure && validation.policyPending.length > 0;
       throw new FileJJumV5StoreError(pending ? 'policy_pending' : 'invalid',
         pending ? 'Type requirements are not ready for persistence' : 'The v5 JJum failed storage validation', validation.issues);
     }
-    const snapshot = validation.jjum;
-    identity(snapshot.ownerId); identity(snapshot.jjumId);
+    return validation.jjum;
+  }
+
+  async save(jjum: JJumV5, options: SaveJJumV5Options = {}): Promise<FileJJumV5Record> {
+    if (!object(jjum) || jjum.schemaVersion !== 5) {
+      throw new FileJJumV5StoreError('invalid', 'This save requires an explicit v5 record');
+    }
+    identity(jjum.ownerId); identity(jjum.jjumId);
     if (options.expectedEtag !== undefined && !/^[a-f0-9]{64}$/u.test(options.expectedEtag)
       || options.createOnly !== undefined && typeof options.createOnly !== 'boolean'
       || options.createOnly === true && options.expectedEtag !== undefined) {
       throw new FileJJumV5StoreError('invalid', 'Choose createOnly or a valid expectedEtag for an update');
     }
+    // 신규 자료는 디렉터리를 만들기 전에 검사한다. 갱신은 CAS가 확인된 원본을 보존한 뒤 검사한다.
+    const created = options.createOnly === true ? this.validateForSave(jjum) : undefined;
     let lock: string | undefined;
     let temporary: string | undefined;
     let committed = false;
@@ -272,21 +280,24 @@ export class FileJJumV5Store {
       this.ensureBucket(true);
       const locks = path.join(this.bucket, '.v5-write-locks');
       this.directory(locks, true);
-      const candidate = path.join(locks, `${hash(JSON.stringify([snapshot.ownerId, snapshot.jjumId]))}.lock`);
+      const candidate = path.join(locks, `${hash(JSON.stringify([jjum.ownerId, jjum.jjumId]))}.lock`);
       try { fs.mkdirSync(candidate, { mode: 0o700 }); lock = candidate; }
       catch (cause) {
         if (codeOf(cause) === 'EEXIST') throw new FileJJumV5StoreError('locked', 'Another writer or an unresolved lock is present');
         throw cause;
       }
-      const existing = this.scan(snapshot.ownerId).find(item => item.raw.jjumId === snapshot.jjumId);
+      const existing = this.scan(jjum.ownerId).find(item => item.raw.jjumId === jjum.jjumId);
+      let snapshot: JJumV5;
       if (existing) {
         const previous = this.checked(existing).jjum;
         if (options.createOnly || !options.expectedEtag || options.expectedEtag !== existing.etag) {
           throw new FileJJumV5StoreError('conflict', 'The existing v5 JJum requires its current expectedEtag');
         }
+        snapshot = this.validateForSave(preserveOmittedJJumV5Optionals(jjum, previous));
         this.preserveExisting(previous, snapshot);
-      } else if (options.createOnly !== true) {
-        throw new FileJJumV5StoreError('conflict', 'Missing records require explicit createOnly');
+      } else {
+        if (!created) throw new FileJJumV5StoreError('conflict', 'Missing records require explicit createOnly');
+        snapshot = created;
       }
       if (!existing) this.checkHistoryChain(snapshot, 'invalid');
       const filename = existing?.filename ?? this.newFilename(snapshot, options);

@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { pendingLayaTag, isLayaTag } from './layaReview.ts';
 import type { JJumV5, TypeRequirementCatalogV5 } from './types/jjumV5.ts';
 import type { LayaVerdict } from './types/jjum.ts';
-import { normalizeJJumV5Optionals, validateJJumV5, type JJumV5ValidationResult } from './types/validateJJumV5.ts';
+import { normalizeJJumV5Optionals, preserveOmittedJJumV5Optionals, validateJJumV5, type JJumV5ValidationResult } from './types/validateJJumV5.ts';
 import type { FileJJumV5Record, SaveJJumV5Options } from './adapters/fileJJumV5Store.ts';
 
 export interface JJumV5Repository {
@@ -68,10 +68,17 @@ export async function saveJJumV5Candidate(options: {
   retryReview?: boolean;
 }): Promise<{ status: 'needs_information'; preflight: JJumV5ValidationResult }
   | { status: 'saved'; record: FileJJumV5Record; review: 'pending' | 'reviewed' | 'failed' | 'stale' }> {
-  const preflight = prepareJJumV5(options.input, options.typeRequirements);
+  const input = normalizeJJumV5Optionals(options.input);
+  const scope = input && typeof input === 'object' && !Array.isArray(input)
+    ? input as Record<string, unknown> : undefined;
+  const previous = !options.save.createOnly && scope?.schemaVersion === 5
+    && typeof scope.ownerId === 'string' && scope.ownerId.trim()
+    && typeof scope.jjumId === 'string' && scope.jjumId.trim()
+    ? await options.repository.read(scope.ownerId, scope.jjumId) : null;
+  // 기존 선택값을 포함한 후보로 필수 정책과 Laya의 내용 변경 여부를 판단한다.
+  const preflight = validateJJumV5(previous ? preserveOmittedJJumV5Optionals(input, previous.jjum) : input,
+    { typeRequirements: options.typeRequirements });
   if (!preflight.ok || !preflight.jjum) return { status: 'needs_information', preflight };
-  const previous = options.save.createOnly ? null
-    : await options.repository.read(preflight.jjum.ownerId, preflight.jjum.jjumId);
   const contentChanged = !previous || !isDeepStrictEqual(layaContent(previous.jjum), layaContent(preflight.jjum));
   const reviewRequested = contentChanged || (options.retryReview === true
     && previous?.jjum.layaTag.state !== 'reviewed');
