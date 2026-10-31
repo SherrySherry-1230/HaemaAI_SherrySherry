@@ -252,10 +252,15 @@ export class LayaRuntime implements LayaHttpBackend {
     const ids = body.sourceEventIds as string[];
     const sources = await this.hostEvents.getSourceEvents(this.conversationScope(conversationId), ids);
     if (!this.sourcesComplete(sources, ids)) throw new TypeError('Missing source events');
+    const worker = this.engine.getStatus();
+    if (worker.state !== 'ready' || !worker.modelRevision) {
+      // 미확정 식별자를 영구 저장하면 준비 후에도 같은 작업을 실행할 수 없다.
+      throw Object.assign(new Error('Reflection model is not ready'), { code: 'unavailable' });
+    }
     // responseId는 같은 실제 발화의 별칭이다. 이후 근거 참조와 멱등 키는 발화 ID로 통일한다.
     const sourceEventIds = [...new Set(sources.map(source => source.utteranceId))];
     return this.reflectionStore.enqueue(this.scope, { jobId: str(body, 'jobId'), conversationId, kind, sourceEventIds,
-      sourceDigest: sourcesDigest(sources), policyVersion: POLICY, modelRevision: this.engine.getStatus().modelRevision ?? 'unavailable',
+      sourceDigest: sourcesDigest(sources), policyVersion: POLICY, modelRevision: worker.modelRevision,
       budget: { maxEpisodes: 1, maxRuntimeMs: 15_000, maxQuestions: 4, maxProposalRevisions: 1 } });
   }
   async runReflectionOpportunity(body: LayaHttpBody, signal?: AbortSignal) {
