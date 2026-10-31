@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-30
+// @editedBy SherrySherry 2026-10-31
 /** v5 전용 파일 저장. 기존 v4 원문을 변환하거나 덮어쓰지 않는다. */
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
@@ -7,8 +7,12 @@ import { isDeepStrictEqual } from 'node:util';
 import type { JJumV5, TypeRequirementCatalogV5 } from '../types/jjumV5.ts';
 import { preserveOmittedJJumV5Optionals, validateJJumV5, type JJumV5Issue } from '../types/validateJJumV5.ts';
 import { FileAdapter } from './fileAdapter.ts';
+import { pendingLayaTag } from '../layaReview.ts';
+import { v5ReviewContentDigest } from '../v5ReviewState.ts';
 
-export interface FileJJumV5Record { jjum: JJumV5; etag: string }
+/** reviewToken은 별도 작업 자료의 식별자이며 .jj 본문 필드가 아니다. */
+export interface FileJJumV5Record { jjum: JJumV5; etag: string; reviewToken?: string }
+export interface V5ReviewLease { reviewToken: string; holderId: string; expiresAt: number }
 export interface FileJJumV5StoreOptions {
   memoryRoot: string;
   typeRequirements?: TypeRequirementCatalogV5;
@@ -18,6 +22,10 @@ export interface SaveJJumV5Options {
   expectedEtag?: string;
   createOnly?: boolean;
   maskedName?: string;
+  /** 새 검토의 실제 입력 근거 지문. 본문과 함께 별도 작업 자료에 기록한다. */
+  reviewEvidenceDigest?: string;
+  expectedReviewToken?: string;
+  reviewLease?: V5ReviewLease;
 }
 export class FileJJumV5StoreError extends Error {
   readonly code: 'invalid' | 'policy_pending' | 'conflict' | 'locked' | 'corrupt' | 'unsupported_version' | 'unavailable';
@@ -31,7 +39,12 @@ export class FileJJumV5StoreError extends Error {
 }
 
 interface DiskRecord { filename: string; raw: Record<string, unknown>; etag: string }
+interface ReviewState {
+  ownerId: string; jjumId: string; token: string; contentDigest: string;
+  evidenceDigest?: string; lease?: { holderId: string; expiresAt: number };
+}
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+const token = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9-]{36}$/u.test(value);
 const codeOf = (value: unknown) => value && typeof value === 'object' && 'code' in value ? String(value.code) : undefined;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const exists = (filename: string): boolean => {
@@ -146,7 +159,90 @@ export class FileJJumV5Store {
     if (!result.ok || !result.jjum) {
       throw new FileJJumV5StoreError('corrupt', 'The stored v5 JJum failed structural validation', result.issues);
     }
-    return { jjum: result.jjum, etag: record.etag };
+    const state = this.readReviewState(result.jjum.ownerId, result.jjum.jjumId);
+    return { jjum: result.jjum, etag: record.etag, ...(state ? { reviewToken: state.token } : {}) };
+  }
+
+  private reviewStateFile(ownerId: string, jjumId: string): string {
+    return path.join(this.bucket, '.v5-review-state', `${hash(JSON.stringify([ownerId, jjumId]))}.json`);
+  }
+
+  private readReviewState(ownerId: string, jjumId: string): ReviewState | undefined {
+    const directory = path.join(this.bucket, '.v5-review-state');
+    if (!this.directory(directory, false)) return undefined;
+    const filename = this.reviewStateFile(ownerId, jjumId);
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+      if (!fs.fstatSync(fd).isFile()) throw new Error('Not a regular review state');
+      const value: unknown = JSON.parse(fs.readFileSync(fd, 'utf8'));
+      if (!object(value) || value.ownerId !== ownerId || value.jjumId !== jjumId || !token(value.token)
+        || typeof value.contentDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(value.contentDigest)
+        || (value.evidenceDigest !== undefined && (typeof value.evidenceDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(value.evidenceDigest)))
+        || (value.lease !== undefined && (!object(value.lease) || !token(value.lease.holderId)
+          || !Number.isSafeInteger(value.lease.expiresAt) || (value.lease.expiresAt as number) < 0))) {
+        throw new Error('Invalid review state');
+      }
+      return value as unknown as ReviewState;
+    } catch (cause) {
+      if (codeOf(cause) === 'ENOENT') return undefined;
+      throw new FileJJumV5StoreError('corrupt', 'The review work state cannot be read safely', [], { cause });
+    } finally { if (fd !== undefined) fs.closeSync(fd); }
+  }
+
+  /** .jj 쓰기 전에 무효화한다. 뒤의 저장이 실패해도 옛 검토를 적용하지 않는 보수적 순서다. */
+  private writeReviewState(state: ReviewState): void {
+    this.directory(path.join(this.bucket, '.v5-review-state'), true);
+    const destination = this.reviewStateFile(state.ownerId, state.jjumId);
+    const temporary = `${destination}.${randomUUID()}.tmp`;
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(temporary, 'wx', 0o600);
+      fs.writeFileSync(fd, `${JSON.stringify(state)}\n`, 'utf8'); fs.fsyncSync(fd);
+      fs.closeSync(fd); fd = undefined;
+      fs.renameSync(temporary, destination);
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+      if (exists(temporary)) fs.unlinkSync(temporary);
+    }
+  }
+
+  private reviewStateAction<T>(ownerId: string, jjumId: string, action: () => T): T | undefined {
+    identity(ownerId); identity(jjumId);
+    if (!this.ensureBucket(false)) return undefined;
+    const directory = path.join(this.bucket, '.v5-write-locks');
+    this.directory(directory, true);
+    const lock = path.join(directory, `${hash(JSON.stringify([ownerId, jjumId]))}.lock`);
+    try { fs.mkdirSync(lock, { mode: 0o700 }); }
+    catch (cause) { if (codeOf(cause) === 'EEXIST') return undefined; throw cause; }
+    try { return action(); } finally { fs.rmdirSync(lock); }
+  }
+
+  /** 같은 저장소의 실행기들이 공유하는 유한한 검토 lease. 완료에도 토큰을 다시 확인한다. */
+  async claimReview(ownerId: string, jjumId: string, reviewToken: string, leaseMs = 120_000): Promise<V5ReviewLease | null> {
+    if (!token(reviewToken) || !Number.isSafeInteger(leaseMs) || leaseMs < 1 || leaseMs > 600_000) {
+      throw new FileJJumV5StoreError('invalid', 'Invalid review lease request');
+    }
+    return this.reviewStateAction(ownerId, jjumId, () => {
+      const state = this.readReviewState(ownerId, jjumId);
+      const record = this.scan(ownerId).find(item => item.raw.jjumId === jjumId);
+      if (!state || state.token !== reviewToken || !record || record.raw.schemaVersion !== 5
+        || this.checked(record).jjum.layaTag.state !== 'pending'
+        || state.contentDigest !== v5ReviewContentDigest(this.checked(record).jjum)
+        || (state.lease && state.lease.expiresAt > Date.now())) return null;
+      const lease = { reviewToken, holderId: randomUUID(), expiresAt: Date.now() + leaseMs };
+      this.writeReviewState({ ...state, lease: { holderId: lease.holderId, expiresAt: lease.expiresAt } });
+      return lease;
+    }) ?? null;
+  }
+
+  async releaseReview(ownerId: string, jjumId: string, lease: V5ReviewLease): Promise<void> {
+    this.reviewStateAction(ownerId, jjumId, () => {
+      const state = this.readReviewState(ownerId, jjumId);
+      if (state?.token !== lease.reviewToken || state.lease?.holderId !== lease.holderId) return;
+      const { lease: ignored, ...released } = state;
+      this.writeReviewState(released);
+    });
   }
 
   async read(ownerId: string, jjumId: string): Promise<FileJJumV5Record | null> {
@@ -268,7 +364,9 @@ export class FileJJumV5Store {
     identity(jjum.ownerId); identity(jjum.jjumId);
     if (options.expectedEtag !== undefined && !/^[a-f0-9]{64}$/u.test(options.expectedEtag)
       || options.createOnly !== undefined && typeof options.createOnly !== 'boolean'
-      || options.createOnly === true && options.expectedEtag !== undefined) {
+      || options.createOnly === true && options.expectedEtag !== undefined
+      || options.expectedReviewToken !== undefined && !token(options.expectedReviewToken)
+      || options.reviewEvidenceDigest !== undefined && !/^[a-f0-9]{64}$/u.test(options.reviewEvidenceDigest)) {
       throw new FileJJumV5StoreError('invalid', 'Choose createOnly or a valid expectedEtag for an update');
     }
     // 신규 자료는 디렉터리를 만들기 전에 검사한다. 갱신은 CAS가 확인된 원본을 보존한 뒤 검사한다.
@@ -287,9 +385,11 @@ export class FileJJumV5Store {
         throw cause;
       }
       const existing = this.scan(jjum.ownerId).find(item => item.raw.jjumId === jjum.jjumId);
+      let workState = this.readReviewState(jjum.ownerId, jjum.jjumId);
       let snapshot: JJumV5;
+      let previous: JJumV5 | undefined;
       if (existing) {
-        const previous = this.checked(existing).jjum;
+        previous = this.checked(existing).jjum;
         if (options.createOnly || !options.expectedEtag || options.expectedEtag !== existing.etag) {
           throw new FileJJumV5StoreError('conflict', 'The existing v5 JJum requires its current expectedEtag');
         }
@@ -298,6 +398,27 @@ export class FileJJumV5Store {
       } else {
         if (!created) throw new FileJJumV5StoreError('conflict', 'Missing records require explicit createOnly');
         snapshot = created;
+      }
+      if (options.expectedReviewToken !== undefined && workState?.token !== options.expectedReviewToken) {
+        throw new FileJJumV5StoreError('conflict', 'The review request is no longer current');
+      }
+      if (options.reviewLease && (workState?.token !== options.reviewLease.reviewToken
+        || workState.lease?.holderId !== options.reviewLease.holderId
+        || workState.lease.expiresAt <= Date.now())) {
+        throw new FileJJumV5StoreError('conflict', 'The review lease is no longer current');
+      }
+      const contentDigest = v5ReviewContentDigest(snapshot);
+      const changed = !!previous && v5ReviewContentDigest(previous) !== contentDigest;
+      const freshEvidence = options.reviewEvidenceDigest !== undefined
+        && (workState?.evidenceDigest !== options.reviewEvidenceDigest || previous?.layaTag.state !== 'pending');
+      if (changed || freshEvidence || (!previous && snapshot.layaTag.state !== 'pending')) {
+        const now = Math.max(Date.now(), previous ? Date.parse(previous.layaTag.timestamp) + 1 : 0);
+        snapshot = { ...snapshot, layaTag: pendingLayaTag(now, '내용 또는 검토 근거가 갱신되어 검토를 기다립니다.') };
+      }
+      if (!previous || !workState || changed || freshEvidence || workState.contentDigest !== contentDigest) {
+        workState = { ownerId: snapshot.ownerId, jjumId: snapshot.jjumId, token: randomUUID(), contentDigest,
+          ...(options.reviewEvidenceDigest !== undefined ? { evidenceDigest: options.reviewEvidenceDigest } : {}) };
+        this.writeReviewState(workState);
       }
       if (!existing) this.checkHistoryChain(snapshot, 'invalid');
       const filename = existing?.filename ?? this.newFilename(snapshot, options);
@@ -319,7 +440,7 @@ export class FileJJumV5Store {
       fs.renameSync(temporary, filename);
       temporary = undefined;
       committed = true;
-      return { jjum: snapshot, etag: hash(bytes) };
+      return { jjum: snapshot, etag: hash(bytes), reviewToken: workState.token };
     } catch (cause) {
       if (cause instanceof FileJJumV5StoreError) throw cause;
       throw new FileJJumV5StoreError('unavailable', 'The v5 JJum could not be saved', [], { cause });

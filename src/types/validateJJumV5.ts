@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-30
+// @editedBy SherrySherry 2026-10-31
 /** 저장 전 검사. 누락값·현재 시각·점수·타입 정책을 임의로 보충하지 않는다. */
 import { isDeepStrictEqual } from 'node:util';
 import { isLayaTag, isLayaReviewText } from '../layaReview.ts';
@@ -158,8 +158,8 @@ export function validateJJumV5(input: unknown, options: JJumV5ValidationOptions 
   if (d.schemaVersion !== 5) issue('schemaVersion', 'v5 자료만 이 검증 경로에 넣을 수 있습니다.');
   if (d.type !== undefined) stringArray(d.type, 'type');
   if (!finite(d.jjumPower) || d.jjumPower < 1) issue('jjumPower', '소수 원값은 유한하며 1 이상이어야 합니다.');
-  if (!Number.isInteger(d.mentionSuitability) || (d.mentionSuitability as number) < -10 || (d.mentionSuitability as number) > 10) {
-    issue('mentionSuitability', '평가된 정수 -10~10이 필요합니다. 미평가를 0으로 보충하지 않습니다.');
+  if (!Number.isInteger(d.mentionSuitability) || (d.mentionSuitability as number) < -13 || (d.mentionSuitability as number) > 13) {
+    issue('mentionSuitability', '평가된 정수 -13~13이 필요합니다. 미평가를 0으로 보충하지 않습니다.');
   }
   for (const [name, minimum] of [['mentionCount', 1], ['recallCount', 0]] as const) {
     if (!Number.isSafeInteger(d[name]) || (d[name] as number) < minimum) issue(name, `${minimum} 이상의 안전한 정수가 필요합니다.`);
@@ -326,7 +326,7 @@ export function validateJJumV5(input: unknown, options: JJumV5ValidationOptions 
       required(item, ['evidenceId', 'timestamp', 'previousValue', 'value', 'policyVersion', 'reason'], p);
       keys(item, ['evidenceId', 'timestamp', 'previousValue', 'value', 'policyVersion', 'reason'], p);
       stringFields(item, ['evidenceId', 'policyVersion', 'reason'], p); timeFields(item, ['timestamp'], p);
-      for (const key of ['previousValue', 'value']) if (!Number.isInteger(item[key]) || (item[key] as number) < -10 || (item[key] as number) > 10) issue(`${p}${key}`, '평가된 -10~10 정수가 필요합니다.');
+      for (const key of ['previousValue', 'value']) if (!Number.isInteger(item[key]) || (item[key] as number) < -13 || (item[key] as number) > 13) issue(`${p}${key}`, '평가된 -13~13 정수가 필요합니다.');
       if (seen.has(item.evidenceId)) issue(`${p}evidenceId`, '동일 매너 근거가 중복되었습니다.');
       seen.add(item.evidenceId);
     });

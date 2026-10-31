@@ -1,7 +1,6 @@
-// @editedBy SherrySherry 2026-10-30
+// @editedBy SherrySherry 2026-10-31
 /** 확정된 계산 결과와 원래 근거를 보존한다. 미정 평가식을 기본값으로 만들지 않는다. */
 import type { CalculationProfile, MentionFormula } from './calculationProfiles.ts';
-import { pendingLayaTag } from './layaReview.ts';
 import type {
   JJumV5, PowerCalculationV5, PowerComponentsV5, PowerEvidenceV5,
 } from './types/jjumV5.ts';
@@ -38,8 +37,8 @@ function power(value: number): void {
   if (!Number.isFinite(value) || value < 1) throw new V5CalculationError('invalid', 'Stored power must be finite and at least 1');
 }
 function manner(value: number): void {
-  if (!Number.isInteger(value) || value < -10 || value > 10) {
-    throw new V5CalculationError('invalid', 'Evaluated mention suitability must be an integer from -10 to 10');
+  if (!Number.isInteger(value) || value < -13 || value > 13) {
+    throw new V5CalculationError('invalid', 'Evaluated mention suitability must be an integer from -13 to 13');
   }
 }
 
@@ -201,8 +200,7 @@ export async function recalculateJJumPower(
     previousCalculation: structuredClone(previous), calculation: structuredClone(calculation) }];
   jjum.jjumPower = result.power;
   jjum.powerCalculation = calculation;
-  const { verdict: _verdict, ...priorTag } = jjum.layaTag;
-  jjum.layaTag = { ...priorTag, ...pendingLayaTag(now, '계산 프로필 변경에 따른 파워 재계산 결과를 검토해야 합니다.') };
+  // 계산 출처·숫자 갱신은 본문 내용 검토와 별개이며 기존 검토 태그를 보존한다.
   return { status: 'ready', jjum, changed: true };
 }
 
@@ -234,10 +232,7 @@ export function updateMentionSuitability(input: JJumV5, update: MentionSuitabili
     evidenceId: update.evidenceId, timestamp: update.timestamp,
     previousValue: jjum.mentionSuitability, value, policyVersion: update.policyVersion, reason: update.reason,
   }];
-  if (jjum.mentionSuitability !== value) {
-    const { verdict: _verdict, ...priorTag } = jjum.layaTag;
-    jjum.layaTag = { ...priorTag, ...pendingLayaTag(update.timestamp, '새 근거로 갱신된 언급 매너를 검토해야 합니다.') };
-  }
+  // 매너 평가 이력만 바뀌었으므로 본문의 검토 상태는 초기화하지 않는다.
   jjum.mentionSuitability = value;
   return jjum;
 }

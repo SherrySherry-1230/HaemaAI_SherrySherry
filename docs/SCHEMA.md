@@ -1,4 +1,4 @@
-<!-- @editedBy SherrySherry 2026-10-30 -->
+<!-- @editedBy SherrySherry 2026-10-31 -->
 <!-- @editedBy 사람사람 작성자 힘듦...  2026-09-22 -->
 # 쩜(JJum) 스키마 v5 — 구조 명세
 
@@ -30,7 +30,7 @@
 | `sourceService` | string | 최초 생성 출처 서비스 ID. 호스트 캐릭터 ID와 구분한다. |
 | `visibility` | object | `{scope:'private'}` 또는 `{scope:'restricted', hostIds:string[]}` 또는 `{scope:'public'}`. public은 전체 공개, restricted는 명시한 호스트 범위이며 비어 있지 않은 hostIds가 필수다. 누락 때 공개 범위를 추정하지 않는다. |
 | `jjumPower` | finite number ≥ 1 | 소수를 포함한 계산 원값을 저장한다. 영향의 크기이며 상한을 두지 않는다. 프론트의 소수점 한 자리 표시값으로 원값을 덮어쓰지 않는다. |
-| `mentionSuitability` | integer −10..10 | 최초 생성 이후에도 갱신하는 언급 매너 값. 지정된 평가 결과·가감 정책을 적용하며, 미평가를 `0`으로 대체하지 않는다. |
+| `mentionSuitability` | integer −13..13 | 최초 생성 이후에도 갱신하는 언급 매너 값. 지정된 평가 결과·가감 정책을 적용하며, 미평가를 `0`으로 대체하지 않는다. |
 | `mentionCount` | integer ≥ 1 | 생성 기본값 1. 이후 사용자 선행 언급 기준으로 시스템이 갱신한다. |
 | `firstSeen` | timestamp | 최초 생성 시각. 사건 발생일이나 사용자 노출 기간이 아니다. |
 | `lastMentioned` | timestamp | 시스템이 관리하는 최근 언급 시각. 새 쩜은 생성 시각으로 시작한다. |
@@ -79,6 +79,7 @@
 
 - 파워의 언급·기간·감정·쩜선 최종 기여 하한은 각각 `0.23 / 0.17 / 0.29 / 0.31`이다. 하한 보정 후 합산하며 **1점은 정상, 1점 미만은 오류**다. 표시용 반올림으로 오류를 숨기지 않는다.
 - 원점수에서 최종 기여값으로 환산하는 정책과 매너 가감 기준은 별도로 제공한다. 없는 정책을 임의의 수식이나 0점으로 채우지 않는다.
+- 언급 매너의 허용 범위는 **정수 −13~+13**이다. 이번 변경은 허용 범위의 확장이며 기존 −10~+10 저장값과 과거 이력은 그대로 유효하다. 기존 값에 1.3을 곱하거나 새 양끝 값으로 자동 변환하지 않는다.
 - 계산 프로필이 새 버전으로 변경되면 해당 프로필을 사용하는 기존 쩜도 재계산 대상으로 삼는다. 새 근거부터만 적용하는 방식으로 한정하지 않는다.
 - 기존 근거, 이전·새 적용 프로필과 계산 결과, 계산 변경 이력을 보존한다. 아직 정책·근거가 부족하거나 저장이 실패한 대상은 기존 확정값을 유지하고 재계산 미완료로 구분한다.
 
@@ -90,7 +91,7 @@
 | 네 항 객체 | `mention, duration, emotion, seon: finite number ≥ 0` | 원점수와 기여값을 같은 대상으로 해석하지 않는다. |
 | `powerCalculation.evidence[]` | `evidenceId: string`, `kind: mention \| duration \| emotion \| seon`, `data: JSON 객체` | `occurredAt: timestamp`, 정정이면 `replacesEvidenceId: string`. 실제 확인된 근거·정정 전 내용을 보존한다. |
 | `powerHistory[]` | `operationId: string`, `timestamp: timestamp`, `previousPower, power: finite number ≥ 1`, `calculation: powerCalculation 객체` | 이전 계산 출처가 있었을 때 `previousCalculation`을 추가한다. 모르는 옛 출처를 만들지 않는다. |
-| `mannerHistory[]` | `evidenceId: string`, `timestamp: timestamp`, `previousValue, value: integer −10..10`, `policyVersion, reason: string` | 동일 근거 재처리로 다시 가감하지 않는다. |
+| `mannerHistory[]` | `evidenceId: string`, `timestamp: timestamp`, `previousValue, value: integer −13..13`, `policyVersion, reason: string` | 동일 근거 재처리로 다시 가감하지 않는다. |
 
 `coefficientDigest`는 실제 조회한 계산 자료의 지문이다. `profileVersion`은 계수 프로필, `policyVersion`은 적용한 계산 정책의 버전이며 Laya 검토 버전과 다르다. 표시용 반올림 값·계산 대기 상태를 `jjumPower`의 원값 자리에 저장하지 않는다.
 계산 근거는 실제 발화 기록에 한정되지 않는다. 대화 전 생성 기본 N=1처럼 시스템이 확정한 계산 입력도 출처를 보존할 수 있지만, 이를 위해 가짜 발화 ID나 사용자 발화를 만들지 않는다.

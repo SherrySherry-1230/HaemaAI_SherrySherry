@@ -6,6 +6,7 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "laya:service": "node --disable-warning=ExperimentalWarning --experimental-strip-types src/layaService.ts",
     "server:solo": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/solo-server.ts",
     "server": "node --disable-warning=ExperimentalWarning --experimental-strip-types local-server/server.ts",
     "console": "node --disable-warning=ExperimentalWarning --experimental-strip-types tools/console.ts",

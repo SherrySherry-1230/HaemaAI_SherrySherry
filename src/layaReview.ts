@@ -1,11 +1,17 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-31
 /** 쩜의 내용 검토. 처리 상태와 판정을 구별하며 검토용 버전·해시는 저장하지 않는다. */
 import type { ConversationTurn } from './adapters/aiAdapter.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { withConversationLock } from './conversationIdentity.ts';
 import type { JJum, LayaTag, LayaVerdict } from './types/jjum.ts';
 
-export interface LayaReviewRequest {
+/** 실제 수정 원문은 대화 발화와 구별하여 전달한다. 호출자가 소유·접근 권한을 확인한다. */
+export interface LayaSourceEvidence {
+  evidenceRefs?: string[];
+  manualEdits?: { id: string; text: string; field?: string; at?: number }[];
+}
+
+export interface LayaReviewRequest extends LayaSourceEvidence {
   jjum: JJum;
   turns: ConversationTurn[];
 }
@@ -85,12 +91,14 @@ export function layaContentSnapshot(jjum: JJum): string {
 }
 
 interface ReviewFlight {
+  evidence: string;
   snapshot: string;
   pending: string;
 }
 
 const flights = new WeakMap<object, Map<string, ReviewFlight>>();
-const queued = new WeakMap<object, Map<string, object>>();
+interface QueuedReview { source?: string; }
+const queued = new WeakMap<object, Map<string, QueuedReview>>();
 const intentBrand: unique symbol = Symbol('LayaReviewIntent');
 
 /** 저장 잠금 안에서 만든 검토 요청. 저장하거나 호출자가 직접 구성하지 않는다. */
@@ -105,11 +113,12 @@ interface CapturedReview {
   snapshot: string;
   pending: string;
   turns: ConversationTurn[];
+  sourceEvidence?: LayaSourceEvidence;
 }
 
 const intents = new WeakMap<LayaReviewIntent, CapturedReview>();
 
-function queuedReviews(scope: object): Map<string, object> {
+function queuedReviews(scope: object): Map<string, QueuedReview> {
   let pending = queued.get(scope);
   if (!pending) {
     pending = new Map();
@@ -118,11 +127,36 @@ function queuedReviews(scope: object): Map<string, object> {
   return pending;
 }
 
-function reviewToken(scope: object, key: string): object {
+function reviewToken(scope: object, key: string, source?: string): object {
   const pending = queuedReviews(scope);
-  const token = pending.get(key) ?? {};
+  const previous = pending.get(key);
+  const token = previous && previous.source === source ? previous : { source };
   pending.set(key, token);
   return token;
+}
+
+function copySourceEvidence(turns: ConversationTurn[], source?: LayaSourceEvidence): LayaSourceEvidence | undefined {
+  if (source === undefined) return undefined;
+  const copy = structuredClone(source);
+  const ids = new Set(turns.filter(turn => turn.final !== false && turn.utteranceId).map(turn => turn.utteranceId!));
+  const text = (value: unknown): value is string => typeof value === 'string' && value.trim() !== '';
+  if (copy.manualEdits !== undefined) {
+    if (!Array.isArray(copy.manualEdits)) throw new Error('Invalid manual Laya review evidence');
+    for (const edit of copy.manualEdits) {
+      if (!edit || !text(edit.id) || !text(edit.text) || ids.has(edit.id)
+        || (edit.field !== undefined && !text(edit.field))
+        || (edit.at !== undefined && (!Number.isSafeInteger(edit.at) || edit.at < 0))) {
+        throw new Error('Invalid manual Laya review evidence');
+      }
+      ids.add(edit.id);
+    }
+  }
+  if (copy.evidenceRefs !== undefined && (!Array.isArray(copy.evidenceRefs)
+    || new Set(copy.evidenceRefs).size !== copy.evidenceRefs.length
+    || copy.evidenceRefs.some(ref => !text(ref) || !ids.has(ref)))) {
+    throw new Error('Unresolved Laya review evidence reference');
+  }
+  return copy;
 }
 
 /** 저장한 내용·대기 태그·발화 근거를 묶어, 잠금을 놓은 뒤의 새 수정과 구별한다. */
@@ -130,18 +164,22 @@ export function captureLayaReviewIntent(
   storage: StorageAdapter,
   jjum: JJum,
   turns: ConversationTurn[],
+  sourceEvidence?: LayaSourceEvidence,
 ): LayaReviewIntent {
   if (jjum.layaTag?.state !== 'pending' || !isLayaTag(jjum.layaTag)) {
     throw new Error('Laya review intent requires a valid pending tag');
   }
   const scope = storage.coordinationScope ?? storage;
   const key = JSON.stringify([jjum.ownerId, jjum.jjumId]);
+  const sources = copySourceEvidence(turns, sourceEvidence);
+  const source = sources === undefined ? undefined : JSON.stringify(canonical({ turns, sources }));
   const intent: LayaReviewIntent = { [intentBrand]: true };
   intents.set(intent, {
-    scope, key, token: reviewToken(scope, key),
+    scope, key, token: reviewToken(scope, key, source),
     snapshot: layaContentSnapshot(jjum),
     pending: JSON.stringify(canonical(jjum.layaTag)),
     turns: structuredClone(turns),
+    sourceEvidence: sources,
   });
   return intent;
 }
@@ -164,6 +202,7 @@ export async function reviewStoredJJum(
   now?: number,
   /** 새 입력으로 교체된 작업은 검토 결과와 실패 태그 모두 반영하지 않는다. */
   isCurrent?: () => boolean,
+  sourceEvidence?: LayaSourceEvidence,
 ): Promise<void> {
   if (!engine || (isCurrent && !isCurrent())) return;
   const key = JSON.stringify([ownerId, jjumId]);
@@ -171,8 +210,10 @@ export async function reviewStoredJJum(
   const requested = Array.isArray(turns) ? undefined : intents.get(turns);
   if (!Array.isArray(turns) && !requested) throw new Error('Unknown Laya review intent');
   if (requested && (requested.scope !== scope || requested.key !== key)) return;
-  const token = requested?.token ?? reviewToken(scope, key);
   const evidence = requested?.turns ?? structuredClone(turns as ConversationTurn[]);
+  const sources = copySourceEvidence(evidence, requested ? requested.sourceEvidence : sourceEvidence);
+  const evidenceSnapshot = JSON.stringify(canonical({ turns: evidence, sources }));
+  const token = requested?.token ?? reviewToken(scope, key, sources === undefined ? undefined : evidenceSnapshot);
   const active = flights.get(scope) ?? new Map<string, ReviewFlight>();
   flights.set(scope, active);
   const claim = await withConversationLock(storage, ownerId, async () => {
@@ -186,8 +227,8 @@ export async function reviewStoredJJum(
     const pending = JSON.stringify(canonical(current.layaTag));
     if (requested && (requested.snapshot !== snapshot || requested.pending !== pending)) return undefined;
     const previous = active.get(key);
-    if (previous?.snapshot === snapshot && previous.pending === pending) return undefined;
-    const flight: ReviewFlight = { snapshot, pending };
+    if (previous?.snapshot === snapshot && previous.pending === pending && previous.evidence === evidenceSnapshot) return undefined;
+    const flight: ReviewFlight = { snapshot, pending, evidence: evidenceSnapshot };
     const copy = structuredClone(current);
     active.set(key, flight);
     return { current: copy, flight };
@@ -200,6 +241,7 @@ export async function reviewStoredJJum(
       const response: unknown = await engine.reviewJJum({
         jjum: claim.current,
         turns: evidence.map((turn) => ({ ...turn })),
+        ...(sources ?? {}),
       });
       if (typeof response === 'object' && response !== null && !Array.isArray(response)) {
         const candidate = response as Record<string, unknown>;
