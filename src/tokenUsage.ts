@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-20
+// @editedBy SherrySherry 2026-10-31
 import { randomUUID } from 'node:crypto';
 import type { AIUsageEvent, TokenCounts } from './adapters/aiUsage.ts';
 
@@ -33,6 +33,20 @@ export interface TokenUsageReport extends TokenUsageTotals, TokenUsageScope {
   byModel: Array<TokenUsageTotals & { provider: string; model: string; modelSource: AIUsageEvent['modelSource'] }>;
 }
 
+/** 기존 콘솔이 아직 모르는 계측 출처만 호환 뷰에서 생략한다. 장부·수치는 바꾸지 않는다. */
+export function tokenUsageForLegacyConsole<T extends TokenUsageReport>(value: T): T;
+export function tokenUsageForLegacyConsole<T extends { reports: TokenUsageReport[] }>(value: T): T;
+export function tokenUsageForLegacyConsole(value: TokenUsageReport | { reports: TokenUsageReport[] }) {
+  const view = structuredClone(value);
+  const reports = 'calls' in view ? [view] : view.reports;
+  for (const report of reports) {
+    for (const call of report.calls) {
+      if (call.usageSource === 'laya.tokenizer') call.usageSource = null;
+    }
+  }
+  return view;
+}
+
 function sum(values: Array<number | null>): number | null {
   let total = 0;
   for (const value of values) {
@@ -60,7 +74,7 @@ export function validateTokenUsageEvent(event: AIUsageEvent): AIUsageEvent {
       || !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review', 'selectDisplayName'].includes(event.task)
       || !['provider', 'unreported'].includes(event.source)
       || !['response', 'requested'].includes(event.modelSource)
-      || ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts'].includes(event.usageSource)) {
+      || ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts', 'laya.tokenizer'].includes(event.usageSource)) {
     throw new TypeError('Invalid token usage event');
   }
   for (const id of [event.callId, event.provider, event.model, event.requestedModel]) validId(id);

@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-16
+// @editedBy SherrySherry 2026-10-31
 /** 해마.ai가 받은 제공자 응답의 사용량. 가격이나 사용자 문장만의 길이가 아니다. */
 import { randomUUID } from 'node:crypto';
 import type { AIAdapterConfig, AITask } from './aiAdapter.ts';
@@ -19,7 +19,7 @@ export interface AIUsageEvent extends TokenCounts {
   modelSource: 'response' | 'requested';
   task: AITask | 'review';
   source: 'provider' | 'unreported';
-  usageSource: 'openai.usage' | 'anthropic.usage' | 'google.usageMetadata' | 'ollama.counts' | null;
+  usageSource: 'openai.usage' | 'anthropic.usage' | 'google.usageMetadata' | 'ollama.counts' | 'laya.tokenizer' | null;
 }
 
 type UsageFormat = 'openai' | 'anthropic' | 'google';

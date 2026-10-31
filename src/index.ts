@@ -44,6 +44,7 @@ export type {
 export type { AIUsageEvent, TokenCounts } from './adapters/aiUsage.ts';
 export {
   TokenUsageCollector,
+  tokenUsageForLegacyConsole,
   summarizeTokenUsage,
   summarizeConversationTokenUsage,
   validateTokenUsageReport,
@@ -109,6 +110,16 @@ export {
   type TemporaryJJumFragment,
 } from './incrementalConversation.ts';
 export { SpeculativeMemoryExplorer } from './speculativeMemory.ts';
+export * from './layaJournal.ts';
+export * from './layaObservation.ts';
+export * from './layaHostEvents.ts';
+export * from './layaHttp.ts';
+export * from './layaRuntime.ts';
+export * from './v5HostProactive.ts';
+export * from './reflectionJobs.ts';
+export * from './adapters/fileLayaJournal.ts';
+export * from './adapters/fileReflectionJobStore.ts';
+export * from './decision/layaV5Reviewer.ts';
 export { assessResponseReadiness, type ResponseReadiness } from './responseReadiness.ts';
 export { OpenAIAdapter } from './adapters/openaiAdapter.ts';
 export {
