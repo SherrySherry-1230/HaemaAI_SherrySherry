@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-31
+// @editedBy SherrySherry 2026-11-01
 /** 서버가 확정한 범위에 연결하는 관찰 전용 실행 환경. 원문·기억·점수의 자동 수정은 하지 않는다. */
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
@@ -176,6 +176,11 @@ export class LayaRuntime implements LayaHttpBackend {
     const evidence = sources.filter(source => source.textAvailable && source.text !== undefined)
       .map(source => ({ ref: source.utteranceId, text: source.text! }));
     const ready = this.engine.getStatus();
+    if ((stage === 'draft' || stage === 'feedback')
+      && (ready.state !== 'ready' || !ready.modelRevision || !ready.tokenizerRevision)) {
+      // 원문 등록은 보존하되 미확정 식별자로 관찰 세대를 고정하지 않는다.
+      throw Object.assign(new Error('Observation model is not ready'), { code: 'unavailable' });
+    }
     const hasUser = sources.some(source => source.role === 'user' && source.textAvailable);
     const hasDeliveredResponse = sources.some(source => source.role === 'assistant' && source.deliveryStatus === 'host_reported' && source.textAvailable);
     // 단계별로 확인한 최소 조건만 승인한다. 임의 질문 ID가 필수 근거 검사를 우회하지 않는다.
