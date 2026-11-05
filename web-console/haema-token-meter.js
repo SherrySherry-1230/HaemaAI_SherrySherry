@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-05
 // @editedBy YAONG1230 2026-10-17
 // Display only observed usage. No text-length estimates or provider API assumptions.
 (function (global) {
@@ -15,7 +16,31 @@
         const step = Math.pow(10, Math.floor(Math.log10(value)));
         return Math.min(Number.MAX_SAFE_INTEGER, Math.ceil(value / step) * step);
     }
-    function render(summary, loading = false) {
+    function breakdown(item) {
+        const calls = item?.calls || item?.turns?.flatMap(turn => turn.calls) || [];
+        const part = kind => {
+            const value = item?.[kind + 'Known'];
+            if (item?.[kind + 'Complete'] && known(value)) return format(value);
+            const observed = item?.[kind + 'Observed'] ?? calls.some(call => call[kind + 'Tokens'] !== null);
+            if (observed && known(value)) return format(value) + ' 이상';
+            return item?.status === 'pending' ? '집계 중' : '미제공';
+        };
+        const count = known(item?.callCount) ? format(item.callCount) + '회' : '미확인';
+        const state = { complete: '확인 완료', partial: '일부 미확인', pending: '집계 중', unavailable: '미제공', empty: '대화 대기' }[item?.status] || '미확인';
+        return '입력 ' + part('input') + ' · 출력 ' + part('output') + ' · 확인된 AI 호출 ' + count + ' · ' + state;
+    }
+    function introduction(summary) {
+        if (!summary) return '';
+        const warning = summary.warning || (summary.ok === false ? summary.error : '');
+        const value = summary.ok === false ? summary.summary : summary;
+        const latest = value?.latest;
+        const amount = latest ? valueText(latest) : '확인 필요';
+        const persistence = latest?.persistenceStatus === 'failed' ? ' · 저장 미완료' : '';
+        return '<p class="token-meter-note token-meter-introduction" aria-label="자기소개 AI 토큰 사용량">최근 자기소개 AI 처리 · ' +
+            escape(amount) + ' tokens' + escape(persistence) + '<br>' + escape(breakdown(latest)) +
+            ' · 대화 누적과 별도' + (warning ? '<br>' + escape(warning) : '') + '</p>';
+    }
+    function render(summary, loading = false, introductionUsage = null) {
         const failed = !summary || summary.ok === false;
         const warning = typeof summary?.warning === 'string' ? summary.warning : '';
         // Failed refreshes retain the last validated server snapshot. A measured
@@ -69,11 +94,13 @@
         const component = kind => '<span class="token-meter-key token-key-' + kind + '">' + labels[kind] + '</span>';
         const legend = component('input') + component('output') +
             (segments.some(segment => segment.kind === 'other') ? '<span class="token-meter-key token-key-other">미분류</span>' : '') + '<span class="token-meter-current-key">진한색 · 이번 발화</span>';
-        const explanation = '해마가 실행한 AI 호출의 토큰 사용량이며 호스트 AI의 답변 생성 사용량은 제외해요. 모델마다 토큰 분할 방식이 달라 동일 문장도 수치가 다를 수 있어요. 막대는 입력·출력 비중을 보여주며 오른쪽 여백은 대화 한도나 남은 사용량을 뜻하지 않아요. 숫자는 확인된 누적 사용량이며 비용이나 절감률을 뜻하지 않아요.';
+        const explanation = '해마.ai가 실행한 AI 호출의 토큰 사용량이며 호스트 AI의 답변 생성 사용량은 제외해요. 모델마다 토큰 분할 방식이 달라 동일 문장도 수치가 다를 수 있어요. 막대는 입력·출력 비중을 보여주며 오른쪽 여백은 대화 한도나 남은 사용량을 뜻하지 않아요. 숫자는 확인된 누적 사용량이며 비용이나 절감률을 뜻하지 않아요.';
         return '<section class="token-meter" aria-label="대화 토큰 사용량"><div class="token-meter-heading token-meter-summary"><span class="token-meter-label">대화 누적 <span class="token-meter-unit" tabindex="0" title="' + explanation + '">tokens ⓘ</span></span>' +
             '<strong class="token-meter-value' + (longValue ? ' is-long' : '') + '" aria-label="' + escape('이번 발화 ' + delta + ' 토큰, 대화 누적 ' + cumulative + ' 토큰') + '"><span class="token-meter-delta">' + escape(delta) + '</span><span class="token-meter-total"><span class="token-meter-divider"> / </span>' + escape(cumulative) + '</span></strong></div>' +
             '<div class="token-meter-track token-shape-1" role="img" aria-label="' + escape('대화 누적 ' + cumulative + ' 토큰. ' + segments.map(segmentLabel).join(', ')) + '"><div class="token-meter-liquid" data-token-total="' + (hasValue ? total.totalKnown : '') + '" data-token-conversation="' + escape(summary?.conversationId || '') + '">' + bar + '</div><span class="token-meter-glass" aria-hidden="true"></span></div>' +
-            '<div class="token-meter-legend">' + legend + '</div>' + (note ? '<p class="token-meter-note">' + escape(note) + '</p>' : '') + '</section>';
+            '<div class="token-meter-legend">' + legend + '</div>' +
+            '<p class="token-meter-note token-meter-breakdown" aria-label="대화 API 토큰 내역">' + escape(breakdown(summary)) + '</p>' +
+            (note ? '<p class="token-meter-note">' + escape(note) + '</p>' : '') + introduction(introductionUsage) + '</section>';
     }
     // Keep animation progress outside the replaced DOM. Re-rendering an input or
     // a card resumes the same fill instead of restarting it or counting again.
@@ -107,5 +134,5 @@
         const value = known(turn?.totalKnown) ? valueText(turn) : turn?.ok === false ? '확인 필요' : !turn || turn.found === false ? '미제공' : valueText(turn);
         return '<span class="result-token-usage">토큰 ' + escape(value + (turn?.persistenceStatus === 'failed' ? ' · 저장 미완료' : '')) + '</span>';
     }
-    global.HAEMA_TOKEN_METER = { render, badge, ceiling, valueText, animate };
+    global.HAEMA_TOKEN_METER = { render, badge, ceiling, valueText, animate, breakdown };
 })(window);

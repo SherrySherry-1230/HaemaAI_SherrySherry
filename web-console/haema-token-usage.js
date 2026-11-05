@@ -1,5 +1,7 @@
+// @editedBy SherrySherry 2026-11-05
 // @editedBy YAONG1230 2026-10-18
 // @editedBy YAONG1230 2026-10-22: select restored input metadata without adding measured usage
+// @editedBy YAONG1230 2026-11-01: accept Laya measurements and preserve their legacy source metadata
 // TOKEN_USAGE v2 receiver. Server snapshots are authoritative conversation totals.
 // This cache contains identifiers/measurements only, never prompts or API keys.
 (function (global) {
@@ -47,9 +49,9 @@
     const sameIdentity = (a, b) => a.ownerId === b.ownerId && a.storageId === b.storageId && a.conversationId === b.conversationId;
     function normalizeCall(raw) {
         if (!raw || raw.scope !== 'haema' || !['pending', 'complete'].includes(raw.state) ||
-            !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review'].includes(raw.task) ||
+            !['extract', 'summarize', 'judgeMerge', 'scoreRecall', 'review', 'selectDisplayName'].includes(raw.task) ||
             !['provider', 'unreported'].includes(raw.source) || !['response', 'requested'].includes(raw.modelSource) ||
-            ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts'].includes(raw.usageSource) ||
+            ![null, 'openai.usage', 'anthropic.usage', 'google.usageMetadata', 'ollama.counts', 'laya.tokenizer'].includes(raw.usageSource) ||
             ![raw.callId, raw.provider, raw.model, raw.requestedModel].every(validId)) throw invalid();
         const inputTokens = count(raw.inputTokens), outputTokens = count(raw.outputTokens), totalTokens = count(raw.totalTokens);
         const parts = sum([inputTokens ?? 0, outputTokens ?? 0]);
@@ -58,6 +60,29 @@
         return { callId: raw.callId, scope: 'haema', state: raw.state, provider: raw.provider, model: raw.model,
             requestedModel: raw.requestedModel, modelSource: raw.modelSource, usageSource: raw.usageSource,
             task: raw.task, source: raw.source, inputTokens, outputTokens, totalTokens };
+    }
+    // The published legacy view removes only Laya's source label, never counts
+    // or identity. Allow that exact view transition without recounting a call.
+    function sameCall(a, b) {
+        if (equal(a, b)) return true;
+        return a.provider === 'laya' && b.provider === 'laya' && a.task === 'review' && b.task === 'review' &&
+            ((a.usageSource === null && b.usageSource === 'laya.tokenizer') ||
+                (a.usageSource === 'laya.tokenizer' && b.usageSource === null)) &&
+            equal({ ...a, usageSource: null }, { ...b, usageSource: null });
+    }
+    function preserveSource(previous, incoming) {
+        return previous.usageSource === 'laya.tokenizer' && incoming.usageSource === null && sameCall(previous, incoming)
+            ? { ...incoming, usageSource: previous.usageSource } : incoming;
+    }
+    function sameReport(a, b) {
+        return !!a && !!b && a.calls.length === b.calls.length &&
+            equal({ ...a, calls: [] }, { ...b, calls: [] }) && a.calls.every((call, index) => sameCall(call, b.calls[index]));
+    }
+    function preserveReportSources(previous, incoming) {
+        return { ...incoming, calls: incoming.calls.map(call => {
+            const before = previous.calls.find(item => item.callId === call.callId);
+            return before ? preserveSource(before, call) : call;
+        }) };
     }
     // Recheck public normalized counts. Partial input/output remain visible;
     // arithmetic overflow stays unknown rather than becoming an exact number.
@@ -94,7 +119,8 @@
         const utteranceIds = [...new Set(raw.utteranceIds)], calls = [];
         for (const value of raw.calls) {
             const call = normalizeCall(value), previous = calls.find(item => item.callId === call.callId);
-            if (previous && !equal(previous, call)) throw conflict();
+            if (previous && !sameCall(previous, call)) throw conflict();
+            if (previous) calls[calls.indexOf(previous)] = preserveSource(previous, call);
             if (!previous) calls.push(call);
         }
         if (raw.phase === 'complete' && calls.some(call => call.state === 'pending')) throw invalid();
@@ -108,15 +134,16 @@
     function reconcile(previous, incoming) {
         if (!sameIdentity(previous, incoming) || previous.usageId !== incoming.usageId || !equal(previous.utteranceIds, incoming.utteranceIds)) throw conflict();
         if (equal(previous, incoming)) return previous;
+        if (sameReport(previous, incoming)) return preserveReportSources(previous, incoming);
         if (previous.phase === 'complete') throw conflict();
         for (const call of previous.calls) {
             const next = incoming.calls.find(item => item.callId === call.callId);
             if (!next) throw conflict();
-            if (equal(call, next)) continue;
+            if (sameCall(call, next)) continue;
             if (call.state === 'complete' || next.state !== 'complete' ||
                 ['callId', 'scope', 'provider', 'requestedModel', 'task'].some(key => call[key] !== next[key])) throw conflict();
         }
-        return incoming;
+        return preserveReportSources(previous, incoming);
     }
     function checkCallOwnership(reports) {
         const owners = new Map();
@@ -156,7 +183,7 @@
     }
     function reportView(conversation, report) {
         const saved = conversation.server?.reports.find(item => item.usageId === report.usageId);
-        return { ...view(report), persistenceStatus: saved && equal(saved, report) ? 'saved' : conversation.persistenceStatus === 'failed' ? 'failed' : null };
+        return { ...view(report), persistenceStatus: saved && sameReport(saved, report) ? 'saved' : conversation.persistenceStatus === 'failed' ? 'failed' : null };
     }
     function describe(conversation) {
         const server = conversation?.server, request = conversation?.latestRequest;
@@ -167,8 +194,13 @@
         const found = server?.found ?? false;
         const totalKnown = found && server.totalStatus !== 'unreported' ? server.reportedTotalTokens : null;
         const complete = found && server.pendingUsageIds.length === 0 && server.totalStatus === 'complete';
+        const calls = server?.reports.flatMap(item => item.calls) || [];
+        const inputObserved = found && (calls.length === 0 || calls.some(call => call.inputTokens !== null));
+        const outputObserved = found && (calls.length === 0 || calls.some(call => call.outputTokens !== null));
         return { ok: true, conversationId: conversation?.conversationId || null, storageId: server?.storageId || report?.storageId || null,
             found, serverBacked: !!server, revision: server?.revision ?? null, persistenceStatus: conversation?.persistenceStatus || null,
+            callCount: server?.callCount ?? null, unreportedCallCount: server?.unreportedCallCount ?? null,
+            incompleteCallCount: server?.incompleteCallCount ?? null, inputObserved, outputObserved,
             totalKnown, inputKnown: found ? server.segments.input : null, outputKnown: found ? server.segments.output : null,
             inputComplete: found && server.inputTokens !== null, outputComplete: found && server.outputTokens !== null,
             totalStatus: found ? server.totalStatus : 'unreported', breakdownStatus: found ? server.breakdownStatus : 'unreported',
@@ -179,6 +211,7 @@
             latest, turns };
     }
     function create(options = {}) {
+        const storageKey = options.key || KEY;
         const storage = () => options.storage || global.sessionStorage;
         let lastValid = { version: 2, scopes: [] };
         function findGroup(data, scope, ensure = false) {
@@ -236,13 +269,23 @@
         function applyServer(conversation, server) {
             const previous = conversation.server;
             if (previous && server.revision < previous.revision) return false;
-            if (previous && server.revision === previous.revision && !equal(previous, server)) throw conflict();
-            if (previous) for (const report of previous.reports) {
-                const incoming = server.reports.find(item => item.usageId === report.usageId);
-                if (!incoming) throw conflict();
-                reconcile(report, incoming);
+            if (previous && server.revision === previous.revision) {
+                const comparable = { ...server, reports: server.reports.map((report, index) =>
+                    sameReport(previous.reports[index], report) ? previous.reports[index] : report) };
+                if (!equal(previous, comparable)) throw conflict();
             }
-            for (const report of server.reports) mergeReport(conversation, report, true);
+            if (previous) for (const report of previous.reports) {
+                const index = server.reports.findIndex(item => item.usageId === report.usageId);
+                const incoming = server.reports[index];
+                if (!incoming) throw conflict();
+                server.reports[index] = reconcile(report, incoming);
+            }
+            for (let index = 0; index < server.reports.length; index++) {
+                const report = server.reports[index];
+                mergeReport(conversation, report, true);
+                const local = conversation.reports.find(item => item.usageId === report.usageId);
+                server.reports[index] = preserveReportSources(local, report);
+            }
             conversation.server = server;
             return true;
         }
@@ -285,7 +328,7 @@
         }
         function read() {
             try {
-                const raw = storage().getItem(KEY);
+                const raw = storage().getItem(storageKey);
                 const data = raw === null ? { version: 2, scopes: [] } : validateStored(JSON.parse(raw));
                 lastValid = clone(data);
                 return data;
@@ -312,7 +355,7 @@
                 operation(located, scope);
                 validateStored(data);
                 const after = JSON.stringify(data);
-                if (after !== before) { try { storage().setItem(KEY, after); } catch { throw storageError(); } }
+                if (after !== before) { try { storage().setItem(storageKey, after); } catch { throw storageError(); } }
                 lastValid = clone(data);
                 const summary = describe(located.conversation);
                 return { ok: true, turn: summary.latest, summary };
@@ -389,7 +432,7 @@
                     const server = normalizeConversation(measurement);
                     bind(group, checkedScope, { conversationId }, server);
                     if (applyServer(conversation, server)) {
-                        const stillUnpersisted = conversation.reports.some(report => !server.reports.some(saved => equal(report, saved)));
+                        const stillUnpersisted = conversation.reports.some(report => !server.reports.some(saved => sameReport(report, saved)));
                         if (conversation.persistenceStatus !== 'failed' || !stillUnpersisted) conversation.persistenceStatus = 'saved';
                         const request = conversation.latestRequest;
                         const matches = server.reports.filter(report => !request || (equal(report.utteranceIds, request.utteranceIds) &&
