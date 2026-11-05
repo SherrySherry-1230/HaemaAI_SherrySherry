@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-30
+// @editedBy SherrySherry 2026-11-05
 /** v5 저장 자료. v4와 별도로 검증하며 원본 파일의 버전을 자동 변경하지 않는다. */
 import type { JJumEditEntry, JJumFact, JJumStatus, LayaTag, ResponseFeedback } from './jjum.ts';
 
@@ -91,8 +91,9 @@ export interface PowerCalculationV5 {
   coefficientDigest: string;
   policyVersion: string;
   evidence: PowerEvidenceV5[];
+  /** 직접 합산 정책에서는 필수이며 네 항을 이미 산정한 원값이다. 구 정책의 생략은 보존한다. */
   rawScores?: PowerComponentsV5;
-  /** 네 항의 하한을 적용하기 전 기여값이다. */
+  /** 하한 적용 전 기여값. 직접 합산 정책에서는 rawScores와 같으며 추가 환산하지 않는다. */
   contributions: PowerComponentsV5;
   calculatedAt: number;
 }

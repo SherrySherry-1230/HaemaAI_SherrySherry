@@ -20,3 +20,5 @@ engines/laya/
 🧠장기기억저장소_feat.해마🧠/
 .secret.local
 *-debug.log
+
+# Deployment-only encrypted assets; keep source documents and ciphertext off public Git.

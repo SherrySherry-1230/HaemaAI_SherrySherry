@@ -1,8 +1,8 @@
-// @editedBy SherrySherry 2026-10-31
+// @editedBy SherrySherry 2026-11-05
 /** 저장 전 검사. 누락값·현재 시각·점수·타입 정책을 임의로 보충하지 않는다. */
 import { isDeepStrictEqual } from 'node:util';
 import { isLayaTag, isLayaReviewText } from '../layaReview.ts';
-import { calculateJJumPower } from '../v5Calculations.ts';
+import { calculateJJumPower, JJUM_POWER_DIRECT_SUM_POLICY } from '../v5Calculations.ts';
 import type { JJumV5, PowerComponentsV5, TypeRequirementCatalogV5 } from './jjumV5.ts';
 
 export interface JJumV5Issue {
@@ -294,6 +294,14 @@ export function validateJJumV5(input: unknown, options: JJumV5ValidationOptions 
       }
     }
     if (value.rawScores !== undefined) components(value.rawScores, `${p}rawScores.`);
+    if (value.policyVersion === JJUM_POWER_DIRECT_SUM_POLICY) {
+      const rawScores = value.rawScores;
+      if (!object(rawScores)) issue(`${p}rawScores`, '직접 합산에는 산정된 네 항의 원값이 필요합니다.');
+      else if (object(contributions) && ['mention', 'duration', 'emotion', 'seon']
+        .some(key => rawScores[key] !== contributions[key])) {
+        issue(`${p}contributions`, '직접 합산의 기여값은 추가 환산 없이 산정 원값과 같아야 합니다.');
+      }
+    }
     const seen = new Set<unknown>(), replaced = new Set<unknown>();
     records(value.evidence, `${p}evidence`, (item, ep) => {
       required(item, ['evidenceId', 'kind', 'data'], ep); keys(item, ['evidenceId', 'kind', 'data', 'occurredAt', 'replacesEvidenceId'], ep);

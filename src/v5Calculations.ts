@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-31
+// @editedBy SherrySherry 2026-11-05
 /** 확정된 계산 결과와 원래 근거를 보존한다. 미정 평가식을 기본값으로 만들지 않는다. */
 import type { CalculationProfile, MentionFormula } from './calculationProfiles.ts';
 import type {
@@ -6,6 +6,7 @@ import type {
 } from './types/jjumV5.ts';
 
 const COMPONENTS = ['mention', 'duration', 'emotion', 'seon'] as const;
+export const JJUM_POWER_DIRECT_SUM_POLICY = 'power-four-component-direct-sum-2026-11-05';
 export const JJUM_POWER_CONTRIBUTION_FLOORS: Readonly<PowerComponentsV5> = Object.freeze({
   mention: 0.23, duration: 0.17, emotion: 0.29, seon: 0.31,
 });
@@ -66,6 +67,7 @@ export function sumDecimalNumbers(values: readonly number[]): number {
   return decimalNumber(parts.reduce((sum, value) => sum + value.digits * 10n ** BigInt(scale - value.scale), 0n), scale);
 }
 
+/** 이미 산정된 네 항에 추가 환산·가중치를 적용하지 않고 하한 보정 후 합산한다. */
 export function calculateJJumPower(contributions: PowerComponentsV5): {
   power: number; adjustedContributions: PowerComponentsV5;
 } {
@@ -139,7 +141,19 @@ export type PowerEvaluatorV5 = (input: PowerEvaluationInputV5) => PowerEvaluatio
 export type PowerRecalculationV5 = { status: 'ready'; jjum: JJumV5; changed: boolean }
   | { status: 'pending'; reasons: string[] };
 
-/** 기존 전체 근거로 재산정한다. 최신 프로필의 수식·환산 정책은 평가자가 명시적으로 제공한다. */
+/** 새 프로필과 유효 근거로 이미 산정한 네 원값을 추가 환산 없이 평가 결과로 만든다. */
+export function makeDirectSumPowerEvaluation(
+  rawScores: PowerComponentsV5, formula: MentionFormula,
+): Extract<PowerEvaluationV5, { status: 'ready' }> {
+  components(rawScores);
+  if (formula !== 'root' && formula !== 'logarithm') {
+    throw new V5CalculationError('invalid', 'Power evaluation must explicitly select a supplied mention formula');
+  }
+  return { status: 'ready', policyVersion: JJUM_POWER_DIRECT_SUM_POLICY, formula,
+    rawScores: structuredClone(rawScores), contributions: structuredClone(rawScores) };
+}
+
+/** 기존 전체 근거로 재산정한다. 평가자는 최신 프로필로 각 항을 산정하며 별도 최종 환산은 하지 않는다. */
 export async function recalculateJJumPower(
   input: JJumV5, targetProfile: CalculationProfile, evaluator: PowerEvaluatorV5 | undefined,
   operationId: string, now: number = Date.now(),
@@ -171,7 +185,7 @@ export async function recalculateJJumPower(
   }
   // 같은 계수 버전의 포장 변경만으로 새 계산·이력을 만들지 않는다.
   if (previous.profileVersion === targetProfile.profileVersion) return { status: 'ready', jjum, changed: false };
-  if (!evaluator) return { status: 'pending', reasons: ['power-contribution-policy-missing'] };
+  if (!evaluator) return { status: 'pending', reasons: ['power-component-evaluator-missing'] };
   const evidence = structuredClone(previous.evidence);
   const active = effectiveEvidence(evidence);
   const evaluated = await evaluator({ jjum: structuredClone(jjum), profile: structuredClone(targetProfile),
@@ -187,6 +201,11 @@ export async function recalculateJJumPower(
     throw new V5CalculationError('invalid', 'Power evaluation must explicitly select a supplied mention formula');
   }
   if (evaluated.rawScores !== undefined) components(evaluated.rawScores);
+  if (evaluated.policyVersion === JJUM_POWER_DIRECT_SUM_POLICY) {
+    if (!evaluated.rawScores || COMPONENTS.some(field => evaluated.rawScores![field] !== evaluated.contributions?.[field])) {
+      throw new V5CalculationError('invalid', 'Direct-sum contributions must equal all four evaluated raw scores');
+    }
+  }
   const result = calculateJJumPower(evaluated.contributions);
   const calculation: PowerCalculationV5 = {
     profileId: targetProfile.profileId, profileVersion: targetProfile.profileVersion,
