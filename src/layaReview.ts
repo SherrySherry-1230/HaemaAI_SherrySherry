@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-31
+// @editedBy SherrySherry 2026-11-06
 /** 쩜의 내용 검토. 처리 상태와 판정을 구별하며 검토용 버전·해시는 저장하지 않는다. */
 import type { ConversationTurn } from './adapters/aiAdapter.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
@@ -255,7 +255,8 @@ export async function reviewStoredJJum(
     await withConversationLock(storage, ownerId, async () => {
       if (isCurrent && !isCurrent()) return;
       const current = await storage.getJJum(ownerId, jjumId);
-      if ((isCurrent && !isCurrent()) || active.get(key) !== claim.flight || !current || current.ownerId !== ownerId
+      if ((isCurrent && !isCurrent()) || queued.get(scope)?.get(key) !== token
+        || active.get(key) !== claim.flight || !current || current.ownerId !== ownerId
         || current.jjumId !== jjumId || current.layaTag?.state !== 'pending'
         || layaContentSnapshot(current) !== claim.flight.snapshot
         || JSON.stringify(canonical(current.layaTag)) !== claim.flight.pending) return;

@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-10-30
+// @editedBy SherrySherry 2026-11-06
 /**
  * FileAdapter — 파일 시스템 저장 어댑터 (StorageAdapter 구현체).
  *
@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
+import { preserveStoredV4Extensions } from './preserveV4Extensions.ts';
 import { validateDisplayName } from '../introduction.ts';
 import { invalidateLayaReview, isLayaTag, layaContentSnapshot, pendingLayaTag } from '../layaReview.ts';
 import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
@@ -467,7 +468,7 @@ export class FileAdapter implements StorageAdapter {
   }
 
   private putJJumSync(ownerId: string, jjum: JJum): void {
-    const stored: JJum = { ...jjum, ownerId };
+    let stored: JJum = { ...jjum, ownerId };
     const validation = validateJJum(stored);
     if (validation.invalidMentionHistory) {
       throw new Error(`Cannot store invalid mentionHistory: ${validation.errors.join(' / ')}`);
@@ -481,6 +482,11 @@ export class FileAdapter implements StorageAdapter {
     const existing = this.getJJumSync(ownerId, stored.jjumId);
     if (!existing && this.loadDeletedJJums(ownerId).jjumIds.includes(stored.jjumId)) {
       throw new Error('Cannot recreate an explicitly deleted JJum');
+    }
+    // v4 읽기 투영에서 숨긴 확장은 저장 payload에만 복원한다. 모호하면 검토 무효화 전에 중단한다.
+    const preservedFilename = existing?.schemaVersion === 4 ? this.jjumPath(ownerId, stored.jjumId) : null;
+    if (preservedFilename) {
+      stored = preserveStoredV4Extensions(JSON.parse(fs.readFileSync(preservedFilename, 'utf-8')), stored);
     }
     if (existing && validation.jjum && layaContentSnapshot(existing) !== layaContentSnapshot(validation.jjum)) {
       invalidateLayaReview(this, ownerId, stored.jjumId);
@@ -719,13 +725,14 @@ export class FileAdapter implements StorageAdapter {
       }
     }
 
+    const persisted = preserveStoredV4Extensions(JSON.parse(raw), updated);
     if (layaContentSnapshot(updated) !== beforeContent) {
       invalidateLayaReview(this, ownerId, jjumId);
       recordDirectReviewRequest(updated, now);
       const { verdict: _previousVerdict, ...previousTag } = updated.layaTag ?? {};
       updated.layaTag = { ...previousTag, ...pendingLayaTag(now) };
     }
-    atomicWrite(filePath, JSON.stringify(updated, null, 2));
+    atomicWrite(filePath, JSON.stringify({ ...persisted, editHistory: updated.editHistory, layaTag: updated.layaTag }, null, 2));
     return updated;
   }
 
@@ -777,7 +784,8 @@ export class FileAdapter implements StorageAdapter {
           seons: newSeons,
         };
 
-        atomicWrite(filePath, JSON.stringify(updated, null, 2));
+        const persisted = preserveStoredV4Extensions(JSON.parse(raw), updated);
+        atomicWrite(filePath, JSON.stringify(persisted, null, 2));
 
         // 인덱스 업데이트 — 파일명은 그대로, jjumId 등록 확인
         const index = this.loadIndex();
