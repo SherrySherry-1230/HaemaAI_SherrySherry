@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-06
+// @editedBy SherrySherry 2026-11-07
 /** 쩜의 내용 검토. 처리 상태와 판정을 구별하며 검토용 버전·해시는 저장하지 않는다. */
 import type { ConversationTurn } from './adapters/aiAdapter.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
@@ -172,7 +172,7 @@ export function captureLayaReviewIntent(
   const scope = storage.coordinationScope ?? storage;
   const key = JSON.stringify([jjum.ownerId, jjum.jjumId]);
   const sources = copySourceEvidence(turns, sourceEvidence);
-  const source = sources === undefined ? undefined : JSON.stringify(canonical({ turns, sources }));
+  const source = JSON.stringify(canonical({ turns, sources }));
   const intent: LayaReviewIntent = { [intentBrand]: true };
   intents.set(intent, {
     scope, key, token: reviewToken(scope, key, source),
@@ -213,7 +213,7 @@ export async function reviewStoredJJum(
   const evidence = requested?.turns ?? structuredClone(turns as ConversationTurn[]);
   const sources = copySourceEvidence(evidence, requested ? requested.sourceEvidence : sourceEvidence);
   const evidenceSnapshot = JSON.stringify(canonical({ turns: evidence, sources }));
-  const token = requested?.token ?? reviewToken(scope, key, sources === undefined ? undefined : evidenceSnapshot);
+  const token = requested?.token ?? reviewToken(scope, key, evidenceSnapshot);
   const active = flights.get(scope) ?? new Map<string, ReviewFlight>();
   flights.set(scope, active);
   const claim = await withConversationLock(storage, ownerId, async () => {
