@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#F7F3EA">
+    <title>해마.ai 웹 콘솔</title>
+    <link rel="icon" href="Resources/favicon.svg" type="image/svg+xml">
+    <style id="console-view-style">
+        @font-face {
+            font-family: Dongle;
+            src: url("Resources/haema-design/fonts/Dongle-Regular.ttf") format("truetype");
+            font-display: swap;
+        }
+        @font-face {
+            font-family: CookieRun;
+            src: url("Resources/haema-design/fonts/CookieRunWebBlack.woff2") format("woff2");
+            font-weight: 900;
+            font-display: swap;
+        }
+        :root {
+            color-scheme: light;
+            --paper: #f7f3ea;
+            --white: #fdfbfc;
+            --ink: #26292e;
+            --muted: #68626c;
+            --rose: #ffa5b7;
+            font: 400 14px/1.55 "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+            color: var(--ink);
+            background: var(--paper);
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        body, h1, h2, p { margin: 0; }
+        button, textarea, select { font: inherit; color: inherit; }
+        button, select { cursor: pointer; }
+        :focus-visible { outline: 3px solid #846a95; outline-offset: 3px; }
+        [hidden] { display: none !important; }
+        #app { height: 100vh; height: 100dvh; min-height: 26rem; display: flex; flex-direction: column; }
+        .header {
+            display: flex; justify-content: space-between; align-items: center; gap: 18px;
+            min-height: 100px; padding: 12px max(4vw, calc((100% - 1484px) / 2));
+            border-bottom: 2px solid #f2d3d6;
+        }
+        .brand { display: flex; align-items: center; gap: 14px; }
+        .brand img { display: block; width: 56px; height: auto; }
+        .brand h1 { font: 900 clamp(22px, 2vw, 30px)/1.2 CookieRun, sans-serif; }
+        .repo-link { font: 400 24px/1 Dongle, sans-serif; color: #685978; text-underline-offset: 4px; }
+        .workspace { width: min(92%, 1484px); margin: 22px auto 28px; min-height: 0; flex: 1; display: flex; flex-direction: column; }
+        .workspace-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .host-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+        .host-picker { display: inline-flex; position: relative; min-width: 0; }
+        .host-selector {
+            appearance: none; max-width: 100%; min-height: 34px; text-overflow: ellipsis;
+            padding: 3px 27px 3px 12px; border: 1px solid #adcac3;
+            border-radius: 16px 14px 13px 15px; background: #e4f2ec; color: #284b43;
+        }
+        .host-picker::after {
+            content: ""; position: absolute; right: 11px; top: calc(50% - 4px); width: 6px; height: 6px;
+            border: solid #49685e; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); pointer-events: none;
+        }
+        .state-pill {
+            max-width: 35vw; padding: 4px 12px; font-size: 12px; text-align: center;
+            border: 1px solid #dfd6b1; border-radius: 16px 13px 15px 12px;
+            color: #645b3e; background: #fffade; overflow-wrap: anywhere;
+        }
+        .mobile-tabs { display: none; }
+        .console-panels { min-height: 0; flex: 1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(14px, 2vw, 32px); }
+        .panel {
+            display: flex; flex-direction: column; position: relative; isolation: isolate;
+            min-height: 0;
+            min-width: 0; padding: clamp(20px, 2.4vw, 42px); overflow: hidden;
+        }
+        .panel::before {
+            content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+            border-image: var(--frame) 140 140 160 140 fill / 70px 70px 80px 70px / 0 stretch;
+        }
+        .panel-left { --frame: url("Resources/haema-design/13-chat-panel-shape.svg"); }
+        .panel-right { --frame: url("Resources/haema-design/18-haema-panel-shape.svg"); }
+        .panel h2 { font: 900 18px/1.5 CookieRun, sans-serif; }
+        .conversation-history, .memory-scroll {
+            flex: 1 1 0; min-height: 0; overflow: auto; overscroll-behavior: contain;
+            scrollbar-width: thin; scrollbar-color: #d4cbd1 transparent; padding: 12px 5px;
+        }
+        .conversation-history { display: flex; flex-direction: column; gap: 12px; }
+        .conversation-history:empty { padding: 0; }
+        .message-row {
+            max-width: min(90%, 38rem); align-self: flex-start; display: flex; flex-direction: column;
+            align-items: flex-start; overflow-wrap: anywhere;
+        }
+        .message-row.haema { align-self: flex-end; align-items: flex-end; }
+        .message-bubble { position: relative; isolation: isolate; min-width: 4rem; padding: 12px 21px 19px; white-space: pre-wrap; }
+        .message-bubble::before {
+            content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; background: var(--paper);
+            --speech: url("Resources/haema-design/irregular/shape-15.svg");
+            -webkit-mask: var(--speech) center / 100% 100% no-repeat;
+            mask: var(--speech) center / 100% 100% no-repeat;
+        }
+        @supports (-webkit-mask-box-image: url("") 1 fill / 1px) {
+            .message-bubble::before { -webkit-mask: none; mask: none; -webkit-mask-box-image: var(--speech) 56 100 44 100 fill / 18px 26px 18px 26px; }
+        }
+        .message-row.haema .message-bubble::before { transform: scaleX(-1); background: #eee4f1; }
+        .message-row time { margin: 2px 8px; color: var(--muted); font-size: 11px; }
+        .input-area { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+        .user-avatar {
+            width: 36px; height: 38px; object-fit: contain;
+            clip-path: url(#avatar-frame);
+        }
+        .user-input {
+            flex: 1; min-width: 0; min-height: 42px; max-height: 9rem; resize: vertical;
+            padding: 9px 13px; border: 1px solid #ded7ce; border-radius: 16px 19px 14px 17px; background: var(--paper);
+        }
+        .send-button {
+            position: relative; width: 54px; min-height: 44px; padding: 0; flex: none;
+            border: 0; background: url("Resources/haema-design/08-send-button.svg") center / contain no-repeat;
+            font-size: 20px; font-weight: 700;
+        }
+        .send-button:disabled { opacity: .55; cursor: default; }
+        .composer-status { min-height: 1.4em; margin: 4px 3px 0; color: var(--muted); font-size: 12px; }
+        .memory-scroll { display: flex; flex-direction: column; }
+        .empty-state { margin: auto; display: grid; justify-items: center; gap: 10px; color: var(--muted); }
+        .empty-haema { width: clamp(84px, 10vw, 144px); height: auto; display: block; }
+        .memory-list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
+        .memory-list li { padding: 10px 14px; border: 1px solid #e2d9e1; border-radius: 14px; overflow-wrap: anywhere; }
+        @media (max-width: 820px) {
+            .header { min-height: 66px; padding: 7px 4%; }
+            .brand img { width: 40px; }
+            .workspace { width: 96%; margin: 10px auto; }
+            .workspace-toolbar { justify-content: space-between; flex-wrap: wrap; gap: 6px; margin: 0 2% 6px; }
+            .mobile-tabs { display: flex; gap: 4px; }
+            .mobile-tabs button { min-height: 40px; padding: 0 12px; background: transparent; border: 0; border-radius: 12px; }
+            .mobile-tabs button[aria-pressed="true"] { background: #f1dce3; }
+            .host-tools { flex: 1 1 auto; }
+            .host-selector { min-height: 40px; }
+            .console-panels { display: block; }
+            .panel { height: 100%; padding: 22px; }
+            .console-panels[data-mobile-panel="chat"] .panel-right,
+            .console-panels[data-mobile-panel="haema"] .panel-left { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <svg width="0" height="0" aria-hidden="true" style="position:absolute" xmlns="http://www.w3.org/2000/svg">
+        <defs><clipPath id="avatar-frame" clipPathUnits="objectBoundingBox">
+            <path transform="scale(0.024390244)" d="M35.0014 34.9618C25.7662 44.5609 10.9529 42.1658 3.47639 31.6574C2.30846 30.0123 1.6546 28.0437 1.01878 26.1126C0.554314 24.7018 0.0853256 23.2676 0.0176851 21.7818C-0.248368 16.012 2.51588 9.24391 6.38943 5.22242C11.6519 -0.247374 18.2942 -0.448916 25.3784 0.338509C29.0806 0.75097 32.386 2.49924 35.0059 5.22242C37.7296 8.0534 39.6325 11.6718 40.4532 15.5808C40.8365 17.3994 41.2649 19.8367 40.7914 21.674C39.5108 26.6095 38.654 31.1746 35.0059 34.9665L35.0014 34.9618Z"/>
+        </clipPath></defs>
+    </svg>
+    <div id="app">
+        <header class="header">
+            <div class="brand">
+                <img src="Resources/haema-design/해마로고 마스크.png" alt="" width="267" height="303">
+                <h1>해마.ai</h1>
+            </div>
+            <a class="repo-link" href="https://github.com/SherrySherry-1230/HaemaAI_SherrySherry">GitHub 저장소</a>
+        </header>
+        <main class="workspace">
+            <div class="workspace-toolbar">
+                <nav class="mobile-tabs" aria-label="콘솔 화면 선택">
+                    <button type="button" data-mobile-panel="chat" aria-controls="chatPanel" aria-pressed="true">대화</button>
+                    <button type="button" data-mobile-panel="haema" aria-controls="memoryPanel" aria-pressed="false">해마</button>
+                </nav>
+                <div class="host-tools">
+                    <label class="host-picker">
+                        <select id="testHostSelect" class="host-selector" aria-label="호스트 선택">
+                            <option value="">해마.ai만 사용</option>
+                        </select>
+                    </label>
+                    <span id="hostStatus" class="state-pill" role="status">연결 대기</span>
+                </div>
+            </div>
+            <div class="console-panels" data-mobile-panel="chat">
+                <section id="chatPanel" class="panel panel-left" aria-labelledby="hostHeading">
+                    <h2 id="hostHeading">해마.ai</h2>
+                    <div id="conversationHistory" class="conversation-history" role="log" aria-label="대화 기록" aria-live="polite"></div>
+                    <form id="chatForm" class="input-area">
+                        <img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" alt="" width="36" height="38">
+                        <textarea id="chatInput" class="user-input" aria-label="메시지 입력" rows="1" placeholder="메시지를 입력해 주세요"></textarea>
+                        <button id="sendBtn" class="send-button" type="submit" aria-label="보내기" disabled><span aria-hidden="true">↵</span></button>
+                    </form>
+                    <p id="composerStatus" class="composer-status" role="status">초안은 이 탭에 보관돼요. 연결 후 보낼 수 있어요.</p>
+                </section>
+                <section id="memoryPanel" class="panel panel-right" aria-labelledby="memoryHeading">
+                    <h2 id="memoryHeading">모든 쩜</h2>
+                    <div class="memory-scroll">
+                        <div id="emptyMemories" class="empty-state">
+                            <img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마" width="144">
+                            <p>쩜이 없어요</p>
+                        </div>
+                        <ul id="memoryList" class="memory-list"></ul>
+                    </div>
+                </section>
+            </div>
+        </main>
+        <noscript>콘솔을 사용하려면 브라우저에서 자바스크립트를 켜 주세요.</noscript>
+    </div>
+    <script src="web-console/haema-test-host.js"></script>
+    <script src="web-console/haema-console.js"></script>
+</body>
+</html>
