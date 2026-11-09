@@ -35,6 +35,7 @@ jobs:
 
           files = (
               "index.html",
+              "sitemap.xml",
               "web-console/haema-console.js",
               "web-console/haema-connection.js",
               "web-console/haema-test-host.js",
