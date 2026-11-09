@@ -4,9 +4,10 @@
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const curveWidth = 27.2448;
-    const topHeight = 35.104;
-    const bottomHeight = 44.864;
-    const minSpan = 79.968;
+    const sourceWidth = 42.57;
+    const sourceHeight = 153.23;
+    const topHeight = 54.85;
+    const bottomHeight = 70.1;
     const colors = ['#E4DDEE', '#CDC4D8', '#BBB4C4', '#AAA1B4', '#90869C', '#71677D', '#564E61'];
     const styles = Object.freeze(Object.fromEntries(colors.map((color, index) => [
         index + 1,
@@ -19,21 +20,23 @@
     function pathFor(geometry) {
         if (!geometry || typeof geometry !== 'object') return null;
         const { startX, startY, endX, endY, lane } = geometry;
-        if (![startX, startY, endX, endY, lane].every(finite) || lane < curveWidth) return null;
+        if (![startX, startY, endX, endY, lane].every(finite) || lane <= 0) return null;
         const [topX, topY, bottomX, bottomY] = startY <= endY
             ? [startX, startY, endX, endY]
             : [endX, endY, startX, startY];
-        if (bottomY - topY < minSpan) return null;
+        if (Math.abs(topX - bottomX) > 0.001) return null;
+        const scale = lane / sourceWidth;
+        if (bottomY - topY + 0.000001 < (topHeight + bottomHeight) * scale) return null;
 
-        const spineX = Math.max(topX, bottomX) + lane;
-        // Both curved ends keep their original shape at one fixed display size.
-        // Only the central vertical segment and the horizontal leads change length.
+        const spineX = topX + lane;
+        // Size both complete ends uniformly, including their short horizontal tips.
+        // At that size only the straight central section changes length.
         const values = [
             topX, topY,
-            spineX - 23.4048,
-            spineX - 3.2576, topY, spineX, topY + 12.2368, spineX, topY + topHeight,
-            bottomY - bottomHeight,
-            spineX, bottomY - 9.8176, spineX - 9.4144, bottomY, spineX - 21.12, bottomY,
+            topX + 6 * scale,
+            topX + 37.48 * scale, topY, spineX, topY + 19.12 * scale, spineX, topY + topHeight * scale,
+            bottomY - bottomHeight * scale,
+            spineX, bottomY - 15.34 * scale, topX + 27.86 * scale, bottomY, topX + 9.57 * scale, bottomY,
             bottomX
         ];
         if (!values.every(finite)) return null;
@@ -77,5 +80,5 @@
         return path;
     }
 
-    window.HaemaSeon = Object.freeze({ pathFor, paint, styles, minSpan, curveWidth });
+    window.HaemaSeon = Object.freeze({ pathFor, paint, styles, curveWidth, sourceWidth, sourceHeight });
 })();
