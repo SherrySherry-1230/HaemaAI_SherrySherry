@@ -1,13 +1,6 @@
 name: Publish console
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - index.html
-      - web-console/**
-      - Resources/**
-      - .github/workflows/pages.yml
   workflow_dispatch:
 
 permissions:
@@ -46,18 +39,26 @@ jobs:
               "web-console/haema-test-host.js",
               "web-console/haema-seon.js",
               "web-console/haema-seon.css",
+              "web-console/haema-toolbar.css",
+              "web-console/haema-brand.css",
               "Resources/favicon.svg",
               "Resources/haema-design/haema-logo-round.svg",
+              "Resources/haema-design/haema-header-logo.svg",
               "Resources/haema-design/08-send-button.svg",
               "Resources/haema-design/12-user-avatar.png",
               "Resources/haema-design/13-chat-panel-shape.svg",
               "Resources/haema-design/18-haema-panel-shape.svg",
+              "Resources/haema-design/17-haema-status-pill.svg",
+              "Resources/haema-design/17-haema-status-pill-hover.svg",
+              "Resources/haema-design/17-haema-status-pill-selected.svg",
               "Resources/haema-design/irregular/shape-15.svg",
               "Resources/haema-design/crying-haema.png",
               "Resources/haema-design/seon-curve.svg",
               "Resources/haema-design/fonts/Dongle-Regular.ttf",
               "Resources/haema-design/fonts/Dongle-OFL.txt",
               "Resources/haema-design/fonts/CookieRunWebBlack.woff2",
+              "Resources/haema-design/fonts/GowunDodum-Header.ttf",
+              "Resources/haema-design/fonts/GowunDodum-OFL.txt",
               "Resources/haema-design/fonts/CookieRun-License-ko-en.pdf",
           )
           destination = Path("_site")

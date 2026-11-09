@@ -37,3 +37,116 @@
     border-image-slice: 15 33 15 33 fill;
     border-image-width: 15px 33px 15px 33px;
 }
+
+/* @editedBy YAONG1230 2026-11-09
+   Reuse the status vector and all three original shadow effects.
+   The visible shape stays 24px high inside a larger pointer target. */
+.host-picker,
+.btn-create {
+    --control-art: url("../Resources/haema-design/17-haema-status-pill.svg");
+    position: relative;
+    isolation: isolate;
+    box-sizing: border-box;
+    min-width: 0;
+    color: #26292e;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+}
+
+.host-picker {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 1 184px;
+    width: 184px;
+    max-width: 100%;
+    min-height: 34px;
+}
+
+.host-picker::before,
+.btn-create::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    pointer-events: none;
+    box-sizing: border-box;
+    left: -1px;
+    top: calc(50% - 12px);
+    width: calc(100% + 2px);
+    height: 26px;
+    border: 0 solid transparent;
+    border-image-source: var(--control-art);
+    border-image-slice: 12 30 12 30 fill;
+    border-image-width: 12px 30px 12px 30px;
+    border-image-outset: 0;
+    border-image-repeat: stretch;
+}
+
+.host-picker select {
+    appearance: none;
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    padding: 4px 28px 4px 14px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: pointer;
+}
+
+.host-picker select option {
+    color: #26292e;
+    background: #f7f3ea;
+}
+
+.host-picker::after {
+    top: calc(50% - 4px);
+    right: 12px;
+    color: #26292e;
+    border-color: currentColor;
+}
+
+.btn-create,
+.jjum-list-tools .btn-create {
+    width: 180px;
+    max-width: 100%;
+    min-height: 34px;
+    padding: 4px 14px;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+@media (hover: hover) {
+    .host-picker:hover,
+    .btn-create:not(:disabled):hover {
+        --control-art: url("../Resources/haema-design/17-haema-status-pill-hover.svg");
+    }
+}
+
+.host-picker:focus-within,
+.host-picker:has(select option:checked:not([value=""])),
+.btn-create:not(:disabled):active,
+.btn-create[aria-pressed="true"],
+.btn-create[aria-expanded="true"] {
+    --control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
+}
+
+.host-picker select:focus-visible,
+.btn-create:focus-visible {
+    outline: 2px solid #71677d;
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    .host-picker,
+    .host-picker select,
+    .btn-create,
+    .jjum-list-tools .btn-create {
+        min-height: 44px;
+    }
+}
