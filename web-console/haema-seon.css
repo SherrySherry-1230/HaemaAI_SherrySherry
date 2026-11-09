@@ -1,0 +1,19 @@
+/* @editedBy YAONG1230 */
+.seon-connections path.seon-curve {
+    fill: none;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    opacity: 1;
+}
+
+/* Leave space for the fixed end curves and the widest round caps. */
+.jjum-list:has(.seon-connections) {
+    padding-right: 76px;
+}
+
+@media (max-width: 820px) {
+    .jjum-list:has(.seon-connections) {
+        padding-right: 52px;
+    }
+}
