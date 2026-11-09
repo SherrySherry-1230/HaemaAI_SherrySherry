@@ -1,0 +1,79 @@
+name: Publish console
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - index.html
+      - web-console/**
+      - Resources/**
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out site
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Collect site files
+        shell: python
+        run: |
+          from pathlib import Path
+          import shutil
+
+          files = (
+              "index.html",
+              "web-console/haema-console.js",
+              "web-console/haema-test-host.js",
+              "web-console/haema-seon.js",
+              "web-console/haema-seon.css",
+              "Resources/favicon.svg",
+              "Resources/haema-design/haema-logo-round.svg",
+              "Resources/haema-design/08-send-button.svg",
+              "Resources/haema-design/12-user-avatar.png",
+              "Resources/haema-design/13-chat-panel-shape.svg",
+              "Resources/haema-design/18-haema-panel-shape.svg",
+              "Resources/haema-design/irregular/shape-15.svg",
+              "Resources/haema-design/crying-haema.png",
+              "Resources/haema-design/seon-curve.svg",
+              "Resources/haema-design/fonts/Dongle-Regular.ttf",
+              "Resources/haema-design/fonts/Dongle-OFL.txt",
+              "Resources/haema-design/fonts/CookieRunWebBlack.woff2",
+              "Resources/haema-design/fonts/CookieRun-License-ko-en.pdf",
+          )
+          destination = Path("_site")
+          destination.mkdir()
+          for name in files:
+              source = Path(name)
+              if source.is_symlink() or not source.is_file():
+                  raise SystemExit(f"Site asset is unavailable: {name}")
+              target = destination / source
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(source, target)
+          (destination / ".nojekyll").touch()
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4
