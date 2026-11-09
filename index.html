@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#F7F3EA">
+    <meta name="referrer" content="no-referrer">
     <title>해마.ai 웹 콘솔</title>
     <link rel="icon" href="Resources/favicon.svg" type="image/svg+xml">
     <style id="console-view-style">
@@ -45,6 +46,14 @@
         .brand h1 { font: 900 clamp(22px, 2vw, 30px)/1.2 CookieRun, sans-serif; }
         .repo-link { font: 400 24px/1 Dongle, sans-serif; color: #685978; text-underline-offset: 4px; }
         .workspace { width: min(92%, 1484px); margin: 22px auto 28px; min-height: 0; flex: 1; display: flex; flex-direction: column; }
+        .connection-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+        .connection-tools p { flex: 1 1 20rem; }
+        .connection-tools button { min-height: 40px; padding: 6px 14px; border: 1px solid #adcac3; border-radius: 14px; background: #e4f2ec; color: #284b43; }
+        .connection-tools button:disabled { opacity: .55; cursor: default; }
+        .connection-tools a { color: inherit; text-underline-offset: 3px; }
+        .connection-note { flex-basis: 100%; }
+        .workspace-toolbar[hidden], .console-panels[hidden], .connection-tools [hidden] { display: none !important; }
+        .local-console { display: block; width: 100%; flex: 1; min-height: 26rem; border: 0; border-radius: 14px; background: var(--paper); }
         .workspace-toolbar { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-bottom: 10px; }
         .host-tools { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
         .host-picker { display: inline-flex; position: relative; min-width: 0; }
@@ -163,6 +172,12 @@
             <a class="repo-link" href="https://github.com/SherrySherry-1230/HaemaAI_SherrySherry">GitHub 저장소</a>
         </header>
         <main class="workspace">
+            <section class="connection-tools" aria-label="쩜통 연결">
+                <p id="connectionStatus" role="status">컴퓨터의 쩜통 실행 프로그램이 열어 준 웹 주소에서 연결할 수 있어요.</p>
+                <button id="connectLocal" type="button" disabled>내 쩜통 연결</button>
+                <a id="openLocalWindow" target="_blank" rel="noopener noreferrer" hidden>로컬 창에서 열기</a>
+                <p id="connectionWindowNote" class="connection-note" hidden>새 창에는 현재 입력 중인 초안이 자동으로 옮겨지지 않아요.</p>
+            </section>
             <div class="workspace-toolbar">
                 <nav class="mobile-tabs" aria-label="콘솔 화면 선택">
                     <button type="button" data-mobile-panel="chat" aria-controls="chatPanel" aria-pressed="true">대화</button>
@@ -205,5 +220,6 @@
     <script src="web-console/haema-test-host.js"></script>
     <script src="web-console/haema-seon.js?v=2"></script>
     <script src="web-console/haema-console.js"></script>
+    <script src="web-console/haema-connection.js"></script>
 </body>
 </html>

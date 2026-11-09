@@ -36,6 +36,7 @@ jobs:
           files = (
               "index.html",
               "web-console/haema-console.js",
+              "web-console/haema-connection.js",
               "web-console/haema-test-host.js",
               "web-console/haema-seon.js",
               "web-console/haema-seon.css",
