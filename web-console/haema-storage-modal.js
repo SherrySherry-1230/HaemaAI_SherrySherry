@@ -291,7 +291,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
             !clearBtn ||
             !folderHint
         ) {
-            console.error("HAEMA_STORAGE_MODAL: 모달 요소 생성 실패");
             return;
         }
 
@@ -388,10 +387,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
             } catch (error) {
                 if (!isOpen(overlay)) return;
-                console.error(
-                    "HAEMA_STORAGE_MODAL: 저장소 초기화 실패",
-                    error
-                );
 
                 await HAEMA_DIALOG.alert(
                     "저장소 초기화에 실패했습니다.\n\n" +
@@ -506,7 +501,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
     // API 키 이관 함수
     async function migrateApiKeysToStorage() {
         if (typeof ConsoleConfigStore === "undefined" || typeof WebCryptoCipher === "undefined") {
-            console.warn("HAEMA_STORAGE_MODAL: 암호화 저장소를 사용할 수 없어 API 키 이관 스킵");
             return;
         }
 
@@ -516,7 +510,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const config = await store.load();
 
             if (!config.sets || config.sets.length === 0) {
-                console.log("HAEMA_STORAGE_MODAL: 이관할 API 키가 없습니다");
                 return;
             }
 
@@ -529,14 +522,11 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 });
 
                 if (response.ok) {
-                    console.log("HAEMA_STORAGE_MODAL: API 키 이관 성공");
                     // Keep the existing browser profiles available after copying.
                 } else {
-                    console.error("HAEMA_STORAGE_MODAL: API 키 이관 실패");
                 }
             }
         } catch (error) {
-            console.error("HAEMA_STORAGE_MODAL: API 키 이관 중 오류", error);
         }
     }
 
