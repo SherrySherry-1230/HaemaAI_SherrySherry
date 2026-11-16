@@ -1,0 +1,6 @@
+.local-connection-status { display:flex; justify-content:flex-end; align-items:center; gap:8px; width:92%; margin:2px auto 6px; color:#57515d; font:12px/1.4 "Haema Guide Gowun Dodum",sans-serif; }
+.local-connection-status button { position:relative; isolation:isolate; flex:none; border:0; background:none; color:#26292e; padding:7px 14px; font:inherit; cursor:pointer; }
+.local-connection-status button::before { content:""; position:absolute; z-index:-1; inset:0; border-image:url("../Resources/haema-design/17-haema-status-pill.svg") 12 30 fill / 8px 20px / 0 stretch; }
+.local-connection-status button:focus-visible { outline:2px solid #927aaf; outline-offset:2px; }
+@media(max-width:820px) { .local-connection-status { width:94%; flex-wrap:wrap; font-size:11px; } .local-connection-status span { flex:1 1 180px; } .local-connection-status button { min-height:44px; } }
+@media(max-width:820px) { .local-connection-status button::before { border-image-width:22px 20px; } }

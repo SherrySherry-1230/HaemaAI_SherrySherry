@@ -12,6 +12,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
     let pendingInit = null;
     const modalFocus = new WeakMap();
 
+    function requestLocal(operation, input = {}) {
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+        if (!connection || typeof connection.request !== "function") {
+            throw new Error("로컬 연결을 확인해 주세요.");
+        }
+        return connection.request(operation, input);
+    }
+
     function isOpen(overlay) {
         return !!overlay && overlay.isConnected && overlay.classList.contains("active");
     }
@@ -72,16 +80,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
         });
     }
 
-    // 폴더명 상수
-    // 추후 영문명 전환 시 이 부분만 변경
-    const FOLDER_NAMES = {
-        longTerm: "🧠장기기억저장소_feat.해마🧠",
-        jjum: "🪣쩜통🪣",
-        endUser: "☺️♥️🤖엔드유저와의 관계를 위하여🤖♥️☺️",
-        hiddenSystem: ".🫀해마_심층_중추신경계🫀",
-        algorithm: ".📜해마.ai 핵심 13 알고리즘 계율📜",
-    };
-
     // 실제 저장소 연결 상태 표시용
     const STORAGE_PATH_KEY = "haema_storage_root";
 
@@ -128,16 +126,26 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
         const generation = ++storageRequestGeneration;
         try {
-            const response = await fetch("/api/storage/status", { cache: "no-store" });
+            const response = await requestLocal("storage.status");
             if (!response.ok) throw new Error("저장소 상태를 확인할 수 없습니다.");
             const status = await response.json();
             if (generation !== storageRequestGeneration) return { stale: true };
+            if (!status || typeof status.connected !== "boolean" ||
+                (status.connected && (typeof status.storageRoot !== "string" || !status.storageRoot.trim() ||
+                    typeof status.storageId !== "string" || !status.storageId.trim() ||
+                    (status.jjums !== undefined && !Array.isArray(status.jjums))))) {
+                throw new Error("저장소 상태를 확인할 수 없습니다.");
+            }
             applyStorageStatus(status);
             return status;
         } catch {
             if (generation !== storageRequestGeneration) return { stale: true };
-            applyStorageStatus({ connected: false });
-            return { connected: false };
+            // A failed check must not clear saved paths or the visible memory list.
+            if (consoleRef) {
+                consoleRef.storageConnected = false;
+                consoleRef.storageIdentity = null;
+            }
+            return { connected: false, state: "unavailable" };
         }
     }
 
@@ -165,10 +173,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const generation = ++storageRequestGeneration;
         const operation = (async function() {
             try {
-                const response = await fetch("/api/storage/init", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ storageRoot: storagePath, forceCreate, connectExisting }),
+                const response = await requestLocal("storage.init", {
+                    storageRoot: storagePath, forceCreate, connectExisting
                 });
                 const result = await response.json();
                 if (generation !== storageRequestGeneration) return { stale: true };
@@ -241,24 +247,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '      </div>',
 
             '      <div class="form-group">',
-            '        <label class="form-label">생성할 폴더 구조</label>',
-            '        <div class="folder-list">',
-            '          <div class="folder-item">',
-            '            <span>' + FOLDER_NAMES.longTerm + '</span>',
-            '          </div>',
-            '          <div class="folder-item">',
-            '            <span>├── ' + FOLDER_NAMES.jjum + '</span>',
-            '          </div>',
-            '          <div class="folder-item">',
-            '            <span>├── ' + FOLDER_NAMES.endUser + '</span>',
-            '          </div>',
-            '          <div class="folder-item">',
-            '            <span>└── ' + FOLDER_NAMES.hiddenSystem + ' [숨김]</span>',
-            '          </div>',
-            '          <div class="folder-item">',
-            '            <span>│   └── ' + FOLDER_NAMES.algorithm + ' [숨김]</span>',
-            '          </div>',
-            '        </div>',
+            '        <label class="form-label">기억 저장 위치</label>',
+            '        <p class="form-hint">선택한 컴퓨터의 폴더에 쩜과 대화 기록을 보관합니다.</p>',
             '      </div>',
 
             '      <div class="form-group">',
@@ -288,7 +278,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const clearBtn = document.getElementById("storageClearBtn");
         const folderHint = document.getElementById("storageFolderHint");
 
-        folderHint.textContent = "※ 내부 제어 폴더인 " + FOLDER_NAMES.hiddenSystem + " 아래의 " + FOLDER_NAMES.algorithm + "도 숨김 폴더로 생성됩니다.";
 
         if (
             !overlay ||
@@ -453,7 +442,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '    </div>',
             '    <div class="modal-body">',
             '      <div class="haema-modal-character"><img src="Resources/haema-emoji/haema-default.svg" width="104" height="104" alt="" aria-hidden="true"></div>',
-            '      <p>이미 해당 위치에 [' + FOLDER_NAMES.longTerm + '] 폴더가 존재합니다.</p>',
+            '      <p>이미 해당 위치에 기억 저장소가 있습니다.</p>',
             '      <p>기존 저장소를 연결하시겠습니까, 아니면 새로 만드시겠습니까?</p>',
             '      <div class="form-group">',
             '        <button class="btn" id="existingStorageConnectBtn" type="button">',
@@ -535,18 +524,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const encryptedRaw = localStorage.getItem(window.STORAGE_KEY || "haema.console.config.v1");
 
             if (encryptedRaw) {
-                const response = await fetch("/api/api-keys", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ encrypted: JSON.parse(encryptedRaw) }),
+                const response = await requestLocal("credentials.save", {
+                    encrypted: JSON.parse(encryptedRaw)
                 });
 
                 if (response.ok) {
                     console.log("HAEMA_STORAGE_MODAL: API 키 이관 성공");
-                    // 브라우저 임시 저장소 정리
-                    store.clear();
+                    // Keep the existing browser profiles available after copying.
                 } else {
                     console.error("HAEMA_STORAGE_MODAL: API 키 이관 실패");
                 }

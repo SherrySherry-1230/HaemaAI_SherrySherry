@@ -1,5 +1,5 @@
 // @editedBy YAONG1230 2026-10-22
-// Transport for docs/INCREMENTAL_CONVERSATION.md. Acceptance is not processing completion.
+// Acceptance is not processing completion.
 // The caller owns scope verification, ordering, persistence, polling and explicit retries.
 (function (global) {
     'use strict';
@@ -108,21 +108,13 @@
         SESSION_UNAVAILABLE: [503, '입력 세션을 사용할 수 없어요. 잠시 뒤 다시 확인해 주세요.']
     };
     function create(options = {}) {
-        const requestFetch = options.fetch || ((...args) => global.fetch(...args));
-        const rawBase = options.baseUrl ?? '';
-        let baseUrl;
-        try {
-            if (typeof rawBase !== 'string' || rawBase !== rawBase.trim()) throw Error('base');
-            if (rawBase) {
-                const parsed = new URL(rawBase, 'http://haema.invalid');
-                if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash ||
-                    (!/^https?:\/\//i.test(rawBase) && (!rawBase.startsWith('/') || rawBase.startsWith('//')))) throw Error('base');
-            }
-            baseUrl = rawBase.replace(/\/+$/, '');
-        } catch { baseUrl = null; }
+        const requestOperation = options.request || ((...args) => global.HAEMA_LOCAL_CONNECTION.request(...args));
+        const operations = {
+            open: 'conversation.session.create', read: 'conversation.session.get', close: 'conversation.session.delete',
+            snapshot: 'conversation.snapshot', submit: 'conversation.submit', retry: 'conversation.retry'
+        };
         async function request(action, scope, conversationId, inputOrSessionId, retryId) {
             if (!validScope(scope) || !id(conversationId)) return failure('INCREMENTAL_SCOPE', '연결된 저장소와 대화를 확인해 주세요.');
-            if (baseUrl === null) return failure('INCREMENTAL_CONFIG', '연속 입력 서버 주소를 확인해 주세요.');
             const isInput = ['snapshot', 'submit', 'retry'].includes(action);
             if ((isInput && !validInput(inputOrSessionId, action)) ||
                 (!isInput && action !== 'open' && !id(inputOrSessionId)) || (action === 'retry' && !id(retryId))) {
@@ -134,21 +126,11 @@
                 sequence: inputOrSessionId.sequence, revision: inputOrSessionId.revision, text: inputOrSessionId.text,
                 ...(inputOrSessionId.at === undefined ? {} : { at: inputOrSessionId.at }) } : null;
             const sessionId = input?.sessionId ?? inputOrSessionId;
-            let url = baseUrl + '/api/conversation/' + (isInput ? action : 'session');
-            const init = { method: action === 'read' ? 'GET' : action === 'close' ? 'DELETE' : 'POST',
-                cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' } };
-            try {
-                if (init.method === 'GET' || init.method === 'DELETE') {
-                    url += '?ownerId=' + encodeURIComponent(expected.ownerId) + '&conversationId=' + encodeURIComponent(conversationId) +
-                        '&sessionId=' + encodeURIComponent(sessionId);
-                } else {
-                    init.headers['Content-Type'] = 'application/json';
-                    init.body = JSON.stringify({ ownerId: expected.ownerId, conversationId, ...(input || {}),
-                        ...(action === 'retry' ? { retryId } : {}) });
-                }
-            } catch { return failure('INVALID_INCREMENTAL_INPUT', '입력 식별자를 확인하지 못했어요. 보관한 입력은 유지했어요.'); }
+            const requestInput = { ownerId: expected.ownerId, conversationId, ...(input || {}),
+                ...(['read', 'close'].includes(action) ? { sessionId } : {}),
+                ...(action === 'retry' ? { retryId } : {}) };
             let response;
-            try { response = await requestFetch(url, init); }
+            try { response = await requestOperation(operations[action], requestInput); }
             catch { return failure('INCREMENTAL_NETWORK', '서버 응답을 확인하지 못했어요. 보관한 입력과 식별자는 유지했어요.'); }
             const status = response?.status;
             if ([404, 405, 501].includes(status)) return failure('INCREMENTAL_UNSUPPORTED', '현재 서버에서 연속 입력 경로를 사용할 수 없어요.', status, true);

@@ -1,3 +1,30 @@
+/* @editedBy YAONG1230 2026-11-10 */
+.tool-button .tool-button-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    position: relative;
+    min-width: 0;
+    max-width: 100%;
+}
+.tool-button .tool-button-icon,
+.tool-button .tool-button-status,
+.tool-button .tool-button-separator {
+    flex: 0 0 auto;
+    line-height: 1;
+}
+.tool-button .tool-button-icon,
+.tool-button .tool-button-status { font-size: 14px; }
+.tool-button .tool-button-label {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+#apiKeyBtn.tool-button,
+#storageBtn.tool-button { padding-inline: 2px; }
+
 /* @editedBy YAONG1230 2026-10-28
    Use each original colored SVG, including its blur, inner shadow and noise.
    Fixed source/output corners leave only the middle strips to accommodate labels.
@@ -149,4 +176,101 @@
     .jjum-list-tools .btn-create {
         min-height: 44px;
     }
+}
+
+/* @editedBy YAONG1230 2026-11-10: keyboard and pointer host selection. */
+.host-picker .host-picker-native[hidden],
+.host-picker-popup[hidden] { display: none !important; }
+
+.host-picker-trigger {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 34px;
+    padding: 4px 28px 4px 14px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: 400 13px "CookieRun Black", sans-serif;
+    text-align: left;
+    cursor: pointer;
+}
+.host-picker-trigger-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-picker-trigger:focus-visible { outline: 2px solid #71677d; outline-offset: 2px; }
+.host-picker[data-open="true"]::after { margin-top: 3px; transform: rotate(225deg); }
+.top-state-area:has(.host-picker[data-open="true"]) { z-index: 10; }
+
+.host-picker-popup {
+    position: absolute;
+    isolation: isolate;
+    z-index: 20;
+    top: calc(100% - 2px);
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    width: 182px;
+    height: 212px;
+    min-height: 0;
+    max-width: calc(100vw - 24px);
+    padding: 0 12px 14px;
+    background: transparent;
+    color: #26292e;
+    pointer-events: auto;
+}
+.host-picker-popup::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0 -2px -2px 0;
+    pointer-events: none;
+    border: 20px solid transparent;
+    border-image: url("../Resources/haema-design/host-dropdown-open.svg") 20 fill / 20px / 0 stretch;
+}
+.host-picker[data-placement="above"] .host-picker-popup { top: auto; bottom: calc(100% - 2px); }
+.host-picker-popup-heading { display: flex; flex: 0 0 30px; justify-content: flex-end; align-items: center; }
+.host-picker-close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin-right: -3px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+}
+.host-picker-close-arrow { width: 6px; height: 6px; margin-top: 3px; border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(225deg); }
+.host-picker-options {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #b8a9c9 transparent;
+    outline-offset: -2px;
+}
+.host-picker-option {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 3px 5px;
+    color: inherit;
+    font: 400 12px/18px "CookieRun Black", sans-serif;
+    cursor: pointer;
+}
+.host-picker-option > span { min-width: 0; overflow-wrap: anywhere; }
+.host-picker-option[aria-selected="true"] { background: #f4e2b2; }
+.host-picker-option.is-active { background: #f8e4e8; }
+.host-picker-option.is-active[aria-selected="true"] { background: #f3d1da; }
+.host-picker-options:focus-visible,
+.host-picker-close:focus-visible { outline: 2px solid #71677d; }
+
+@media (pointer: coarse) {
+    .host-picker-trigger,
+    .host-picker-option { min-height: 44px; }
+    .host-picker-popup-heading { flex-basis: 44px; }
+    .host-picker-close { width: 44px; height: 44px; }
 }

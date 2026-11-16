@@ -1,0 +1,197 @@
+/* @editedBy YAONG1230 2026-11-16: original vector controls on small screens. */
+@media (max-width: 820px) {
+    .mobile-tabs {
+        height: 56px;
+        flex: 0 0 56px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        padding-block: 6px;
+    }
+
+    .mobile-tab,
+    .modal :is(.btn, .btn-primary, .btn-secondary),
+    .haema-dialog-actions .btn,
+    .conversation-retry,
+    .card-action,
+    #modalRefreshModels {
+        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill.svg");
+        position: relative;
+        isolation: isolate;
+        min-width: 64px;
+        max-width: 100%;
+        min-height: 44px;
+        padding: 9px 16px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--ink, #26292e);
+        box-shadow: none;
+        font: 400 12px/1.5 "CookieRun Regular", "CookieRun Black", sans-serif;
+        text-align: center;
+        overflow-wrap: anywhere;
+        cursor: pointer;
+        touch-action: manipulation;
+    }
+
+    .mobile-tab::before,
+    .modal :is(.btn, .btn-primary, .btn-secondary)::before,
+    .haema-dialog-actions .btn::before,
+    .conversation-retry::before,
+    .card-action::before,
+    #modalRefreshModels::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        top: 9px;
+        bottom: 9px;
+        left: -1px;
+        width: calc(100% + 2px);
+        height: auto;
+        pointer-events: none;
+        border: 0 solid transparent;
+        border-image-source: var(--responsive-control-art);
+        border-image-slice: 12 30 12 30 fill;
+        border-image-width: 12px 30px 12px 30px;
+        border-image-outset: 0;
+        border-image-repeat: stretch;
+    }
+
+    .mobile-tab {
+        min-width: 0;
+        font-family: "CookieRun Black", sans-serif;
+        font-size: 14px;
+    }
+
+    .mobile-tab[aria-selected="true"],
+    .modal .btn-primary,
+    .modal .btn-create,
+    .haema-dialog-actions .btn-primary,
+    :is(.mobile-tab, .modal .btn, .conversation-retry, .card-action):not(:disabled):active {
+        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
+        background: transparent;
+        color: var(--ink, #26292e);
+    }
+
+    :is(.mobile-tab, .modal .btn, .modal .btn-primary, .modal .btn-secondary,
+        .haema-dialog-actions .btn, .conversation-retry, .card-action):focus-visible,
+    #modalRefreshModels:focus-visible {
+        outline: 2px solid #71677d;
+        outline-offset: 2px;
+    }
+
+    :is(.modal .btn, .modal .btn-primary, .modal .btn-secondary,
+        .haema-dialog-actions .btn, .conversation-retry, .card-action):disabled {
+        cursor: not-allowed;
+        opacity: .55;
+    }
+
+    .host-picker,
+    .host-picker select,
+    .host-picker-trigger,
+    .host-picker-option,
+    .btn-create,
+    .jjum-list-tools .btn-create {
+        min-height: 44px;
+        touch-action: manipulation;
+    }
+
+    .host-picker-popup-heading { flex-basis: 44px; }
+    .host-picker-close,
+    .modal-close,
+    .haema-dialog-close {
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        flex-shrink: 0;
+        touch-action: manipulation;
+    }
+
+    .modal .input-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .modal .input-group > input { flex: 1 1 100%; min-width: 0; }
+    .modal .input-group > .btn { flex: 1 1 100px; }
+    .modal-footer,
+    .haema-dialog-actions { flex-wrap: wrap; gap: 8px; }
+    .modal-footer > button { flex: 1 1 100px; }
+    .saved-key-actions { gap: 6px; }
+    .saved-key-actions .btn { min-width: 64px; }
+
+    .console-panels[data-mobile-panel="haema"] .panel-right {
+        display: grid;
+        grid-template-rows: auto auto minmax(0, 1fr);
+        row-gap: 2px;
+        padding-top: 0;
+    }
+    .panel-right > .top-state-area {
+        position: relative;
+        grid-area: 1 / 1;
+        top: auto;
+        right: auto;
+        left: auto;
+        width: 100%;
+        height: auto;
+        min-height: 44px;
+        padding: 0;
+        gap: 6px;
+        align-items: center;
+    }
+    .top-state-area > .host-picker { flex: 1 1 144px; width: auto; }
+    .top-state-area > .haema-status-pill { flex: 0 1 146px; }
+    .panel-right > .panel-heading {
+        grid-area: 2 / 1;
+        height: auto;
+        min-height: 44px;
+        margin: 0;
+        padding: 0;
+        align-items: center;
+    }
+    .jjum-list-tools { width: 100%; min-height: 44px; justify-content: flex-end; }
+    .jjum-list-tools .create-btn-wrapper { min-width: 0; }
+    .jjum-list-tools .btn-create { width: 180px; max-width: 100%; font-size: 12px; }
+    .panel-right > .right-panel-art,
+    .panel-right > .haema-panel-viewport {
+        position: relative !important;
+        grid-area: 3 / 1;
+        inset: auto;
+        min-width: 0;
+        min-height: 0;
+    }
+    .panel-right > .right-panel-art img { position: absolute; inset: 0; }
+}
+
+@media (max-width: 520px) {
+    .conversation-toolbar {
+        display: grid;
+        grid-template-columns: repeat(2, 101px);
+        grid-template-rows: repeat(2, 44px);
+        justify-content: end;
+        align-items: center;
+        column-gap: 9px;
+        row-gap: 0;
+    }
+    .conversation-toolbar .introduction-button {
+        grid-area: 1 / 1 / 2 / 3;
+        justify-self: end;
+        max-width: 100%;
+    }
+    .conversation-toolbar #storageBtn { grid-area: 2 / 1; }
+    .conversation-toolbar #apiKeyBtn { grid-area: 2 / 2; }
+}
+
+@media (max-width: 820px) and (hover: hover) {
+    .mobile-tab:not(:disabled):hover,
+    .modal :is(.btn, .btn-primary, .btn-secondary):not(:disabled):hover,
+    .haema-dialog-actions .btn:not(:disabled):hover,
+    .conversation-retry:not(:disabled):hover,
+    .card-action:not(:disabled):hover,
+    #modalRefreshModels:not(:disabled):hover {
+        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-hover.svg");
+        background: transparent;
+    }
+    .mobile-tab[aria-selected="true"]:hover {
+        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
+    }
+}

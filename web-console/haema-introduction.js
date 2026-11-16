@@ -1,7 +1,7 @@
 // @editedBy SherrySherry 2026-11-05
 // @editedBy YAONG1230 2026-10-31: validate saved introduction / pending self-JJum separately
 // @editedBy YAONG1230 2026-10-21
-// Owner-introduction API follows the confirmed docs/INTRODUCTION_API.md contract.
+// Preserve the saved introduction and its independent JJum status.
 // The server selects displayName; this client never infers a name from the text.
 // Connection status before/after each request and draft ownership belong to the UI.
 (function (global) {
@@ -57,25 +57,18 @@
     const failure = (code, message, status = 0) => ({ ok: false, code, error: message, status });
     const invalid = status => failure('INTRODUCTION_INVALID', '자기소개 응답을 확인하지 못했어요. 입력한 내용은 그대로 두었습니다.', status);
     function create(options = {}) {
-        const requestFetch = options.fetch || ((...args) => global.fetch(...args));
+        const requestOperation = options.request || ((...args) => global.HAEMA_LOCAL_CONNECTION.request(...args));
         async function request(scope, method, text, revision) {
             if (!validScope(scope)) return failure('INTRODUCTION_SCOPE', '연결된 저장소와 사용자를 확인해 주세요.');
             if (method === 'PUT' && (typeof text !== 'string' || !validRevision(revision))) return invalid(0);
             // Snapshot the caller's scope before the first await. A later UI
             // selection must not change the identity expected for this response.
             const expected = { ownerId: scope.ownerId, storageRoot: scope.storageRoot, storageId: scope.storageId };
-            let url;
-            try {
-                url = '/api/owners/' + encodeURIComponent(expected.ownerId) + '/introduction' +
-                    (method === 'GET' ? '?storageId=' + encodeURIComponent(expected.storageId) : '');
-            } catch { return failure('INTRODUCTION_SCOPE', '연결된 저장소와 사용자를 확인해 주세요.'); }
-            const init = { method, cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' } };
-            if (method === 'PUT') {
-                init.headers['Content-Type'] = 'application/json';
-                init.body = JSON.stringify({ storageId: expected.storageId, text, revision });
-            }
+            const operation = method === 'GET' ? 'introduction.get' : 'introduction.save';
+            const input = { ownerId: expected.ownerId, storageId: expected.storageId,
+                ...(method === 'PUT' ? { text, revision } : {}) };
             let response;
-            try { response = await requestFetch(url, init); }
+            try { response = await requestOperation(operation, input); }
             catch { return failure('INTRODUCTION_NETWORK', '자기소개 서버에 연결하지 못했어요. 입력한 내용은 그대로 두었습니다.'); }
             const status = response?.status;
             let payload;
