@@ -162,6 +162,34 @@
     .panel-right > .right-panel-art img { position: absolute; inset: 0; }
 }
 
+/* @editedBy YAONG1230 2026-11-17: separate toolbar rows on narrow desktop screens. */
+@media (min-width: 821px) and (max-width: 1480px) {
+    .panel-right > .top-state-area {
+        top: -12px;
+        height: 44px;
+        min-height: 44px;
+        padding: 0 14px;
+        align-items: center;
+    }
+    .panel-right > .top-state-area > .host-picker {
+        flex: 1 1 184px;
+        min-width: 0;
+        max-width: 184px;
+    }
+    .panel-right > .top-state-area > .haema-status-pill {
+        flex: 0 1 162px;
+        min-width: 0;
+    }
+    .panel-right > .panel-heading {
+        height: 48px;
+        min-height: 48px;
+        padding-top: 14px;
+    }
+    .panel-right > .panel-heading .jjum-list-tools { transform: none; }
+    .panel-right > .right-panel-art,
+    .panel-right > .haema-panel-viewport { top: 72px; }
+}
+
 @media (max-width: 520px) {
     .conversation-toolbar {
         display: grid;
