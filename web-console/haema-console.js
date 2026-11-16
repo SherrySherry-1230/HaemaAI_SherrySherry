@@ -122,8 +122,8 @@ HAEMA_CONSOLE.replaceViewPreservingInput = function(app, html, input) {
         for (const sibling of [...parent.childNodes]) if (sibling !== kept) sibling.remove();
         parent.insertBefore(before, kept);
         parent.appendChild(after);
-        // Availability owns disabled/title; avoid briefly toggling a retained editor.
-        const managed = name => kept === input && (name === 'disabled' || name === 'title');
+        // Keep the editor's availability stable while preserving its native history.
+        const managed = name => kept === input && ['disabled', 'readonly', 'title'].includes(name);
         for (const attribute of [...kept.attributes]) {
             if (!managed(attribute.name) && !next.hasAttribute(attribute.name)) kept.removeAttribute(attribute.name);
         }
@@ -162,7 +162,7 @@ HAEMA_CONSOLE.render = function() {
             node.id === 'modalApiModel' ? node.value || node.dataset.selectedModel || '' : node.value,
             node.selectionStart, node.selectionEnd, node.selectionDirection]);
 
-    this.replaceViewPreservingInput(app, this.renderHeader() + this.renderConnectionStatus() + this.renderMainContainer() + this.renderModal(), userInput);
+    this.replaceViewPreservingInput(app, this.renderHeader() + this.renderMainContainer() + this.renderModal(), userInput);
     if (typeof HAEMA_TOKEN_METER !== 'undefined' && typeof HAEMA_TOKEN_METER.animate === 'function') {
         const scope = this.getConversationScope();
         HAEMA_TOKEN_METER.animate(app, scope ? JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId ?? null, this.selectedTestHost || 'haema-only']) : '');
@@ -998,14 +998,6 @@ HAEMA_CONSOLE.observeSeonLayout = function() {
 
 // ===== 이벤트 리스너 =====
 HAEMA_CONSOLE.attachEventListeners = function() {
-    document.getElementById('localConnectionRecheck')?.addEventListener('click', async () => {
-        await HAEMA_LOCAL_CONNECTION.recheck();
-        if (HAEMA_LOCAL_CONNECTION.status().connection === 'connected') {
-            await Promise.all([this.refreshApiStatus(), HAEMA_STORAGE_MODAL.autoConnect(), HAEMA_TEST_HOST.loadHosts()]);
-        }
-        this.render();
-    });
-    document.getElementById('localConnectionDisconnect')?.addEventListener('click', () => HAEMA_LOCAL_CONNECTION.disconnect());
     const sendBtn = document.getElementById("sendBtn");
     const clearBtn = document.getElementById("clearBtn");
     const createBtn = document.getElementById("createJJumBtn");
@@ -1110,7 +1102,7 @@ HAEMA_CONSOLE.attachEventListeners = function() {
 
             const input = document.getElementById("userInput");
             if (e.target.id === "userInput") {
-                if (input && input.disabled) {
+                if (input && (input.disabled || input.readOnly)) {
                     this.handleInputAreaClick();
                     return;
                 }
@@ -1126,7 +1118,17 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     // 실시간 타이핑 쓰로틀 (Throttle 500ms - 타이핑 중에도 0.5초마다 계속 호출)
     if (userInput && !this.boundInputElements.has(userInput)) {
         this.boundInputElements.add(userInput);
-        userInput.addEventListener("compositionstart", () => { this.isComposing = true; });
+        userInput.addEventListener("compositionstart", () => {
+            if (userInput.readOnly) { this.handleInputAreaClick(); return; }
+            this.isComposing = true;
+        });
+        for (const eventName of ['beforeinput', 'paste', 'cut']) {
+            userInput.addEventListener(eventName, event => {
+                if (!userInput.readOnly) return;
+                event.preventDefault();
+                this.handleInputAreaClick();
+            });
+        }
         userInput.addEventListener("compositionend", (e) => {
             if (document.getElementById('userInput') !== userInput) return;
             this.isComposing = false;
@@ -1145,6 +1147,14 @@ HAEMA_CONSOLE.attachEventListeners = function() {
             if (!this.isComposing) this.handleInput(e.target.value);
         });
         userInput.addEventListener("keydown", (e) => {
+            const editingKey = e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete' ||
+                (e.key.length === 1 && !e.ctrlKey && !e.metaKey) ||
+                ((e.ctrlKey || e.metaKey) && ['v', 'x'].includes(e.key.toLowerCase()));
+            if (userInput.readOnly && editingKey) {
+                e.preventDefault();
+                if (!e.repeat) this.handleInputAreaClick();
+                return;
+            }
             if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !this.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 if (!e.repeat) this.activateSend();
@@ -1192,63 +1202,58 @@ HAEMA_CONSOLE.refreshApiStatus = async function() {
 HAEMA_CONSOLE.updateInputAvailability = function() {
     const userInput = document.getElementById("userInput");
     if (!userInput) return;
-    if (!!this.selectedTestHost) {
-        const host = globalThis.HAEMA_TEST_HOST.state;
-        userInput.disabled = false;
-        userInput.readOnly = false;
-        userInput.title = '';
-        const send = document.getElementById('sendBtn');
-        if (send) send.disabled = !this.isStorageReady() || !this.isApiKeyReady() || host.loading || host.sending || !host.ready || !userInput.value.trim();
-        return;
-    }
-
     const storageReady = this.isStorageReady();
     const apiKeyReady = this.isApiKeyReady();
     const isReady = storageReady && apiKeyReady;
-
     userInput.disabled = false;
+    userInput.readOnly = !isReady;
+    userInput.setAttribute('aria-readonly', String(!isReady));
+    userInput.title = '';
+    if (!!this.selectedTestHost) {
+        const host = globalThis.HAEMA_TEST_HOST.state;
+        const send = document.getElementById('sendBtn');
+        if (send) send.disabled = !isReady || host.loading || host.sending || !host.ready || !userInput.value.trim();
+        return;
+    }
     const sendBtn = document.getElementById("sendBtn");
     if (sendBtn) sendBtn.disabled = !isReady || this.sending;
-
-    // disabled 상태일 때 title 속성으로 안내 추가
-    if (!isReady) {
-        const reasons = [];
-        if (!storageReady) {
-            reasons.push("🪣저장소🪣 연결을 다시 확인해 주세요😢💦");
-        }
-        if (!apiKeyReady) {
-            reasons.push("🗝️API🗝️를 다시 확인해 주세요 😢💦");
-        }
-        userInput.title = reasons.join("\n");
-    } else {
-        userInput.title = "";
-    }
 };
 
 // ===== input-area 클릭 시 처리 =====
 HAEMA_CONSOLE.handleInputAreaClick = async function() {
+    if (this.inputWarningOpen) return;
     const storageReady = this.isStorageReady();
     const apiKeyReady = this.isApiKeyReady();
-
-    if (!storageReady && !apiKeyReady) {
-        await HAEMA_DIALOG.alert("저장소와 AI 연결을 설정하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
-        this.statusText = "🪣저장소🪣와 🗝️AI 연결🗝️을 모두 준비해 주세요";
-        this.render();
-        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
-            HAEMA_STORAGE_MODAL.open();
+    if (storageReady && apiKeyReady) return;
+    this.inputWarningOpen = true;
+    try {
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION?.status();
+        if (connection?.connection !== 'connected') {
+            await HAEMA_DIALOG.alert('내 컴퓨터의 해마 실행 프로그램과 먼저 연결해 주세요.', { title: '연결이 필요해요' });
+        } else if (connection.runtimeMode === 'setup-only') {
+            await HAEMA_DIALOG.alert('지금은 설정을 확인하는 중이에요. 대화 연결 준비가 끝나면 입력할 수 있어요.', { title: '대화 준비가 필요해요' });
+        } else if (!storageReady && !apiKeyReady) {
+            await HAEMA_DIALOG.alert("저장소와 AI 연결을 설정하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
+            this.statusText = "🪣저장소🪣와 🗝️AI 연결🗝️을 모두 준비해 주세요";
+            this.render();
+            if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+                HAEMA_STORAGE_MODAL.open();
+            }
+        } else if (!storageReady) {
+            await HAEMA_DIALOG.alert("기억을 보관할 저장 폴더를 먼저 연결해주세요.", { title: '저장소를 연결해주세요' });
+            this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
+            this.render();
+            if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
+                HAEMA_STORAGE_MODAL.open();
+            }
+        } else if (!apiKeyReady) {
+            await HAEMA_DIALOG.alert("사용할 AI와 모델의 연결 설정을 확인해주세요.", { title: 'AI 연결을 확인해주세요', tone: 'error' });
+            this.statusText = "🗝️AI 연결🗝️ 설정을 확인해주세요.";
+            this.render();
+            this.openApiKeyModal();
         }
-    } else if (!storageReady) {
-        await HAEMA_DIALOG.alert("기억을 보관할 저장 폴더를 먼저 연결해주세요.", { title: '저장소를 연결해주세요' });
-        this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
-        this.render();
-        if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
-            HAEMA_STORAGE_MODAL.open();
-        }
-    } else if (!apiKeyReady) {
-        await HAEMA_DIALOG.alert("사용할 AI와 모델의 연결 설정을 확인해주세요.", { title: 'AI 연결을 확인해주세요', tone: 'error' });
-        this.statusText = "🗝️AI 연결🗝️ 설정을 확인해주세요.";
-        this.render();
-        this.openApiKeyModal();
+    } finally {
+        this.inputWarningOpen = false;
     }
 };
 
@@ -2522,7 +2527,6 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const editor = this.escapeHtml(this.chatEditorKey());
     const placeholder = test ? '선택한 호스트에게 메시지를 입력하세요.' : '챗봇AI와 대화하는 것처럼 입력해주세요.';
     const isInputDisabled = !this.isStorageReady() || !this.isApiKeyReady();
-    const disabledOverlay = '';
     const storageLabel = this.storageConnected ? '연결' : '없음';
     const apiLabel = this.apiConfigured ? this.formatApiButtonLabel(this.apiKeyName || '설정') : '없음';
     const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
@@ -2537,8 +2541,8 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
         '<div class="conversation-history" data-scroll-key="' + (test ? 'host-history-' + this.selectedTestHost : 'history') + '" aria-live="polite">' +
         (test ? this.renderTestHostHistory() : this.renderHaemaHistory()) + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
-        '<div class="input-area' + '' + '"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" data-editor="' + editor + '" placeholder="' + placeholder + '" aria-label="메시지 입력">' + this.escapeHtml(inputValue) + '</textarea>' +
-        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button>' + disabledOverlay + '</div></div></div></section>';
+        '<div class="input-area"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" data-editor="' + editor + '" placeholder="' + placeholder + '" aria-label="메시지 입력"' + (isInputDisabled ? ' readonly' : '') + '>' + this.escapeHtml(inputValue) + '</textarea>' +
+        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button></div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
@@ -2774,13 +2778,6 @@ HAEMA_CONSOLE.mount = async function() {
         if (state.aiReady && !wasReady) this.syncConversationPending();
         this.render();
     });
-};
-
-HAEMA_CONSOLE.renderConnectionStatus = function() {
-    const state = globalThis.HAEMA_LOCAL_CONNECTION?.status();
-    const connected = state?.connection === 'connected';
-    const text = connected ? (state.runtimeMode === 'setup-only' ? '설정 확인 모드 · AI 대화는 아직 사용할 수 없어요.' : state.aiReady ? '내 컴퓨터에 연결됨' : '내 컴퓨터에 연결됨 · AI 설정을 확인해 주세요.') : state?.connection === 'connecting' ? '내 컴퓨터에 연결하는 중…' : '내 컴퓨터 연결을 확인해 주세요. 실행 프로그램에서 웹콘솔을 열면 다시 연결할 수 있어요.';
-    return '<div class="local-connection-status" role="status"><span>' + text + '</span><button type="button" id="localConnectionRecheck">다시 확인</button>' + (connected ? '<button type="button" id="localConnectionDisconnect">연결 해제</button>' : '') + '</div>';
 };
 
 

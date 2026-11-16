@@ -158,6 +158,7 @@
         .user-input { width: 100%; min-width: 0; min-height: 42px; max-height: 120px; field-sizing: content; padding: 11px 8px; resize: none; border: 0; outline: none; background: transparent; color: var(--ink); font: 14px/1.45 Pretendard, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; }
         .user-input::placeholder { color: #D3CEB5; opacity: 1; }
         .user-input:disabled { color: var(--ink); cursor: not-allowed; }
+        .user-input[readonly] { cursor: pointer; }
         .send-button { position: relative; width: 61px; height: 45px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer; }
         .send-button img { display: block; width: 61px; height: 45px; object-fit: contain; }
         .send-button span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--haema-white); font: 700 22px/1 Pretendard, sans-serif; pointer-events: none; }
@@ -669,11 +670,10 @@
     <link rel="stylesheet" href="web-console/haema-toolbar.css?v=20261116">
     <link rel="stylesheet" href="web-console/haema-brand.css?v=1">
     <link rel="stylesheet" href="web-console/haema-seon.css?v=2">
-    <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261117">
-    <link rel="stylesheet" href="web-console/haema-local-connection.css?v=20261116">
+    <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261117-2">
 </head>
 <body>
     <div id="app"></div>
-    <script type="module" src="web-console/haema-bootstrap.mjs?v=20261116"></script>
+    <script type="module" src="web-console/haema-bootstrap.mjs?v=20261117-2"></script>
 </body>
 </html>

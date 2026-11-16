@@ -164,6 +164,12 @@
 
 /* @editedBy YAONG1230 2026-11-17: separate toolbar rows on narrow desktop screens. */
 @media (min-width: 821px) and (max-width: 1480px) {
+    .console-panels { --panel-content-top: 72px; }
+    .panel-left > .conversation-toolbar {
+        min-height: 77px;
+        align-content: flex-start;
+        row-gap: 9px;
+    }
     .panel-right > .top-state-area {
         top: -12px;
         height: 44px;
@@ -186,8 +192,10 @@
         padding-top: 14px;
     }
     .panel-right > .panel-heading .jjum-list-tools { transform: none; }
+    .panel-left > .chat-panel-art,
+    .panel-left > .chat-panel-viewport,
     .panel-right > .right-panel-art,
-    .panel-right > .haema-panel-viewport { top: 72px; }
+    .panel-right > .haema-panel-viewport { top: var(--panel-content-top); }
 }
 
 @media (max-width: 520px) {
@@ -223,3 +231,92 @@
         --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
     }
 }
+
+/* @editedBy YAONG1230 2026-11-17: storage actions share the original sliced frame. */
+:is(#storageModal, #existingStorageModal) .btn {
+    --storage-control-art: url("../Resources/haema-design/04-card-new-outline.svg");
+    --storage-control-opacity: .45;
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: auto;
+    min-width: 88px;
+    max-width: 100%;
+    min-height: 44px;
+    padding: 9px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--ink, #26292e);
+    box-shadow: none;
+    font: 400 12px/1.5 "CookieRun Regular", "CookieRun Black", sans-serif;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+    touch-action: manipulation;
+}
+
+:is(#storageModal, #existingStorageModal) .btn::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    box-sizing: border-box;
+    top: 6px;
+    bottom: 6px;
+    left: -1px;
+    width: calc(100% + 2px);
+    height: auto;
+    pointer-events: none;
+    border: 0 solid transparent;
+    background: linear-gradient(#eb9bb0 0 0) center / calc(100% - 6px) calc(100% - 6px) no-repeat;
+    opacity: var(--storage-control-opacity);
+    border-image-source: var(--storage-control-art);
+    border-image-slice: 30 40 40 40 fill;
+    border-image-width: 9px 12px 12px 12px;
+    border-image-outset: 0;
+    border-image-repeat: stretch;
+}
+
+:is(#storageModal, #existingStorageModal) .btn-create {
+    --storage-control-opacity: .8;
+}
+
+@media (hover: hover) {
+    :is(#storageModal, #existingStorageModal) .btn:not(:disabled):hover {
+        --storage-control-opacity: .65;
+    }
+}
+
+:is(#storageModal, #existingStorageModal) .btn:not(:disabled):active {
+    --storage-control-opacity: 1;
+}
+
+:is(#storageModal, #existingStorageModal) .btn:focus-visible {
+    outline: 2px solid #71677d;
+    outline-offset: 2px;
+}
+
+:is(#storageModal, #existingStorageModal) .btn:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+}
+
+#storageModal .input-group,
+:is(#storageModal, #existingStorageModal) .form-group:has(> .btn) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+#storageModal .input-group > input {
+    flex: 1 1 100%;
+    width: 100%;
+    min-width: 0;
+}
+
+#storageModal .input-group > .btn { flex: 1 1 104px; }
+:is(#storageModal, #existingStorageModal) .form-group > .btn { flex: 1 1 140px; }
