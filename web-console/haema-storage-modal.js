@@ -13,12 +13,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
     let pendingInit = null;
     const modalFocus = new WeakMap();
 
-    function requestLocal(operation, input = {}) {
+    async function requestLocal(operation, input = {}) {
         const connection = globalThis.HAEMA_LOCAL_CONNECTION;
         if (!connection || typeof connection.request !== "function") {
-            throw new Error("로컬 연결을 확인해 주세요.");
+            throw new Error("내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.");
         }
-        return connection.request(operation, input);
+        try {
+            return await connection.request(operation, input);
+        } catch {
+            throw new Error("내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.");
+        }
     }
 
     function isOpen(overlay) {
