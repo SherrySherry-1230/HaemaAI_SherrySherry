@@ -1,4 +1,4 @@
-/* @editedBy YAONG1230 2026-11-16: original vector controls on small screens. */
+/* @editedBy YAONG1230 2026-11-17: high-resolution original artwork on small controls. */
 @media (max-width: 820px) {
     .mobile-tabs {
         height: 56px;
@@ -13,7 +13,7 @@
     .conversation-retry,
     .card-action,
     #modalRefreshModels {
-        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill.svg");
+        --responsive-control-art: url("../Resources/haema-design/button-raster-4x/17-haema-status-pill.png");
         position: relative;
         isolation: isolate;
         min-width: 64px;
@@ -44,18 +44,16 @@
         top: 9px;
         bottom: auto;
         left: -1px;
-        width: calc(200% + 4px);
-        height: calc(200% - 36px);
+        width: calc(100% + 2px);
+        height: calc(100% - 18px);
         pointer-events: none;
         border: 0 solid transparent;
         border-image-source: var(--responsive-control-art);
-        border-image-slice: 12 30 12 30 fill;
-        border-image-width: 24px 60px 24px 60px;
+        border-image-slice: 48 120 48 120 fill;
+        border-image-width: 12px 30px 12px 30px;
         border-image-outset: 0;
         border-image-repeat: stretch;
-        transform: scale(.5);
-        transform-origin: top left;
-        filter: blur(.7px);
+        image-rendering: auto;
     }
 
     .mobile-tab {
@@ -69,7 +67,7 @@
     .modal .btn-create,
     .haema-dialog-actions .btn-primary,
     :is(.mobile-tab, .modal .btn, .conversation-retry, .card-action):not(:disabled):active {
-        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
+        --responsive-control-art: url("../Resources/haema-design/button-raster-4x/17-haema-status-pill-selected.png");
         background: transparent;
         color: var(--ink, #26292e);
     }
@@ -227,17 +225,17 @@
     .conversation-retry:not(:disabled):hover,
     .card-action:not(:disabled):hover,
     #modalRefreshModels:not(:disabled):hover {
-        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-hover.svg");
+        --responsive-control-art: url("../Resources/haema-design/button-raster-4x/17-haema-status-pill-hover.png");
         background: transparent;
     }
     .mobile-tab[aria-selected="true"]:hover {
-        --responsive-control-art: url("../Resources/haema-design/17-haema-status-pill-selected.svg");
+        --responsive-control-art: url("../Resources/haema-design/button-raster-4x/17-haema-status-pill-selected.png");
     }
 }
 
 /* @editedBy YAONG1230 2026-11-17: storage actions share the original sliced frame. */
 :is(#storageModal, #existingStorageModal) .btn {
-    --storage-control-art: url("../Resources/haema-design/04-card-new-outline.svg");
+    --storage-control-art: url("../Resources/haema-design/button-raster-4x/04-card-new-outline.png");
     --storage-control-opacity: .45;
     position: relative;
     isolation: isolate;
@@ -271,20 +269,18 @@
     top: 6px;
     bottom: auto;
     left: -1px;
-    width: calc(200% + 4px);
-    height: calc(200% - 24px);
+    width: calc(100% + 2px);
+    height: calc(100% - 12px);
     pointer-events: none;
     border: 0 solid transparent;
-    background: linear-gradient(#eb9bb0 0 0) center / calc(100% - 12px) calc(100% - 12px) no-repeat;
+    background: linear-gradient(#eb9bb0 0 0) center / calc(100% - 6px) calc(100% - 6px) no-repeat;
     opacity: var(--storage-control-opacity);
     border-image-source: var(--storage-control-art);
-    border-image-slice: 30 40 40 40 fill;
-    border-image-width: 18px 24px 24px 24px;
+    border-image-slice: 120 160 160 160 fill;
+    border-image-width: 9px 12px 12px 12px;
     border-image-outset: 0;
     border-image-repeat: stretch;
-    transform: scale(.5);
-    transform-origin: top left;
-    filter: blur(.7px);
+    image-rendering: auto;
 }
 
 :is(#storageModal, #existingStorageModal) .btn-create {
