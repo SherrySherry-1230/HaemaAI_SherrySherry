@@ -12,17 +12,32 @@ window.HAEMA_STORAGE_MODAL = (function () {
     let storageRequestGeneration = 0;
     let pendingInit = null;
     const modalFocus = new WeakMap();
+    const safeMessages = new WeakMap();
+    const missingConnections = new WeakSet();
+
+    function connectionFailure(error) {
+        if (missingConnections.has(error)) return "내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.";
+        try {
+            const message = globalThis.HAEMA_LOCAL_CONNECTION?.describeFailure?.(error);
+            return typeof message === "string" && message ? message : null;
+        } catch { return null; }
+    }
+    function safeError(message, status) {
+        const http = Number.isInteger(status) && status >= 100 && status <= 599 ? ` (HTTP ${status})` : "";
+        const error = new Error("STORAGE_OPERATION_FAILED");
+        safeMessages.set(error, message + http);
+        return error;
+    }
+    function safeFailure(error, fallback) { return connectionFailure(error) || safeMessages.get(error) || fallback; }
 
     async function requestLocal(operation, input = {}) {
         const connection = globalThis.HAEMA_LOCAL_CONNECTION;
         if (!connection || typeof connection.request !== "function") {
-            throw new Error("내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.");
+            const error = new Error("CONNECTION_REQUIRED");
+            missingConnections.add(error);
+            throw error;
         }
-        try {
-            return await connection.request(operation, input);
-        } catch {
-            throw new Error("내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.");
-        }
+        return connection.request(operation, input);
     }
 
     function isOpen(overlay) {
@@ -132,14 +147,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const generation = ++storageRequestGeneration;
         try {
             const response = await requestLocal("storage.status");
-            if (!response.ok) throw new Error("저장소 상태를 확인할 수 없습니다.");
+            if (!response.ok) throw safeError("저장소 상태를 확인할 수 없습니다.", response.status);
             const status = await response.json();
             if (generation !== storageRequestGeneration) return { stale: true };
             if (!status || typeof status.connected !== "boolean" ||
                 (status.connected && (typeof status.storageRoot !== "string" || !status.storageRoot.trim() ||
                     typeof status.storageId !== "string" || !status.storageId.trim() ||
                     (status.jjums !== undefined && !Array.isArray(status.jjums))))) {
-                throw new Error("저장소 상태를 확인할 수 없습니다.");
+                throw safeError("저장소 상태를 확인할 수 없습니다.", response.status);
             }
             applyStorageStatus(status);
             return status;
@@ -157,15 +172,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
     async function handleFolderSelect(overlay) {
         const pathInput = overlay.querySelector("#storagePathInput");
         const hint = overlay.querySelector("#storageFolderHint");
-        let response;
-        try {
-            response = await requestLocal("storage.pick");
-        } catch {
-            throw new Error("내 컴퓨터의 실행 프로그램과 연결을 확인한 뒤 다시 선택해 주세요.");
-        }
+        const response = await requestLocal("storage.pick");
         if (!isOpen(overlay)) return false;
         if (!response.ok) {
-            throw new Error("폴더 선택 기능을 사용할 수 없어요. 실행 프로그램을 최신 파일로 업데이트하고 다시 연결해 주세요.");
+            throw safeError("폴더 선택 기능을 사용할 수 없어요. 실행 프로그램을 최신 파일로 업데이트하고 다시 연결해 주세요.", response.status);
         }
         const selected = await response.json();
         if (!isOpen(overlay)) return false;
@@ -173,7 +183,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (selected?.success !== true || selected?.cancelled !== false ||
             typeof selected.storageRoot !== "string" || !selected.storageRoot.trim() ||
             /[\u0000-\u001f\u007f]/.test(selected.storageRoot)) {
-            throw new Error("선택한 폴더 경로를 확인할 수 없어요. 다시 선택해 주세요.");
+            throw safeError("선택한 폴더 경로를 확인할 수 없어요. 다시 선택해 주세요.", response.status);
         }
         pathInput.value = selected.storageRoot;
         pathInput.disabled = false;
@@ -192,13 +202,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 const result = await response.json();
                 if (generation !== storageRequestGeneration) return { stale: true };
                 if (!response.ok || !result.success) {
-                    throw new Error(result.error || "저장소 연결에 실패했습니다.");
+                    throw safeError("저장소 연결 요청을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요.", response.status);
                 }
                 if (result.exists && result.connected !== true && !forceCreate && !connectExisting) {
                     return { exists: true, path: result.path, result };
                 }
                 if (result.connected !== true) {
-                    throw new Error(result.error || "저장소 연결 완료를 확인할 수 없습니다.");
+                    throw safeError("저장소 연결 완료를 확인할 수 없어요.", response.status);
                 }
                 applyStorageStatus(result);
                 if (consoleRef && typeof consoleRef.refreshApiStatus === "function") {
@@ -341,7 +351,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     pathClearBtn.style.display = "inline-block";
                 }
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert("폴더 선택에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "폴더 선택을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요."), { tone: 'error' });
             } finally {
                 selectingFolder = false;
                 folderSelectBtn.disabled = false;
@@ -422,8 +432,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 if (!isOpen(overlay)) return;
 
                 await HAEMA_DIALOG.alert(
-                    "저장소 초기화에 실패했습니다.\n\n" +
-                    error.message,
+                    safeFailure(error, "저장소 연결을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요."),
                     { tone: 'error' }
                 );
             } finally {
@@ -513,7 +522,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 closeExistingModal(overlay, false);
                 closeModal(parent);
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert("기존 저장소 연결에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "기존 저장소 연결을 완료하지 못했어요."), { tone: 'error' });
             }
         });
 
@@ -525,7 +534,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 closeExistingModal(overlay, false);
                 closeModal(parent);
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert("새 저장소 생성에 실패했습니다: " + error.message, { tone: 'error' });
+                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "새 저장소 생성을 완료하지 못했어요."), { tone: 'error' });
             }
         });
         focusInside(overlay);

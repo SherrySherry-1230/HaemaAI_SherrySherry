@@ -1,9 +1,10 @@
 // @editedBy YAONG1230 2026-10-07
+// @editedBy SherrySherry 2026-11-17
 // 해마 캐릭터를 사용하는 확인·안내창. 확인 결과를 기다린 뒤 기존 동작을 이어간다.
 window.HAEMA_DIALOG = (() => {
     let pending = Promise.resolve();
 
-    function open({ message, title, tone = 'warning', confirmText = '확인', cancelText = '' }) {
+    function open({ message, title, tone = 'warning', confirmText = '확인', cancelText = '', onConfirm }) {
         return new Promise(resolve => {
             const previousFocus = document.activeElement;
             const previousId = previousFocus?.id;
@@ -58,7 +59,11 @@ window.HAEMA_DIALOG = (() => {
             confirm.textContent = confirmText;
             confirm.autofocus = !cancelText;
             confirm.dataset.dialogAction = 'confirm';
-            confirm.addEventListener('click', () => dialog.close('confirmed'));
+            confirm.addEventListener('click', () => {
+                // Start permission-gated work while the trusted click is active.
+                if (typeof onConfirm === 'function') onConfirm();
+                dialog.close('confirmed');
+            });
             actions.append(confirm);
             dialog.append(close, body, actions);
 

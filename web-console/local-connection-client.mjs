@@ -1,19 +1,36 @@
-// @editedBy SherrySherry 2026-11-10
+// @editedBy SherrySherry 2026-11-17
 const CODE = /^[A-Za-z0-9_-]{43}$/;
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const RESERVED = new Set(['authorization', 'cookie', 'host', 'origin', 'content-type', 'content-length', 'connection', 'transfer-encoding', 'upgrade']);
 const DESCRIPTOR_FIELDS = ['version', 'baseUrl', 'webOrigin', 'pairingPath', 'revocationPath', 'revocationMethod', 'sessionHeader'];
 const OPTIONAL_FIELDS = ['requestPath', 'eventsPath'];
+const STAGES = new Set(['fragment', 'permission', 'pairing', 'settings-status', 'events-connect', 'events-read', 'operation', 'disconnect']);
+const ERROR_CODES = new Set([
+  'INVALID_LOCAL_PATH', 'INVALID_CONNECTION_DESCRIPTOR', 'INVALID_LOCAL_ADDRESS', 'INVALID_WEB_ORIGIN',
+  'INVALID_CONNECTION_HEADER', 'CONNECTION_LOCATION_UNAVAILABLE', 'CONNECTION_FRAGMENT_NOT_CLEARED',
+  'INVALID_CONNECTION_FRAGMENT', 'CONNECTION_TRANSPORT_UNAVAILABLE', 'CONNECTION_CLOSED',
+  'CONNECTION_EXPIRED', 'CONNECTION_REQUIRED', 'CONNECTION_ABORTED', 'INVALID_CONNECTION_SIGNAL',
+  'INVALID_CONNECTION_RESPONSE', 'CONNECTION_UNAVAILABLE', 'CONNECTION_BUSY', 'CONNECTION_ALREADY_ACTIVE',
+  'INVALID_CONNECTION_CODE', 'CONNECTION_REJECTED', 'INVALID_CONNECTION_REQUEST', 'INVALID_CONNECTION_OPERATION',
+  'CONNECTION_STREAM_REJECTED', 'CONNECTION_STREAM_LIMIT', 'CONNECTION_STREAM_FAILED', 'CONNECTION_STREAM_ENDED',
+  'CONNECTION_DISCONNECT_UNCONFIRMED', 'CONNECTION_PERMISSION_REQUIRED', 'CONNECTION_PERMISSION_DENIED',
+  'SETTINGS_UNCONFIRMED',
+]);
+const httpStatus = value => Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
 
 export class LocalConnectionError extends Error {
-  constructor(code, status) {
-    super(code);
+  constructor(code, status, stage) {
+    const safeCode = ERROR_CODES.has(code) ? code : 'CONNECTION_UNAVAILABLE';
+    super(safeCode);
     this.name = 'LocalConnectionError';
-    this.code = code;
-    if (status !== undefined) this.status = status;
+    this.code = safeCode;
+    this.status = httpStatus(status);
+    this.stage = STAGES.has(stage) ? stage : null;
   }
 }
-const fail = (code, status) => new LocalConnectionError(code, status);
+const fail = (code, status, stage) => new LocalConnectionError(code, status, stage);
+const atStage = (error, stage, status) => fail(error instanceof LocalConnectionError ? error.code : 'CONNECTION_UNAVAILABLE',
+  error instanceof LocalConnectionError ? error.status ?? status : status, error instanceof LocalConnectionError ? error.stage ?? stage : stage);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 
@@ -92,6 +109,10 @@ export function createLocalConnectionClient(input, options = {}) {
   if (typeof fetcher !== 'function' || typeof now !== 'function') throw fail('CONNECTION_TRANSPORT_UNAVAILABLE');
   let session = null, pairing = false, closed = false, epoch = 0, expiryTimer;
   const pending = new Set();
+  function diagnose(stage, status) {
+    if (!STAGES.has(stage) || typeof options.onDiagnostic !== 'function') return;
+    try { options.onDiagnostic(Object.freeze({ stage, status: httpStatus(status) })); } catch { /* Diagnostics cannot affect transport. */ }
+  }
 
   function clear(reason = 'CONNECTION_CLOSED') {
     epoch++;
@@ -129,7 +150,7 @@ export function createLocalConnectionClient(input, options = {}) {
     pending.add(controller);
     return { controller, cleanup() { pending.delete(controller); signal?.removeEventListener('abort', externalAbort); } };
   }
-  async function send(path, { method, body, token, signal, accept }) {
+  async function send(path, { method, body, token, signal, accept, stage = 'operation' }) {
     pathAndQuery(path, true);
     const tracked = control(signal);
     const headers = { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(accept ? { Accept: accept } : {}) };
@@ -139,14 +160,17 @@ export function createLocalConnectionClient(input, options = {}) {
       const response = await fetcher(descriptor.baseUrl + path, {
         method, headers, ...(body === undefined ? {} : { body }), signal: tracked.controller.signal,
         mode: 'cors', credentials: 'omit', redirect: 'error', referrerPolicy: 'no-referrer', cache: 'no-store',
+        targetAddressSpace: 'loopback',
       });
       if (!(response instanceof Response) || response.type === 'opaque' || response.type === 'opaqueredirect') throw fail('INVALID_CONNECTION_RESPONSE');
+      diagnose(stage, response.status);
       return { response, ...tracked };
     } catch {
+      diagnose(stage, null);
       tracked.cleanup();
-      if (tracked.controller.signal.aborted) throw tracked.controller.signal.reason instanceof LocalConnectionError
-        ? tracked.controller.signal.reason : fail('CONNECTION_ABORTED');
-      throw fail('CONNECTION_UNAVAILABLE');
+      if (tracked.controller.signal.aborted) throw atStage(tracked.controller.signal.reason instanceof LocalConnectionError
+        ? tracked.controller.signal.reason : fail('CONNECTION_ABORTED'), stage);
+      throw fail('CONNECTION_UNAVAILABLE', null, stage);
     }
   }
   async function limitedJson(response) {
@@ -178,7 +202,7 @@ export function createLocalConnectionClient(input, options = {}) {
     const started = epoch;
     let tracked;
     try {
-      tracked = await send(descriptor.pairingPath, { method: 'POST', body: JSON.stringify({ code }), signal });
+      tracked = await send(descriptor.pairingPath, { method: 'POST', body: JSON.stringify({ code }), signal, stage: 'pairing' });
       if (tracked.response.status !== 200) {
         await tracked.response.body?.cancel();
         throw fail('CONNECTION_REJECTED', tracked.response.status);
@@ -195,12 +219,12 @@ export function createLocalConnectionClient(input, options = {}) {
       scheduleExpiry();
       return Object.freeze({ expiresAt: session.expiresAt });
     } catch (error) {
-      if (tracked?.controller.signal.aborted) throw tracked.controller.signal.reason ?? fail('CONNECTION_ABORTED');
-      throw error;
+      if (tracked?.controller.signal.aborted) throw atStage(tracked.controller.signal.reason ?? fail('CONNECTION_ABORTED'), 'pairing', tracked?.response.status);
+      throw atStage(error, 'pairing', tracked?.response.status);
     } finally { pairing = false; tracked?.cleanup(); }
   }
 
-  function wrappedResponse(tracked) {
+  function wrappedResponse(tracked, stage) {
     const original = tracked.response;
     if (!original.body) { tracked.cleanup(); return original; }
     const reader = original.body.getReader();
@@ -210,15 +234,15 @@ export function createLocalConnectionClient(input, options = {}) {
           const result = await reader.read();
           if (result.done) { tracked.cleanup(); reader.releaseLock(); controller.close(); }
           else controller.enqueue(result.value);
-        } catch { tracked.cleanup(); controller.error(tracked.controller.signal.aborted
-          ? (tracked.controller.signal.reason ?? fail('CONNECTION_ABORTED')) : fail('CONNECTION_UNAVAILABLE')); }
+        } catch { tracked.cleanup(); controller.error(atStage(tracked.controller.signal.aborted
+          ? (tracked.controller.signal.reason ?? fail('CONNECTION_ABORTED')) : fail('CONNECTION_UNAVAILABLE'), stage, original.status)); }
       },
       async cancel(reason) { tracked.controller.abort(fail('CONNECTION_ABORTED')); tracked.cleanup(); await reader.cancel(reason).catch(() => {}); },
     });
     return new Response(stream, { status: original.status, statusText: original.statusText, headers: original.headers });
   }
 
-  async function request(path, { method = 'GET', json, body, signal, accept } = {}) {
+  async function request(path, { method = 'GET', json, body, signal, accept, stage = 'operation' } = {}) {
     if (!METHODS.has(method) || (json !== undefined && body !== undefined)
         || (body !== undefined && typeof body !== 'string') || (['GET', 'DELETE'].includes(method) && (body !== undefined || json !== undefined))
         || (accept !== undefined && accept !== 'application/json' && accept !== 'text/event-stream')) throw fail('INVALID_CONNECTION_REQUEST');
@@ -230,28 +254,30 @@ export function createLocalConnectionClient(input, options = {}) {
       try { data = JSON.stringify(json); } catch { throw fail('INVALID_CONNECTION_REQUEST'); }
       if (typeof data !== 'string') throw fail('INVALID_CONNECTION_REQUEST');
     }
-    const tracked = await send(path, { method, body: data, token: selected.token, signal, accept });
+    const tracked = await send(path, { method, body: data, token: selected.token, signal, accept, stage });
     if (closed || session !== selected || tracked.controller.signal.aborted || selected.expiresAt <= now()) {
-      await tracked.response.body?.cancel(); tracked.cleanup(); throw fail('CONNECTION_EXPIRED');
+      await tracked.response.body?.cancel(); tracked.cleanup(); throw fail('CONNECTION_EXPIRED', tracked.response.status, stage);
     }
-    if (tracked.response.status === 401) { await tracked.response.body?.cancel(); tracked.cleanup(); clear('CONNECTION_REQUIRED'); throw fail('CONNECTION_REQUIRED', 401); }
-    return wrappedResponse(tracked);
+    if (tracked.response.status === 401) { await tracked.response.body?.cancel(); tracked.cleanup(); clear('CONNECTION_REQUIRED'); throw fail('CONNECTION_REQUIRED', 401, stage); }
+    return wrappedResponse(tracked, stage);
   }
 
   function invoke(operation, input = {}, { signal } = {}) {
     if (!descriptor.requestPath || typeof operation !== 'string' || operation.length > 128
         || !/^[a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*){0,3}$/.test(operation)) throw fail('INVALID_CONNECTION_OPERATION');
-    return request(descriptor.requestPath, { method: 'POST', json: { operation, input }, signal, accept: 'application/json' });
+    return request(descriptor.requestPath, { method: 'POST', json: { operation, input }, signal, accept: 'application/json',
+      stage: operation === 'settings.status' ? 'settings-status' : 'operation' });
   }
 
   async function* events(pathOrOptions, options = {}) {
     const path = typeof pathOrOptions === 'string' ? pathOrOptions : descriptor.eventsPath;
     const settings = typeof pathOrOptions === 'string' ? options : (pathOrOptions ?? {});
     if (!path) throw fail('INVALID_LOCAL_PATH');
-    const response = await request(path, { signal: settings.signal, accept: 'text/event-stream' });
+    const response = await request(path, { signal: settings.signal, accept: 'text/event-stream', stage: 'events-connect' });
     if (!response.ok || response.headers.get('content-type')?.split(';', 1)[0].trim() !== 'text/event-stream' || !response.body) {
-      await response.body?.cancel(); throw fail('CONNECTION_STREAM_REJECTED', response.status);
+      await response.body?.cancel(); throw fail('CONNECTION_STREAM_REJECTED', response.status, 'events-connect');
     }
+    try { settings.onOpen?.(response.status); } catch { /* A view cannot interrupt the stream. */ }
     const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let buffer = '', data = [], type = 'message', id, eventSize = 0;
@@ -291,8 +317,8 @@ export function createLocalConnectionClient(input, options = {}) {
         while (queue.length) yield queue.shift();
       }
     } catch (error) {
-      if (error instanceof LocalConnectionError) throw error;
-      throw fail('CONNECTION_STREAM_FAILED');
+      diagnose('events-read', response.status);
+      throw fail(error instanceof LocalConnectionError ? error.code : 'CONNECTION_STREAM_FAILED', response.status, 'events-read');
     } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
 
@@ -302,7 +328,7 @@ export function createLocalConnectionClient(input, options = {}) {
     if (!selected || selected.expiresAt <= now()) return Object.freeze({ disconnected: true, confirmed: false });
     let tracked;
     try {
-      tracked = await send(descriptor.revocationPath, { method: descriptor.revocationMethod, token: selected.token, signal });
+      tracked = await send(descriptor.revocationPath, { method: descriptor.revocationMethod, token: selected.token, signal, stage: 'disconnect' });
       const confirmed = tracked.response.ok;
       await tracked.response.body?.cancel();
       if (!confirmed) throw fail('CONNECTION_DISCONNECT_UNCONFIRMED', tracked.response.status);

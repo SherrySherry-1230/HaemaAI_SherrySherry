@@ -1,12 +1,41 @@
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-07
 // @editedBy YAONG1230 2026-10-16
+// @editedBy SherrySherry 2026-11-17
 // User-selected API profiles and model settings.
 const HAEMA_API_KEY_MODAL = (() => {
+const safeMessages = new WeakMap();
+const missingConnections = new WeakSet();
+function connectionFailure(error) {
+    if (missingConnections.has(error)) return "내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 설정은 그대로 남아 있어요.";
+    try {
+        const message = globalThis.HAEMA_LOCAL_CONNECTION?.describeFailure?.(error);
+        return typeof message === "string" && message ? message : null;
+    } catch { return null; }
+}
+function operationMessage(message, status) {
+    const http = Number.isInteger(status) && status >= 100 && status <= 599 ? ` (HTTP ${status})` : "";
+    return message + http;
+}
+function safeError(message, status) {
+    const error = new Error("API_CONFIGURATION_OPERATION_FAILED");
+    safeMessages.set(error, operationMessage(message, status));
+    return error;
+}
+function safeFailure(error, fallback) { return safeMessages.get(error) || fallback; }
+async function notifyConnectionFailure(error) {
+    const message = connectionFailure(error);
+    if (!message) return false;
+    if (consoleRef) consoleRef.statusText = "⚠️ " + message;
+    await HAEMA_DIALOG.alert(message, { title: '실행 프로그램 연결을 확인해 주세요', tone: 'warning' });
+    return true;
+}
 function requestLocal(operation, input = {}) {
     const connection = globalThis.HAEMA_LOCAL_CONNECTION;
     if (!connection || typeof connection.request !== "function") {
-        throw new Error("로컬 연결을 확인해 주세요.");
+        const error = new Error("CONNECTION_REQUIRED");
+        missingConnections.add(error);
+        throw error;
     }
     return connection.request(operation, input);
 }
@@ -176,15 +205,15 @@ async function fetchProviderModels(provider, credentials = {}) {
     const res = await requestLocal("models.list", { provider, apiKey, baseUrl });
 
     if (!res.ok) {
-        throw new Error("모델 목록을 확인하지 못했어요. 연결 상태를 다시 확인해 주세요.");
+        throw safeError("모델 목록 요청을 완료하지 못했어요.", res.status);
     }
 
     const data = await res.json();
     if (!data.success) {
-        throw new Error(data.error || "모델 목록을 가져올 수 없습니다.");
+        throw safeError("모델 목록을 가져올 수 없어요.", res.status);
     }
 
-    if (!Array.isArray(data.models)) throw new Error("모델 목록 응답을 확인할 수 없습니다.");
+    if (!Array.isArray(data.models)) throw safeError("모델 목록 응답을 확인할 수 없어요.", res.status);
     return data.models;
 }
 
@@ -409,7 +438,7 @@ async function getSavedKeys() {
             const { config } = await loadEncryptedConfig();
             return config.sets;
         } catch (e) {
-            console.error("HAEMA_API_KEY_MODAL: 암호화 저장소 로드 실패", e);
+            console.error("HAEMA_API_KEY_MODAL: 암호화 저장소 로드 실패");
             return [];
         }
     } else {
@@ -428,7 +457,7 @@ async function getSavedKeys() {
 
 async function loadEncryptedConfig() {
     if (typeof ConsoleConfigStore === "undefined" || typeof WebCryptoCipher === "undefined") {
-        throw new Error("암호화된 API 설정 저장소를 사용할 수 없습니다.");
+        throw safeError("암호화된 API 설정 저장소를 사용할 수 없습니다.");
     }
 
     const cipher = new WebCryptoCipher();
@@ -465,7 +494,7 @@ function setCurrentKeyId(keyId) {
     try {
         localStorage.setItem("haema_current_key_id", keyId || "");
     } catch (e) {
-        console.warn("HAEMA_API_KEY_MODAL: 현재 키 ID 저장에 실패했습니다.", e);
+        console.warn("HAEMA_API_KEY_MODAL: 현재 키 ID 저장에 실패했습니다.");
     }
 }
 
@@ -582,14 +611,14 @@ async function saveApiKeyModal() {
         await notifySaveResult(true, provider, model);
         return true;
     } catch (error) {
-        console.error("HAEMA_API_KEY_MODAL: API 설정 저장 실패", error);
+        if (await notifyConnectionFailure(error)) return false;
         if (serverSaved) {
             const message = "연결 설정은 서버에 적용했지만 브라우저에 프로필을 저장하지 못했어요. 입력한 설정은 그대로 두었으니 저장 공간을 확인하고 다시 저장해주세요.";
             if (consoleRef) { consoleRef.apiConfigured = true; consoleRef.statusText = message; }
             await HAEMA_DIALOG.alert(message, { title: '서버 연결 설정은 적용했어요', tone: 'warning' });
             return false;
         }
-        await notifySaveResult(false, provider, model, false, error.message || "API 설정을 저장하지 못했습니다.");
+        await notifySaveResult(false, provider, model, false, safeFailure(error, "API 설정을 저장하지 못했어요. 입력한 설정을 유지한 채 다시 확인해 주세요."));
         return false;
     } finally {
         setProfileActionBusy(false);
@@ -602,7 +631,7 @@ async function validateProviderConnection(provider, apiKey, baseUrl, model) {
     if (!response.ok || !payload.success) {
         return {
             ok: false,
-            message: payload.error || "API 키 또는 Base URL 연결에 실패했습니다."
+            message: operationMessage("모델 목록 요청을 완료하지 못했어요.", response.status)
         };
     }
     if (isLocalProvider(provider) && (!Array.isArray(payload.models) || !payload.models.some(item => item && String(item.id) === model))) {
@@ -616,27 +645,23 @@ async function validateProviderConnection(provider, apiKey, baseUrl, model) {
 // =========================================================
 // 명시적인 성공 응답을 받은 뒤 선택한 프로필을 반영한다.
 async function saveConnectionSettings(keyItem) {
-    try {
-        const response = await requestLocal("settings.save", {
-            provider: keyItem.provider,
-            model: keyItem.model,
-            apiKey: keyItem.apiKey,
-            baseUrl: keyItem.baseURL
-        });
+    const response = await requestLocal("settings.save", {
+        provider: keyItem.provider,
+        model: keyItem.model,
+        apiKey: keyItem.apiKey,
+        baseUrl: keyItem.baseURL
+    });
 
-        if (!response.ok) {
-            return false;
-        }
-
-        const data = await response.json().catch(() => null);
-        if (!data || !data.success) {
-            return false;
-        }
-
-        return true;
-    } catch (e) {
-        return false;
+    if (!response.ok) {
+        throw safeError("실행 프로그램에 API 설정을 저장하지 못했어요.", response.status);
     }
+
+    const data = await response.json().catch(() => null);
+    if (!data || !data.success) {
+        throw safeError("API 설정 저장 완료를 확인할 수 없어요.", response.status);
+    }
+
+    return true;
 }
 
 // =========================================================
@@ -722,8 +747,8 @@ async function switchToKey(keyId) {
         await refreshConsoleAfterProfileAction(`✅ 연결 설정 전환 완료: ${target.provider} / ${target.model}`);
         return true;
     } catch (error) {
-        console.error("HAEMA_API_KEY_MODAL: API 키 전환 실패", error);
-        await refreshConsoleAfterProfileAction(error.message || "API 키 전환에 실패했습니다.");
+        if (await notifyConnectionFailure(error)) return false;
+        await refreshConsoleAfterProfileAction(safeFailure(error, "연결 설정 전환에 실패했어요."));
         return false;
     } finally {
         setProfileActionBusy(false);
@@ -775,8 +800,8 @@ async function deleteKey(keyId) {
                 consoleRef.modalData = { apiKey: "", provider: "", model: "", baseURL: "", name: "" };
             }
         }
-        console.error("HAEMA_API_KEY_MODAL: API 키 삭제 실패", error);
-        await refreshConsoleAfterProfileAction(error.message || "API 키 삭제에 실패했습니다.");
+        if (await notifyConnectionFailure(error)) return false;
+        await refreshConsoleAfterProfileAction(safeFailure(error, "API 설정 삭제에 실패했어요."));
         return false;
     } finally {
         setProfileActionBusy(false);
@@ -823,8 +848,8 @@ async function startEditingKey(keyId) {
         }
         return true;
     } catch (error) {
-        console.error("HAEMA_API_KEY_MODAL: API 키 편집 시작 실패", error);
-        await refreshConsoleAfterProfileAction(error.message || "API 키 편집을 시작하지 못했습니다.");
+        if (await notifyConnectionFailure(error)) return false;
+        await refreshConsoleAfterProfileAction(safeFailure(error, "API 설정 편집을 시작하지 못했어요."));
         return false;
     }
 }
@@ -950,10 +975,14 @@ async function bindEvents() {
                 : "✅ API 연결 확인됨. 모델을 선택하세요.";
         } catch (error) {
             if (requestVersion !== modelRequestVersion || document.getElementById("modalApiModel") !== modelSelect) return;
-            console.warn('[HAEMA_API_KEY_MODAL] 모델 목록 갱신 실패:', error);
+            const connectionMessage = connectionFailure(error);
+            if (connectionMessage) {
+                if (connectionStatus) connectionStatus.textContent = "⚠️ " + connectionMessage;
+                return;
+            }
             modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
             modelSelect.dataset.selectedModel = isLocalProvider(provider) ? "" : currentModel;
-            if (connectionStatus) connectionStatus.textContent = `❌ API 연결 실패: ${error.message || "키와 Base URL을 확인해주세요."}`;
+            if (connectionStatus) connectionStatus.textContent = "❌ 모델 목록 확인 실패: " + safeFailure(error, "모델 목록을 확인하지 못했어요. 입력한 설정을 유지한 채 다시 확인해 주세요.");
         }
     }
 
