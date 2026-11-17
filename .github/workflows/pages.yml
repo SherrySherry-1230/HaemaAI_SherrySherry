@@ -39,6 +39,7 @@ jobs:
               "Resources/favicon.svg",
               "Resources/haema-design/02-card-ellipsis.svg",
               "Resources/haema-design/03-jjum-name-pill.svg",
+              "Resources/haema-design/04-card-new-outline.svg",
               "Resources/haema-design/05-score-circle.svg",
               "Resources/haema-design/06-alias-pill.svg",
               "Resources/haema-design/07-card-summary-background.svg",
