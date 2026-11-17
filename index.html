@@ -543,16 +543,6 @@
                 mask: none;
                 -webkit-mask-box-image: var(--speech-shape) 56 100 44 100 fill / 28px 50px 22px 50px / 0 stretch;
             }
-            .haema-preview-background {
-                background: none;
-                border-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
-            }
-            .haema-preview-background::before,
-            .haema-preview-group.is-selected[data-result-tone] .haema-preview-background::after {
-                -webkit-mask: none;
-                mask: none;
-                -webkit-mask-box-image: url("Resources/haema-design/haema-preview-background.svg") 60 200 70 200 fill / 30px 100px 35px 100px / 0 stretch;
-            }
             .jjum-card-art {
                 -webkit-mask: none;
                 mask: none;
@@ -666,11 +656,104 @@
             .user-input { min-height: 36px; max-height: 90px; }
             .send-button { width: 48px; height: 44px; }
         }
+        /* @editedBy YAONG1230 2026-11-17: scale the complete feedback shape as one piece. */
+        .haema-preview-group {
+            container-type: inline-size;
+            width: 100%;
+            height: auto;
+            aspect-ratio: 720 / 168;
+            padding: 0;
+            margin: 0;
+        }
+        .haema-preview,
+        .haema-preview.has-token-meter {
+            width: 92.199722%;
+            height: auto;
+            min-height: 0;
+            max-height: none;
+            aspect-ratio: 663.838 / 133.164;
+            margin: 1.666667cqw auto 0;
+        }
+        .haema-preview-background {
+            top: -.347222cqw;
+            height: auto;
+            aspect-ratio: 647.764 / 146.164;
+            border-image: none;
+            background-size: contain;
+        }
+        .haema-preview-background::before,
+        .haema-preview-group.is-selected[data-result-tone] .haema-preview-background::after {
+            -webkit-mask-size: contain;
+            mask-size: contain;
+        }
+        .haema-preview-avatar { top: 49.248747%; }
+        .haema-preview-content {
+            top: 3.003814%;
+            height: 93.869214%;
+            display: grid;
+            grid-template-rows: auto minmax(0, 1fr) auto;
+            row-gap: 1px;
+        }
+        .haema-preview-heading {
+            position: relative;
+            top: auto;
+            left: 2.197628%;
+        }
+        .haema-preview-title {
+            font-size: clamp(11px, 2.222222cqw, 16px);
+            line-height: 1.3125;
+        }
+        .haema-preview-guide-content {
+            position: relative;
+            top: auto;
+            bottom: auto;
+            left: .221344%;
+            width: calc(100% - 12px);
+            height: auto;
+            min-height: 0;
+            max-height: none;
+            font-size: clamp(10px, 1.527778cqw, 11px);
+            line-height: 1.3;
+        }
+        .haema-preview-controls {
+            position: relative;
+            top: auto;
+            bottom: auto;
+            left: -4.32%;
+            width: 88.96%;
+            max-width: none;
+        }
+        .haema-preview-controls .token-meter-track {
+            width: 94.222222%;
+            height: auto;
+            aspect-ratio: 424 / 16.0225;
+            margin-inline: 0;
+            justify-self: center;
+        }
+        .haema-preview-controls .token-meter-liquid { inset: 12.482% 15% 12.482% 1.887%; }
+        .haema-preview-usage-details-content {
+            top: auto;
+            bottom: 100%;
+            height: clamp(24px, 8.333333cqw, 60px);
+        }
+        @media (max-width: 820px) {
+            .haema-preview-group { aspect-ratio: 663.838 / 168; }
+            .haema-preview,
+            .haema-preview.has-token-meter { width: 100%; }
+        }
+        @media (max-width: 360px) {
+            .haema-preview-content { row-gap: 0; }
+            .haema-preview-guide-content { font-size: 9px; line-height: 1.1; }
+            .haema-preview-guide-content :is(.haema-preview-summary, .haema-preview-guide-empty) { font-size: inherit; line-height: inherit; }
+            .haema-preview-controls .token-meter { row-gap: 0; }
+            .haema-preview-controls .token-meter-heading { min-height: 10px; font-size: 8px; line-height: 10px; }
+            .haema-preview-controls :is(.token-meter-unit, .token-meter-value, .token-meter-value.is-long) { font-size: 8px; line-height: 10px; }
+        }
     </style>
-    <link rel="stylesheet" href="web-console/haema-toolbar.css?v=20261116">
-    <link rel="stylesheet" href="web-console/haema-brand.css?v=1">
+    <link rel="stylesheet" href="web-console/haema-toolbar.css?v=20261117-edge">
+    <link rel="stylesheet" href="web-console/haema-brand.css?v=20261117-overlap">
     <link rel="stylesheet" href="web-console/haema-seon.css?v=2">
-    <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261117-2">
+    <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261117-edge">
 </head>
 <body>
     <div id="app"></div>

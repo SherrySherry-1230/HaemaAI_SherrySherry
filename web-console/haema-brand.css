@@ -88,3 +88,83 @@
     flex: 0 1 354.61px;
   }
 }
+
+/* @editedBy YAONG1230 2026-11-17: preserve the header's designed overlap. */
+@media (min-width: 821px) {
+  .header {
+    position: relative;
+    width: 96%;
+    height: 128px;
+    min-height: 128px;
+    flex: 0 0 128px;
+    margin-inline: auto;
+    padding: 10px 36px;
+    align-items: flex-start;
+    overflow: visible;
+  }
+
+  .header > .haema-brand {
+    flex: 0 0 354.612px;
+    width: 354.612px;
+  }
+
+  .header-right { align-self: center; }
+
+  .main-container {
+    width: 96%;
+    margin-top: 0;
+    padding-inline: clamp(16px, calc((100vw - 1280px) * .1964285714), 88px);
+  }
+
+  .console-panels { width: 100%; }
+}
+
+@media (min-width: 1481px) {
+  .panel-left,
+  .panel-right { padding-top: 0; }
+
+  .panel-left > .conversation-toolbar {
+    top: 0;
+    min-height: 48px;
+    margin-right: 46px;
+    align-items: flex-end;
+  }
+
+  .panel-left > .chat-panel-art,
+  .panel-left > .chat-panel-viewport { top: 56px; }
+
+  .panel-right > .top-state-area {
+    top: 0;
+    height: 62px;
+    min-height: 62px;
+    padding: 10px 13px 14px 10px;
+    align-items: center;
+  }
+
+  .panel-right > .panel-heading {
+    height: 62px;
+    min-height: 62px;
+    padding-block: 10px 14px;
+  }
+
+  .panel-right > .panel-heading .jjum-list-tools {
+    min-height: 34px;
+    transform: none;
+  }
+
+  .panel-right > .right-panel-art,
+  .panel-right > .haema-panel-viewport { top: 62px; }
+}
+
+@media (min-width: 821px) and (max-width: 1480px) {
+  .header {
+    height: 176px;
+    min-height: 176px;
+    flex-basis: 176px;
+  }
+
+  .header > .haema-brand {
+    flex-basis: 300px;
+    width: 300px;
+  }
+}

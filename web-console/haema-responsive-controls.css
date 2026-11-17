@@ -42,17 +42,20 @@
         position: absolute;
         z-index: -1;
         top: 9px;
-        bottom: 9px;
+        bottom: auto;
         left: -1px;
-        width: calc(100% + 2px);
-        height: auto;
+        width: calc(200% + 4px);
+        height: calc(200% - 36px);
         pointer-events: none;
         border: 0 solid transparent;
         border-image-source: var(--responsive-control-art);
         border-image-slice: 12 30 12 30 fill;
-        border-image-width: 12px 30px 12px 30px;
+        border-image-width: 24px 60px 24px 60px;
         border-image-outset: 0;
         border-image-repeat: stretch;
+        transform: scale(.5);
+        transform-origin: top left;
+        filter: blur(.7px);
     }
 
     .mobile-tab {
@@ -266,19 +269,22 @@
     z-index: -1;
     box-sizing: border-box;
     top: 6px;
-    bottom: 6px;
+    bottom: auto;
     left: -1px;
-    width: calc(100% + 2px);
-    height: auto;
+    width: calc(200% + 4px);
+    height: calc(200% - 24px);
     pointer-events: none;
     border: 0 solid transparent;
-    background: linear-gradient(#eb9bb0 0 0) center / calc(100% - 6px) calc(100% - 6px) no-repeat;
+    background: linear-gradient(#eb9bb0 0 0) center / calc(100% - 12px) calc(100% - 12px) no-repeat;
     opacity: var(--storage-control-opacity);
     border-image-source: var(--storage-control-art);
     border-image-slice: 30 40 40 40 fill;
-    border-image-width: 9px 12px 12px 12px;
+    border-image-width: 18px 24px 24px 24px;
     border-image-outset: 0;
     border-image-repeat: stretch;
+    transform: scale(.5);
+    transform-origin: top left;
+    filter: blur(.7px);
 }
 
 :is(#storageModal, #existingStorageModal) .btn-create {
