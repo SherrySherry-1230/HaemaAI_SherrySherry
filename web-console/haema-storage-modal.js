@@ -1,6 +1,7 @@
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
 // @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원
+// @editedBy SherrySherry 2026-11-17
 // ============================================================
 // haema-storage-modal.js
 // 로컬 저장소(쩜통) 연결/생성 모달
@@ -149,24 +150,32 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
     }
 
-    // 브라우저 폴더 선택은 전체 경로를 제공하지 않으므로 서버 연결 경로를 별도로 받는다.
     async function handleFolderSelect(overlay) {
         const pathInput = overlay.querySelector("#storagePathInput");
         const hint = overlay.querySelector("#storageFolderHint");
-        if (typeof window.showDirectoryPicker === "function") {
-            try {
-                const selected = await window.showDirectoryPicker();
-                if (!isOpen(overlay)) return;
-                hint.textContent = '선택한 "' + selected.name + '" 폴더의 전체 경로를 입력한 뒤 [생성 + 연결]을 눌러주세요.';
-            } catch (error) {
-                if (error.name === "AbortError") return;
-                throw error;
-            }
-        } else {
-            hint.textContent = "이 브라우저에서는 폴더의 전체 경로를 직접 입력해주세요.";
+        let response;
+        try {
+            response = await requestLocal("storage.pick");
+        } catch {
+            throw new Error("내 컴퓨터의 실행 프로그램과 연결을 확인한 뒤 다시 선택해 주세요.");
         }
+        if (!isOpen(overlay)) return false;
+        if (!response.ok) {
+            throw new Error("폴더 선택 기능을 사용할 수 없어요. 실행 프로그램을 최신 파일로 업데이트하고 다시 연결해 주세요.");
+        }
+        const selected = await response.json();
+        if (!isOpen(overlay)) return false;
+        if (selected?.cancelled === true) return false;
+        if (selected?.success !== true || selected?.cancelled !== false ||
+            typeof selected.storageRoot !== "string" || !selected.storageRoot.trim() ||
+            /[\u0000-\u001f\u007f]/.test(selected.storageRoot)) {
+            throw new Error("선택한 폴더 경로를 확인할 수 없어요. 다시 선택해 주세요.");
+        }
+        pathInput.value = selected.storageRoot;
         pathInput.disabled = false;
+        hint.textContent = "폴더가 선택됐어요. [생성 + 연결]을 눌러주세요.";
         pathInput.focus();
+        return true;
     }
 
     function handleDirectInput(storagePath, forceCreate = false, connectExisting = false) {
@@ -308,14 +317,34 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
 
         // [📁 폴더 선택] 버튼 클릭
+        let selectingFolder = false;
         folderSelectBtn.addEventListener("click", async function() {
+            if (selectingFolder || createBtn.disabled) return;
+            selectingFolder = true;
+            const inputWasDisabled = pathInput.disabled;
+            let selected = false;
             try {
+                folderSelectBtn.disabled = true;
+                directInputBtn.disabled = true;
+                pathClearBtn.disabled = true;
+                clearBtn.disabled = true;
+                pathInput.disabled = true;
                 createBtn.disabled = true;
-                createBtn.textContent = "처리 중...";
-                await handleFolderSelect(overlay);
+                createBtn.textContent = "폴더 선택 중...";
+                selected = await handleFolderSelect(overlay);
+                if (selected && isOpen(overlay)) {
+                    folderSelectBtn.textContent = "📁 다시 선택";
+                    pathClearBtn.style.display = "inline-block";
+                }
             } catch (error) {
                 if (isOpen(overlay)) await HAEMA_DIALOG.alert("폴더 선택에 실패했습니다: " + error.message, { tone: 'error' });
             } finally {
+                selectingFolder = false;
+                folderSelectBtn.disabled = false;
+                directInputBtn.disabled = false;
+                pathClearBtn.disabled = false;
+                clearBtn.disabled = false;
+                pathInput.disabled = selected ? false : inputWasDisabled;
                 createBtn.disabled = false;
                 createBtn.textContent = "생성 + 연결";
             }
