@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-18
 // @editedBy YAONG1230 2026-11-10: separate toolbar states and calendar status presentation
 // @editedBy SherrySherry 2026-11-09: shared connection rendering; stored values preserved
 // @editedBy SherrySherry 2026-11-06: six server hosts, scoped drafts/history, Calendar connection controls
@@ -2764,6 +2765,7 @@ HAEMA_CONSOLE.mount = async function() {
     let previous = HAEMA_LOCAL_CONNECTION.status();
     HAEMA_LOCAL_CONNECTION.subscribe(state => {
         const wasReady = previous.aiReady;
+        const restored = state.connection === 'connected' && previous.connection !== 'connected';
         previous = state;
         this.localConnectionState = state;
         if (state.connection !== 'connected') {
@@ -2777,6 +2779,12 @@ HAEMA_CONSOLE.mount = async function() {
         }
         if (state.aiReady && !wasReady) this.syncConversationPending();
         this.render();
+        if (restored && !this.connectionRestoreTask) {
+            // Re-read existing configuration and storage; do not resend conversations.
+            this.connectionRestoreTask = Promise.allSettled([
+                this.refreshApiStatus(), globalThis.HAEMA_STORAGE_MODAL?.autoConnect?.()
+            ]).finally(() => { this.connectionRestoreTask = null; this.updateInputAvailability(); });
+        }
     });
 };
 

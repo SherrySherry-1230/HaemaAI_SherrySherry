@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-18
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
 // @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원
@@ -29,6 +30,11 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return error;
     }
     function safeFailure(error, fallback) { return connectionFailure(error) || safeMessages.get(error) || fallback; }
+    function showFailure(error, fallback) {
+        const reconnect = connectionFailure(error) && globalThis.HAEMA_RECONNECT_LOCAL;
+        return HAEMA_DIALOG.alert(safeFailure(error, fallback), { tone: 'error',
+            ...(typeof reconnect === 'function' ? { confirmText: '다시 연결', onConfirm: reconnect } : {}) });
+    }
 
     async function requestLocal(operation, input = {}) {
         const connection = globalThis.HAEMA_LOCAL_CONNECTION;
@@ -351,7 +357,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     pathClearBtn.style.display = "inline-block";
                 }
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "폴더 선택을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요."), { tone: 'error' });
+                if (isOpen(overlay)) await showFailure(error, "폴더 선택을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요.");
             } finally {
                 selectingFolder = false;
                 folderSelectBtn.disabled = false;
@@ -431,10 +437,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             } catch (error) {
                 if (!isOpen(overlay)) return;
 
-                await HAEMA_DIALOG.alert(
-                    safeFailure(error, "저장소 연결을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요."),
-                    { tone: 'error' }
-                );
+                await showFailure(error, "저장소 연결을 완료하지 못했어요. 입력한 경로는 그대로 남아 있어요.");
             } finally {
                 // 버튼 활성화
                 createBtn.disabled = false;
@@ -522,7 +525,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 closeExistingModal(overlay, false);
                 closeModal(parent);
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "기존 저장소 연결을 완료하지 못했어요."), { tone: 'error' });
+                if (isOpen(overlay)) await showFailure(error, "기존 저장소 연결을 완료하지 못했어요.");
             }
         });
 
@@ -534,7 +537,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 closeExistingModal(overlay, false);
                 closeModal(parent);
             } catch (error) {
-                if (isOpen(overlay)) await HAEMA_DIALOG.alert(safeFailure(error, "새 저장소 생성을 완료하지 못했어요."), { tone: 'error' });
+                if (isOpen(overlay)) await showFailure(error, "새 저장소 생성을 완료하지 못했어요.");
             }
         });
         focusInside(overlay);

@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-18
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-07
 // @editedBy YAONG1230 2026-10-16
@@ -27,7 +28,9 @@ async function notifyConnectionFailure(error) {
     const message = connectionFailure(error);
     if (!message) return false;
     if (consoleRef) consoleRef.statusText = "⚠️ " + message;
-    await HAEMA_DIALOG.alert(message, { title: '실행 프로그램 연결을 확인해 주세요', tone: 'warning' });
+    const reconnect = globalThis.HAEMA_RECONNECT_LOCAL;
+    await HAEMA_DIALOG.alert(message, { title: '실행 프로그램 연결을 확인해 주세요', tone: 'warning',
+        ...(typeof reconnect === 'function' ? { confirmText: '다시 연결', onConfirm: reconnect } : {}) });
     return true;
 }
 function requestLocal(operation, input = {}) {

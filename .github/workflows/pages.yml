@@ -176,6 +176,7 @@ jobs:
               "web-console/haema-token-usage.js",
               "web-console/haema-toolbar.css",
               "web-console/local-connection-client.mjs",
+              "web-console/remembered-connection-store.mjs",
           )
           destination = Path("_site")
           destination.mkdir()

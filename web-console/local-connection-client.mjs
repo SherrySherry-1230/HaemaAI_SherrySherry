@@ -1,10 +1,12 @@
-// @editedBy SherrySherry 2026-11-17
+// @editedBy SherrySherry 2026-11-18
 const CODE = /^[A-Za-z0-9_-]{43}$/;
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const RESERVED = new Set(['authorization', 'cookie', 'host', 'origin', 'content-type', 'content-length', 'connection', 'transfer-encoding', 'upgrade']);
 const DESCRIPTOR_FIELDS = ['version', 'baseUrl', 'webOrigin', 'pairingPath', 'revocationPath', 'revocationMethod', 'sessionHeader'];
-const OPTIONAL_FIELDS = ['requestPath', 'eventsPath'];
-const STAGES = new Set(['fragment', 'permission', 'pairing', 'settings-status', 'events-connect', 'events-read', 'operation', 'disconnect']);
+const REMEMBER_PATHS = ['rememberPath', 'challengePath', 'resumePath', 'forgetPath'];
+const OPTIONAL_FIELDS = ['requestPath', 'eventsPath', ...REMEMBER_PATHS, 'serverIdentity'];
+const STAGES = new Set(['fragment', 'permission', 'pairing', 'settings-status', 'events-connect', 'events-read', 'operation', 'disconnect',
+  'remember', 'challenge', 'resume', 'forget', 'remembered-store']);
 const ERROR_CODES = new Set([
   'INVALID_LOCAL_PATH', 'INVALID_CONNECTION_DESCRIPTOR', 'INVALID_LOCAL_ADDRESS', 'INVALID_WEB_ORIGIN',
   'INVALID_CONNECTION_HEADER', 'CONNECTION_LOCATION_UNAVAILABLE', 'CONNECTION_FRAGMENT_NOT_CLEARED',
@@ -14,7 +16,10 @@ const ERROR_CODES = new Set([
   'INVALID_CONNECTION_CODE', 'CONNECTION_REJECTED', 'INVALID_CONNECTION_REQUEST', 'INVALID_CONNECTION_OPERATION',
   'CONNECTION_STREAM_REJECTED', 'CONNECTION_STREAM_LIMIT', 'CONNECTION_STREAM_FAILED', 'CONNECTION_STREAM_ENDED',
   'CONNECTION_DISCONNECT_UNCONFIRMED', 'CONNECTION_PERMISSION_REQUIRED', 'CONNECTION_PERMISSION_DENIED',
-  'SETTINGS_UNCONFIRMED',
+  'SETTINGS_UNCONFIRMED', 'CONNECTION_SETUP_REQUIRED',
+  'REMEMBERED_CONNECTION_UNSUPPORTED', 'REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
+  'REMEMBERED_CONNECTION_GRANT_EXPIRED', 'REMEMBERED_CONNECTION_KEY_INVALID', 'REMEMBERED_CONNECTION_STORE_UNAVAILABLE',
+  'REMEMBERED_CONNECTION_INVALID', 'REMEMBERED_CONNECTION_FORGET_UNCONFIRMED', 'CONNECTION_CRYPTO_UNAVAILABLE',
 ]);
 const httpStatus = value => Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
 
@@ -33,6 +38,83 @@ const atStage = (error, stage, status) => fail(error instanceof LocalConnectionE
   error instanceof LocalConnectionError ? error.status ?? status : status, error instanceof LocalConnectionError ? error.stage ?? stage : stage);
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value)
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+const exact = (value, fields) => object(value) && Object.keys(value).length === fields.length
+  && fields.every(key => Object.hasOwn(value, key));
+const DAY = 86_400_000;
+const CLOCK_ALLOWANCE = 60_000;
+function unbase64(value, bytes) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]+$/.test(value) || value.length !== Math.ceil(bytes * 4 / 3)) return null;
+  try {
+    const raw = globalThis.atob(value.replaceAll('-', '+').replaceAll('_', '/') + '='.repeat((4 - value.length % 4) % 4));
+    const result = Uint8Array.from(raw, char => char.charCodeAt(0));
+    return result.length === bytes && base64(result) === value ? result : null;
+  } catch { return null; }
+}
+function base64(value) {
+  return globalThis.btoa(String.fromCharCode(...value)).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+}
+const opaque = value => unbase64(value, 32) !== null;
+function publicJwk(value) {
+  if (!exact(value, ['kty', 'crv', 'x', 'y']) || value.kty !== 'EC' || value.crv !== 'P-256'
+      || !opaque(value.x) || !opaque(value.y)) throw fail('REMEMBERED_CONNECTION_KEY_INVALID');
+  return Object.freeze({ kty: 'EC', crv: 'P-256', x: value.x, y: value.y });
+}
+const canonicalJwk = value => JSON.stringify([value.kty, value.crv, value.x, value.y]);
+function cryptography(value = globalThis.crypto) {
+  if (!value?.subtle || typeof value.getRandomValues !== 'function') throw fail('CONNECTION_CRYPTO_UNAVAILABLE');
+  return value;
+}
+function privateKey(value) {
+  if (Object.prototype.toString.call(value) !== '[object CryptoKey]' || value.type !== 'private' || value.extractable !== false
+      || value.algorithm?.name !== 'ECDSA' || value.algorithm?.namedCurve !== 'P-256'
+      || value.usages?.length !== 1 || value.usages[0] !== 'sign') throw fail('REMEMBERED_CONNECTION_KEY_INVALID');
+  return value;
+}
+const transcript = values => new TextEncoder().encode(JSON.stringify(values));
+function freshNonce(crypto) { return base64(crypto.getRandomValues(new Uint8Array(32))); }
+function expiry(value, now, duration, code = 'REMEMBERED_CONNECTION_INVALID', allowExpired = false) {
+  if (!Number.isSafeInteger(value) || value < 1 || (!allowExpired && value <= now) || value > now + duration + CLOCK_ALLOWANCE) throw fail(code);
+  return value;
+}
+function descriptorIdentity(value) {
+  return JSON.stringify([...DESCRIPTOR_FIELDS, ...OPTIONAL_FIELDS].map(key => key === 'serverIdentity'
+    ? value[key] && [value[key].serverId, canonicalJwk(value[key].publicKey)] : value[key]));
+}
+async function validatedKeys(value, crypto) {
+  if (!exact(value, ['privateKey', 'publicKey'])) throw fail('REMEMBERED_CONNECTION_KEY_INVALID');
+  const secret = privateKey(value.privateKey), publicKey = publicJwk(value.publicKey);
+  try {
+    const imported = await crypto.subtle.importKey('jwk', publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    const sample = crypto.getRandomValues(new Uint8Array(32));
+    const signature = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, secret, sample);
+    if (!await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, imported, signature, sample)) throw new Error();
+  } catch { throw fail('REMEMBERED_CONNECTION_KEY_INVALID'); }
+  return Object.freeze({ privateKey: secret, publicKey });
+}
+
+export async function createRememberedKey({ crypto: supplied } = {}) {
+  const crypto = cryptography(supplied);
+  try {
+    const pair = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']);
+    const exported = await crypto.subtle.exportKey('jwk', pair.publicKey);
+    return Object.freeze({ privateKey: privateKey(pair.privateKey), publicKey: publicJwk({ kty: exported.kty, crv: exported.crv, x: exported.x, y: exported.y }) });
+  } catch { throw fail('REMEMBERED_CONNECTION_KEY_INVALID'); }
+}
+
+export async function validateRememberedBinding(value, options = {}) {
+  try {
+    if (!exact(value, ['version', 'descriptor', 'grantId', 'expiresAt', 'privateKey', 'publicKey']) || value.version !== 1 || !opaque(value.grantId)) {
+      throw fail('REMEMBERED_CONNECTION_INVALID');
+    }
+    const descriptor = validateConnectionDescriptor(value.descriptor, options.currentOrigin ?? globalThis.location?.origin);
+    if (!descriptor.serverIdentity) throw fail('REMEMBERED_CONNECTION_INVALID');
+    expiry(value.expiresAt, (options.now ?? Date.now)(), 30 * DAY, 'REMEMBERED_CONNECTION_GRANT_EXPIRED', options.allowExpired === true);
+    const keys = await validatedKeys({ privateKey: value.privateKey, publicKey: value.publicKey }, cryptography(options.crypto));
+    return Object.freeze({ version: 1, descriptor, grantId: value.grantId, expiresAt: value.expiresAt, ...keys });
+  } catch (error) {
+    throw atStage(error, options.stage ?? 'remembered-store');
+  }
+}
 
 function pathAndQuery(value, queryAllowed = false) {
   if (typeof value !== 'string' || value.length > 16_384 || !value.startsWith('/') || value.startsWith('//')
@@ -68,14 +150,22 @@ export function validateConnectionDescriptor(value, currentOrigin = globalThis.l
       || base.username || base.password || base.search || base.hash || base.pathname !== '/') throw fail('INVALID_LOCAL_ADDRESS');
   if (web.protocol !== 'https:' || web.origin !== value.webOrigin || web.username || web.password
       || currentOrigin !== value.webOrigin) throw fail('INVALID_WEB_ORIGIN');
-  for (const key of ['pairingPath', 'revocationPath', ...OPTIONAL_FIELDS]) {
+  for (const key of ['pairingPath', 'revocationPath', ...OPTIONAL_FIELDS.filter(key => key !== 'serverIdentity')]) {
     if (Object.hasOwn(value, key)) pathAndQuery(value[key]);
   }
-  const paths = ['pairingPath', 'revocationPath', ...OPTIONAL_FIELDS].filter(key => Object.hasOwn(value, key)).map(key => value[key]);
+  const paths = ['pairingPath', 'revocationPath', ...OPTIONAL_FIELDS.filter(key => key !== 'serverIdentity')].filter(key => Object.hasOwn(value, key)).map(key => value[key]);
   if (new Set(paths).size !== paths.length || !['POST', 'DELETE'].includes(value.revocationMethod)) throw fail('INVALID_CONNECTION_DESCRIPTOR');
   if (typeof value.sessionHeader !== 'string' || !/^[a-z][a-z0-9-]{0,127}$/.test(value.sessionHeader)
       || RESERVED.has(value.sessionHeader) || value.sessionHeader.startsWith('sec-') || value.sessionHeader.startsWith('access-control-')) {
     throw fail('INVALID_CONNECTION_HEADER');
+  }
+  const rememberedFields = [...REMEMBER_PATHS, 'serverIdentity'];
+  if (rememberedFields.some(key => Object.hasOwn(value, key))) {
+    if (!rememberedFields.every(key => Object.hasOwn(value, key)) || !exact(value.serverIdentity, ['serverId', 'publicKey'])
+        || !opaque(value.serverIdentity.serverId)) throw fail('INVALID_CONNECTION_DESCRIPTOR');
+    let key;
+    try { key = publicJwk(value.serverIdentity.publicKey); } catch { throw fail('INVALID_CONNECTION_DESCRIPTOR'); }
+    return Object.freeze({ ...value, serverIdentity: Object.freeze({ serverId: value.serverIdentity.serverId, publicKey: key }) });
   }
   return Object.freeze({ ...value });
 }
@@ -107,7 +197,7 @@ export function createLocalConnectionClient(input, options = {}) {
   const fetcher = options.fetch ?? globalThis.fetch?.bind(globalThis);
   const now = options.now ?? Date.now;
   if (typeof fetcher !== 'function' || typeof now !== 'function') throw fail('CONNECTION_TRANSPORT_UNAVAILABLE');
-  let session = null, pairing = false, closed = false, epoch = 0, expiryTimer;
+  let session = null, pairing = false, remembering = false, resuming = false, forgetting = false, closed = false, epoch = 0, expiryTimer;
   const pending = new Set();
   function diagnose(stage, status) {
     if (!STAGES.has(stage) || typeof options.onDiagnostic !== 'function') return;
@@ -173,7 +263,7 @@ export function createLocalConnectionClient(input, options = {}) {
       throw fail('CONNECTION_UNAVAILABLE', null, stage);
     }
   }
-  async function limitedJson(response) {
+  async function limitedJson(response, limit = 4096) {
     const reader = response.body?.getReader();
     if (!reader) throw fail('INVALID_CONNECTION_RESPONSE');
     const decoder = new TextDecoder('utf-8', { fatal: true });
@@ -183,7 +273,7 @@ export function createLocalConnectionClient(input, options = {}) {
         const item = await reader.read();
         if (item.done) break;
         bytes += item.value.byteLength;
-        if (bytes > 4096) throw fail('INVALID_CONNECTION_RESPONSE');
+        if (bytes > limit) throw fail('INVALID_CONNECTION_RESPONSE');
         text += decoder.decode(item.value, { stream: true });
       }
       text += decoder.decode();
@@ -194,7 +284,7 @@ export function createLocalConnectionClient(input, options = {}) {
 
   async function pair(code, { signal } = {}) {
     if (closed) throw fail('CONNECTION_CLOSED');
-    if (pairing) throw fail('CONNECTION_BUSY');
+    if (pairing || remembering || resuming || forgetting) throw fail('CONNECTION_BUSY');
     if (session?.expiresAt <= now()) clear('CONNECTION_EXPIRED');
     if (session) throw fail('CONNECTION_ALREADY_ACTIVE');
     if (typeof code !== 'string' || !CODE.test(code)) throw fail('INVALID_CONNECTION_CODE');
@@ -224,6 +314,130 @@ export function createLocalConnectionClient(input, options = {}) {
     } finally { pairing = false; tracked?.cleanup(); }
   }
 
+  function rememberedSupport() {
+    if (closed) throw fail('CONNECTION_CLOSED');
+    if (!descriptor.serverIdentity) throw fail('REMEMBERED_CONNECTION_UNSUPPORTED');
+    if (pairing || remembering || resuming || forgetting) throw fail('CONNECTION_BUSY');
+    return cryptography(options.crypto);
+  }
+  async function bindingFor(value, stage, allowExpired = false) {
+    const binding = await validateRememberedBinding(value, { currentOrigin: descriptor.webOrigin, now, crypto: options.crypto, stage, allowExpired });
+    if (descriptorIdentity(binding.descriptor) !== descriptorIdentity(descriptor)) throw fail('REMEMBERED_CONNECTION_IDENTITY_MISMATCH', null, stage);
+    return binding;
+  }
+  async function proof(crypto, signature, values, stage) {
+    const bytes = unbase64(signature, 64);
+    if (!bytes) throw fail('REMEMBERED_CONNECTION_INVALID', null, stage);
+    try {
+      const key = await crypto.subtle.importKey('jwk', descriptor.serverIdentity.publicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      if (!await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, key, bytes, transcript(values))) throw new Error();
+    } catch { throw fail('REMEMBERED_CONNECTION_IDENTITY_MISMATCH', null, stage); }
+  }
+  function current(started, tracked, stage) {
+    if (closed || epoch !== started || tracked.controller.signal.aborted) throw fail('CONNECTION_ABORTED', null, stage);
+  }
+  async function exchange(path, body, stage, signal, token) {
+    const encoded = JSON.stringify(body);
+    if (new TextEncoder().encode(encoded).length > 8192) throw fail('REMEMBERED_CONNECTION_INVALID', null, stage);
+    const tracked = await send(path, { method: 'POST', body: encoded, signal, token, stage });
+    try {
+      if (tracked.response.status !== 200) {
+        await tracked.response.body?.cancel();
+        throw fail(stage === 'forget' ? 'REMEMBERED_CONNECTION_FORGET_UNCONFIRMED' : 'REMEMBERED_CONNECTION_REJECTED', tracked.response.status, stage);
+      }
+      if (tracked.response.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') throw fail('REMEMBERED_CONNECTION_INVALID', tracked.response.status, stage);
+      const value = await limitedJson(tracked.response, 8192);
+      return { ...tracked, value };
+    } catch (error) {
+      await tracked.response.body?.cancel().catch(() => {}); tracked.cleanup();
+      throw atStage(error, stage, tracked.response.status);
+    }
+  }
+  async function remember(keyPair, { signal } = {}) {
+    const crypto = rememberedSupport(), selected = active(), started = epoch;
+    remembering = true;
+    let tracked;
+    try {
+      const keys = await validatedKeys(keyPair, crypto), clientNonce = freshNonce(crypto);
+      if (closed || epoch !== started) throw fail('CONNECTION_ABORTED');
+      tracked = await exchange(descriptor.rememberPath, { clientNonce, publicKey: keys.publicKey }, 'remember', signal, selected.token);
+      const result = tracked.value;
+      current(started, tracked, 'remember');
+      if (!exact(result, ['version', 'grantId', 'expiresAt', 'runtimeScope', 'proof']) || result.version !== 1
+          || !opaque(result.grantId) || !opaque(result.runtimeScope)) throw fail('REMEMBERED_CONNECTION_INVALID');
+      expiry(result.expiresAt, now(), 30 * DAY);
+      await proof(crypto, result.proof, ['haema-local/v1', 'enroll', descriptor.serverIdentity.serverId, result.grantId,
+        descriptor.webOrigin, descriptor.baseUrl, result.runtimeScope, clientNonce, result.expiresAt, canonicalJwk(keys.publicKey)], 'remember');
+      current(started, tracked, 'remember');
+      return Object.freeze({ version: 1, descriptor, grantId: result.grantId, expiresAt: result.expiresAt, ...keys });
+    } catch (error) { throw atStage(error, 'remember', tracked?.response.status); }
+    finally { remembering = false; tracked?.cleanup(); }
+  }
+  async function resume(value, { signal } = {}) {
+    const crypto = rememberedSupport(), started = epoch;
+    resuming = true;
+    let challenged, resumed;
+    let stage = 'challenge';
+    try {
+      const binding = await bindingFor(value, stage), clientNonce = freshNonce(crypto);
+      if (closed || epoch !== started) throw fail('CONNECTION_ABORTED');
+      challenged = await exchange(descriptor.challengePath, { grantId: binding.grantId, clientNonce }, stage, signal);
+      const challenge = challenged.value;
+      current(started, challenged, stage);
+      if (!exact(challenge, ['version', 'runtimeScope', 'serverNonce', 'expiresAt', 'proof']) || challenge.version !== 1
+          || !opaque(challenge.runtimeScope) || !opaque(challenge.serverNonce)) throw fail('REMEMBERED_CONNECTION_INVALID');
+      expiry(challenge.expiresAt, now(), 30_000);
+      if (challenge.expiresAt > binding.expiresAt) throw fail('REMEMBERED_CONNECTION_INVALID');
+      const fields = [descriptor.serverIdentity.serverId, binding.grantId, descriptor.webOrigin, descriptor.baseUrl,
+        challenge.runtimeScope, clientNonce, challenge.serverNonce, challenge.expiresAt];
+      await proof(crypto, challenge.proof, ['haema-local/v1', 'challenge', ...fields], stage);
+      current(started, challenged, stage);
+      expiry(challenge.expiresAt, now(), 30_000);
+      let signature;
+      try { signature = base64(new Uint8Array(await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, binding.privateKey,
+        transcript(['haema-local/v1', 'resume', ...fields])))); }
+      catch { throw fail('REMEMBERED_CONNECTION_KEY_INVALID'); }
+      current(started, challenged, stage);
+      challenged.cleanup();
+      stage = 'resume';
+      resumed = await exchange(descriptor.resumePath, { grantId: binding.grantId, clientNonce, serverNonce: challenge.serverNonce,
+        runtimeScope: challenge.runtimeScope, expiresAt: challenge.expiresAt, signature }, stage, signal);
+      const result = resumed.value;
+      current(started, resumed, stage);
+      if (!exact(result, ['version', 'token', 'expiresAt', 'runtimeScope', 'proof']) || result.version !== 1 || !opaque(result.token)
+          || result.runtimeScope !== challenge.runtimeScope) throw fail('REMEMBERED_CONNECTION_INVALID');
+      expiry(result.expiresAt, now(), 30 * 60_000);
+      if (result.expiresAt > binding.expiresAt) throw fail('REMEMBERED_CONNECTION_INVALID');
+      await proof(crypto, result.proof, ['haema-local/v1', 'session', descriptor.serverIdentity.serverId, binding.grantId,
+        descriptor.webOrigin, descriptor.baseUrl, challenge.runtimeScope, clientNonce, challenge.serverNonce, result.token, result.expiresAt], stage);
+      current(started, resumed, stage);
+      expiry(result.expiresAt, now(), 30 * 60_000);
+      session = { token: result.token, expiresAt: result.expiresAt };
+      scheduleExpiry();
+      return Object.freeze({ expiresAt: session.expiresAt });
+    } catch (error) { throw atStage(error, stage, (resumed ?? challenged)?.response.status); }
+    finally { resuming = false; challenged?.cleanup(); resumed?.cleanup(); }
+  }
+  async function forget(value, { signal } = {}) {
+    rememberedSupport();
+    const selected = active(), started = epoch;
+    forgetting = true;
+    let tracked;
+    try {
+      const binding = await bindingFor(value, 'forget', true);
+      if (closed || epoch !== started) throw fail('CONNECTION_ABORTED');
+      tracked = await exchange(descriptor.forgetPath, { grantId: binding.grantId }, 'forget', signal, selected.token);
+      current(started, tracked, 'forget');
+      if (!exact(tracked.value, ['forgotten']) || tracked.value.forgotten !== true) throw fail('REMEMBERED_CONNECTION_FORGET_UNCONFIRMED');
+      clear('CONNECTION_CLOSED');
+      return Object.freeze({ forgotten: true });
+    } catch (error) {
+      if (error instanceof LocalConnectionError && ['REMEMBERED_CONNECTION_IDENTITY_MISMATCH', 'REMEMBERED_CONNECTION_KEY_INVALID',
+        'REMEMBERED_CONNECTION_INVALID', 'CONNECTION_ABORTED'].includes(error.code)) throw atStage(error, 'forget', tracked?.response.status);
+      throw fail('REMEMBERED_CONNECTION_FORGET_UNCONFIRMED', error instanceof LocalConnectionError ? error.status : null, 'forget');
+    } finally { forgetting = false; tracked?.cleanup(); }
+  }
+
   function wrappedResponse(tracked, stage) {
     const original = tracked.response;
     if (!original.body) { tracked.cleanup(); return original; }
@@ -247,18 +461,23 @@ export function createLocalConnectionClient(input, options = {}) {
         || (body !== undefined && typeof body !== 'string') || (['GET', 'DELETE'].includes(method) && (body !== undefined || json !== undefined))
         || (accept !== undefined && accept !== 'application/json' && accept !== 'text/event-stream')) throw fail('INVALID_CONNECTION_REQUEST');
     pathAndQuery(path, true);
-    if ([descriptor.pairingPath, descriptor.revocationPath].includes(path.split('?', 1)[0])) throw fail('INVALID_CONNECTION_REQUEST');
+    if ([descriptor.pairingPath, descriptor.revocationPath, ...REMEMBER_PATHS.map(key => descriptor[key])].includes(path.split('?', 1)[0])) throw fail('INVALID_CONNECTION_REQUEST');
     const selected = active();
+    const started = epoch;
     let data = body;
     if (json !== undefined) {
       try { data = JSON.stringify(json); } catch { throw fail('INVALID_CONNECTION_REQUEST'); }
       if (typeof data !== 'string') throw fail('INVALID_CONNECTION_REQUEST');
     }
     const tracked = await send(path, { method, body: data, token: selected.token, signal, accept, stage });
-    if (closed || session !== selected || tracked.controller.signal.aborted || selected.expiresAt <= now()) {
+    if (closed || epoch !== started || tracked.controller.signal.aborted || selected.expiresAt <= now()) {
       await tracked.response.body?.cancel(); tracked.cleanup(); throw fail('CONNECTION_EXPIRED', tracked.response.status, stage);
     }
-    if (tracked.response.status === 401) { await tracked.response.body?.cancel(); tracked.cleanup(); clear('CONNECTION_REQUIRED'); throw fail('CONNECTION_REQUIRED', 401, stage); }
+    if (tracked.response.status === 401) {
+      await tracked.response.body?.cancel(); tracked.cleanup();
+      if (session === selected) clear('CONNECTION_REQUIRED');
+      throw fail('CONNECTION_REQUIRED', 401, stage);
+    }
     return wrappedResponse(tracked, stage);
   }
 
@@ -336,7 +555,7 @@ export function createLocalConnectionClient(input, options = {}) {
     } finally { tracked?.cleanup(); }
   }
 
-  return Object.freeze({ pair, request, invoke, events, disconnect,
+  return Object.freeze({ pair, remember, resume, forget, request, invoke, events, disconnect,
     status() {
       if (session?.expiresAt <= now()) clear('CONNECTION_EXPIRED');
       return Object.freeze({ state: closed ? 'closed' : session ? 'connected' : pairing ? 'connecting' : 'disconnected',
