@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-19: preserve the open model picker during refresh.
 // @editedBy SherrySherry 2026-11-19
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-07
@@ -1162,7 +1163,7 @@ async function bindEvents() {
         const supportsOpen = globalThis.CSS?.supports?.("selector(select:open)");
         // External options must not replace the native list under a pointer or keyboard.
         // In older browsers focus leaving the selector is a reliable point to apply them.
-        while (current() && document.activeElement === modelSelect && (!supportsOpen || modelSelect.matches(":open"))) {
+        while (current() && (supportsOpen ? modelSelect.matches(":open") : document.activeElement === modelSelect)) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         return current();
@@ -1181,8 +1182,10 @@ async function bindEvents() {
         }
 
         if (!isLocalProvider(provider) && !snapshot.apiKey) {
-            modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
-            modelSelect.dataset.selectedModel = currentModel;
+            if (!await canApplyModelList(requestVersion)) return;
+            const selected = modelSelect.value || modelSelect.dataset.selectedModel || "";
+            modelSelect.innerHTML = buildModelOptionsFallback(provider, selected);
+            modelSelect.dataset.selectedModel = selected;
             if (connectionStatus) {
                 connectionStatus.dataset.modelsFromFallback = "true";
                 refreshKeyHint();
@@ -1226,10 +1229,6 @@ async function bindEvents() {
         const requestVersion = ++modelRequestVersion;
         const snapshot = connectionSnapshot();
         if (modelRefreshTimer !== null) clearTimeout(modelRefreshTimer);
-        if (isLocalProvider(snapshot.provider)) {
-            modelSelect.dataset.selectedModel = snapshot.selectedModel;
-            modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
-        }
         modelRefreshTimer = setTimeout(() => {
             modelRefreshTimer = null;
             refreshModelOptions(requestVersion, snapshot);
@@ -1264,6 +1263,11 @@ async function bindEvents() {
     modelSelect.addEventListener(manualModel ? "input" : "change", () => {
         modelSelect.dataset.selectedModel = modelSelect.value || "";
         refreshKeyHint();
+    });
+    modelSelect.addEventListener("keydown", event => {
+        if (event.key === "Escape" && !manualModel && globalThis.CSS?.supports?.("selector(select:open)") && modelSelect.matches(":open")) {
+            event.stopPropagation();
+        }
     });
     document.getElementById("modalRefreshModels")?.addEventListener("click", () => {
         if (!profileActionBusy) scheduleModelRefresh();

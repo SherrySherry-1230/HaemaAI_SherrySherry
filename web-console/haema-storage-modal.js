@@ -18,7 +18,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     const missingConnections = new WeakSet();
 
     function connectionFailure(error) {
-        if (missingConnections.has(error)) return "쩜통 버튼에서 쩜통을 다운로드한 뒤 압축을 풀고 시작 파일을 열어 주세요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요. 입력한 경로는 그대로 남아 있어요.";
+        if (missingConnections.has(error)) return "쩜통 버튼에서 이 컴퓨터에 맞는 설치·연결 안내를 확인해 주세요. 입력한 경로는 그대로 남아 있어요.";
         try {
             const message = globalThis.HAEMA_LOCAL_CONNECTION?.describeFailure?.(error);
             return typeof message === "string" && message ? message : null;
@@ -268,13 +268,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
             if (asset) {
                 link.href = asset.url;
                 link.setAttribute("aria-disabled", "false");
-                if (asset.restricted) {
-                    notice.textContent = "공유받은 Google 계정으로 다운로드해 주세요. 처음 설치할 때는 압축을 풀고 대화 테스트용 StartAI.cmd를 열어 저장할 폴더를 고르세요. 설정만 확인할 때는 Start.cmd를 여세요. 기존 쩜통을 업데이트할 때는 기존 Stop.cmd를 실행하고, 새 ZIP을 별도 위치에 풀어 StartAI.cmd에서 기존 쩜통 폴더를 선택하세요.";
-                    return;
+                if (!asset.restricted) link.download = asset.fileName;
+                if (platform.value === "windows") {
+                    notice.textContent = (asset.restricted ? "공유받은 Google 계정으로 다운로드해 주세요. " : "") +
+                        "새 ZIP의 압축을 모두 푼 뒤 RegisterWebControls.cmd를 열어 쩜통 폴더를 한 번 선택하고 Windows에서 등록을 확인해 주세요. " +
+                        "기존 쩜통을 갱신할 때는 기존 Stop.cmd로 종료하고, 새 ZIP을 별도 위치에 풀어 기존 쩜통 폴더를 등록해 주세요.";
+                } else {
+                    notice.textContent = "압축을 풀고 Start.command 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
                 }
-                link.download = asset.fileName;
-                const startFile = platform.value === "windows" ? "Start.cmd" : "Start.command";
-                notice.textContent = "압축을 풀고 " + startFile + " 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
                 return;
             }
             link.removeAttribute("href");
@@ -301,15 +302,23 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
-        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작", file: "StartAI.cmd" },
+        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료", file: "Stop.cmd" },
     ];
-    const manualLaunchHint = "등록 파일이 없으면 설치 폴더에서 Start.cmd(준비), StartAI.cmd(대화), Stop.cmd(종료)를 열어 주세요. 파일로 준비 모드에서 대화 모드로 바꿀 때는 먼저 Stop.cmd를 실행해 주세요.";
-    const registrationHint = "처음 한 번 Windows 쩜통 설치 폴더의 RegisterWebControls.cmd를 실행해 등록하세요. " + manualLaunchHint;
-    const confirmationHint = "Windows에서 해마.ai 실행기 열기를 허용한 뒤, 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요. " + manualLaunchHint;
+    const registrationHint = "등록한 쩜통을 사용해요. AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
+    const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const onWindows = () => globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === "windows";
+    let checkOnLauncherReturn = false;
+
+    function recheckAfterLauncher() {
+        if (!checkOnLauncherReturn || document.visibilityState === "hidden") return;
+        checkOnLauncherReturn = false;
+        void globalThis.HAEMA_LOCAL_CONNECTION?.recheck?.();
+    }
+    globalThis.addEventListener?.("focus", recheckAfterLauncher);
+    globalThis.document?.addEventListener?.("visibilitychange", recheckAfterLauncher);
 
     function renderLauncherKeys(inHeader) {
         const windows = onWindows();
@@ -322,7 +331,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const classes = inHeader ? "launcher-key launcher-key-" + action.key : "btn";
             const description = inHeader ? "" : ' aria-describedby="storageWindowsHint"';
             const attributes = 'id="' + id + '" class="' + classes + '" title="' + help + '"' + description;
-            const face = inHeader ? '<span class="launcher-key-face">' + action.label + '</span>' : action.name;
+            const face = inHeader ? '<span class="launcher-key-face">' + action.label + '</span>' : action.label;
             return href
                 ? '<a ' + attributes + ' href="' + href + '">' + face + '</a>'
                 : '<button type="button" ' + attributes + ' aria-disabled="true"' + (inHeader ? '' : ' disabled') + '>' + face + '</button>';
@@ -337,7 +346,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
     function bindLauncherClick(group, hint) {
         group.addEventListener("click", event => {
             const key = event.target.closest("a, button");
-            if (key) hint.textContent = key.hasAttribute("href") ? confirmationHint : key.title;
+            if (!key) return;
+            if (key.hasAttribute("href")) {
+                hint.textContent = confirmationHint;
+                checkOnLauncherReturn = true;
+            } else {
+                hint.textContent = key.title;
+            }
         });
     }
 
@@ -357,6 +372,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     function renderWindowsControls() {
         return '<div class="form-group" id="storageWindowsControls">' +
             '<div class="input-group" role="group" aria-label="Windows의 해마.ai 실행 제어">' + renderLauncherKeys(false) + '</div>' +
+            '<p class="form-hint" id="storageRuntimeState" role="status">' + (consoleRef?.runtimeReadinessLabel?.() || "") + '</p>' +
             '<p class="form-hint" id="storageWindowsHint" role="status">' + registrationHint + '</p></div>';
     }
 
@@ -436,8 +452,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '    </div>',
 
             '    <div class="modal-body">',
-            showWindowsControls ? renderWindowsControls() : '',
+            connected && showWindowsControls ? renderWindowsControls() : '',
             body,
+            !connected && showWindowsControls ? renderWindowsControls() : '',
             '    </div>',
             '  </div>',
             '</div>',

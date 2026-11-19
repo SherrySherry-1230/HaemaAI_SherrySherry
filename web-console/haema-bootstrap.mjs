@@ -1,10 +1,12 @@
 // @editedBy YAONG1230 2026-11-19: refresh header launcher assets
 // @editedBy SherrySherry 2026-11-19
-import { connection } from './haema-local-connection.mjs?v=20261119-recovery';
+import { connection } from './haema-local-connection.mjs?v=20261119-r6-readiness';
 import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261119-launcher-handles';
 globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
 const connectionStarted = connection.start();
-const setupMessage = '쩜통 버튼에서 이 컴퓨터에 맞는 쩜통을 다운로드해 주세요. 압축을 풀고 시작 파일을 한 번 열면 실행부와 쩜통을 준비하고 웹콘솔에 연결해요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요.';
+const setupMessage = detectDownloadPlatform() === 'windows'
+    ? '쩜통 버튼에서 Windows 설치 ZIP을 내려받아 모두 압축을 풀고, RegisterWebControls.cmd에서 사용할 쩜통을 한 번 등록해 주세요. 이미 등록했다면 웹콘솔에서 Start를 눌러 준비 모드를 열 수 있어요.'
+    : '쩜통 버튼에서 이 컴퓨터에 맞는 설치본을 내려받아 안내에 따라 시작 파일을 열어 주세요.';
 const resettable = new Set(['REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
     'REMEMBERED_CONNECTION_GRANT_EXPIRED', 'REMEMBERED_CONNECTION_KEY_INVALID', 'REMEMBERED_CONNECTION_INVALID']);
 async function showConnectionNotice(state) {
@@ -26,14 +28,14 @@ async function showConnectionNotice(state) {
 }
 globalThis.HAEMA_RECONNECT_LOCAL = () => {
     // Begin the connection in the confirming click, before awaiting another task.
-    const pending = connection.connect();
+    const pending = connection.status().connection === 'connected' ? connection.recheck() : connection.connect();
     void pending.then(async state => {
         if (state.connection === 'connected') return;
         await showConnectionNotice(state);
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261119-saved-profile", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261119-intro-memory", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-launcher-handles", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-launcher-handles"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261119-r6-readiness", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261119-intro-memory", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-r6-readiness", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-r6-readiness"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');

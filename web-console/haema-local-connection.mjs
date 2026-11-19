@@ -308,11 +308,11 @@ export function createConsoleConnection(options = {}) {
         if (generation !== activeGeneration || client !== selected || closed) return state;
         sessionExpiresAt = result?.expiresAt ?? selected.status?.().expiresAt ?? null;
         deferRenewalUntil = sessionExpiresAt === previousExpiry && sessionExpiresAt > now() ? sessionExpiresAt + 1 : 0;
-        if (state.runtimeMode === 'unknown') {
-          const response = await selected.invoke('settings.status', {});
-          try { await inspect(response, 'settings.status', activeGeneration); } finally { await response.body?.cancel(); }
-          if (generation !== activeGeneration || client !== selected || closed) return state;
-        }
+        // A resumed launcher may be serving a different mode for the same store.
+        const revision = ++settingsRevision;
+        const response = await selected.invoke('settings.status', {});
+        try { await inspect(response, 'settings.status', activeGeneration, revision); } finally { await response.body?.cancel(); }
+        if (generation !== activeGeneration || client !== selected || closed) return state;
         clearFailure(); publish({ connection: 'connected', recovering: false, noticeCode: settingsNotice(state.runtimeMode, state.apiConfigured, state.aiReady) });
         watchEvents(selected, activeGeneration); scheduleRenewal();
       } catch (caught) {
@@ -493,7 +493,7 @@ export function createConsoleConnection(options = {}) {
     if (!selected) return null;
     const message = rememberedMessage(selected.code);
     if (message) return message;
-    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '쩜통 버튼에서 이 컴퓨터에 맞는 실행 프로그램과 쩜통을 다운로드한 뒤 압축을 풀고 시작 파일을 열어 주세요. 이미 준비했다면 같은 시작 파일을 다시 열어 연결할 수 있어요.';
+    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '쩜통 버튼에서 이 컴퓨터에 맞는 설치·연결 안내를 확인해 주세요. 이미 등록한 Windows 쩜통은 웹콘솔의 Start로 준비 모드를 열 수 있어요.';
     if (selected.code === 'CONNECTION_PERMISSION_DENIED') return 'Chrome 주소창의 사이트 설정에서 로컬 네트워크 접근을 허용한 뒤 연결 버튼을 눌러 주세요.';
     if (selected.code === 'CONNECTION_PERMISSION_REQUIRED') return '연결 버튼을 눌러 주세요. Chrome이 로컬 네트워크 접근을 물으면 허용해 주세요.';
     if (selected.code === 'CONNECTION_EXPIRED') return '내 컴퓨터 연결의 인증 시간이 끝났어요. 연결 버튼을 눌러 다시 연결해 주세요.';

@@ -323,3 +323,26 @@
 
 #storageModal .input-group > .btn { flex: 1 1 104px; }
 :is(#storageModal, #existingStorageModal) .form-group > .btn { flex: 1 1 140px; }
+
+/* @editedBy YAONG1230 2026-11-19: keep long model lists scrollable inside the picker. */
+@supports (appearance: base-select) and selector(::picker(select)) {
+    select#modalApiModel,
+    #modalApiModel::picker(select) {
+        appearance: base-select;
+    }
+
+    #modalApiModel::picker(select) {
+        max-block-size: min(18rem, 40dvh);
+        overflow-y: auto;
+        overscroll-behavior-y: contain;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fffdfa;
+        color: var(--ink);
+    }
+
+    #modalApiModel option {
+        padding: 6px 12px;
+        overflow-wrap: anywhere;
+    }
+}

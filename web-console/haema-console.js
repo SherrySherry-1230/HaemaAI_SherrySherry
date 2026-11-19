@@ -181,6 +181,11 @@ HAEMA_CONSOLE.render = function() {
     this.renderedModalMode = this.modalMode;
     this.renderedModalData = this.modalData;
     storageOverlays.forEach(overlay => app.appendChild(overlay));
+    const storageRuntime = document.getElementById('storageRuntimeState');
+    if (storageRuntime) {
+        const label = this.runtimeReadinessLabel();
+        if (storageRuntime.textContent !== label) storageRuntime.textContent = label;
+    }
 
     // 입력창 값 복원
     const restoredInput = document.getElementById("userInput");
@@ -255,6 +260,7 @@ HAEMA_CONSOLE.getStatusEmojis = function() {
 HAEMA_CONSOLE.renderHeader = function() {
     const statusClass = "status-" + this.status;
     const emojis = this.getStatusEmojis();
+    const idleLabel = this.status === 'resting' && this.statusText === '해마 쉬는 중...' ? this.runtimeReadinessLabel() : '';
 
     // API 키 설정 상태 확인
     const apiProvider = localStorage.getItem("haema_api_provider") || "";
@@ -291,7 +297,7 @@ HAEMA_CONSOLE.renderHeader = function() {
         '<div class="header-right">',
         globalThis.HAEMA_STORAGE_MODAL?.renderHeaderLauncher?.() || '',
         '<a class="repo-link" href="https://github.com/SherrySherry-1230/HaemaAI_SherrySherry" target="_blank" rel="noreferrer">GitHub 저장소</a>',
-        '<div class="status-bar"><img class="status-art" src="Resources/haema-design/button-raster-4x/17-haema-status-pill.png" width="161.83" height="26" alt=""><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>',
+        '<div class="status-bar"><img class="status-art" src="Resources/haema-design/button-raster-4x/17-haema-status-pill.png" width="161.83" height="26" alt=""><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(idleLabel || this.statusText) + '</span></div>',
         '</div>',
         '</header>',
     ].join("");
@@ -680,6 +686,10 @@ HAEMA_CONSOLE.renderTransmissionStatus = function() {
             failed ? '처리 확인 필요' : status === 'error' ? '연결 확인 필요' : host.ready ? '호스트 연결' : '연결 준비 필요';
         detail = host.status || label;
         emojis = status === 'error' ? '💔💔💔' : status === 'working' ? '💛💚💛' : '💚💚💚';
+    }
+    if (status === 'resting' && ['해마 쉬는 중...', '호스트 연결', '연결 준비 필요'].includes(label)) {
+        const runtimeLabel = this.runtimeReadinessLabel();
+        if (runtimeLabel) detail = label = runtimeLabel;
     }
     if (label === '대화를 보내고 있어요') label = '전송 중';
     else if (label === '대화를 보냈어요') label = '전송 완료';
@@ -1266,10 +1276,21 @@ HAEMA_CONSOLE.isApiKeyReady = function() {
     return this.apiConfigured === true && globalThis.HAEMA_LOCAL_CONNECTION?.status().aiReady === true;
 };
 
+HAEMA_CONSOLE.runtimeReadinessLabel = function() {
+    const state = this.localConnectionState;
+    if (!state) return '';
+    if (state.recovering || state.connection === 'connecting') return '연결 확인 중';
+    if (state.connection !== 'connected') return '쩜통 연결 필요';
+    if (state.runtimeMode === 'setup-only') return '준비 모드';
+    if (state.runtimeMode === 'full' && state.aiReady === true && this.isConversationReady() &&
+        (!this.selectedTestHost || globalThis.HAEMA_TEST_HOST?.state.ready)) return '대화 가능';
+    return '대화 준비 중';
+};
+
 HAEMA_CONSOLE.setupModeNotice = function() {
     const platform = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.();
     if (platform === 'windows') {
-        return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. Windows 테스트용 쩜통을 압축 해제한 폴더에서 Stop.cmd로 종료한 뒤 같은 폴더의 StartAI.cmd를 실행해 주세요. 실행 창에서 서비스 접속 코드를 요청하면 입력하고, 새로 열린 웹콘솔에서 대화해 주세요.';
+        return '지금은 API 설정과 자기소개를 저장할 수 있는 준비 모드예요. 대화하려면 상단 AI Start를 누르고 Windows에서 등록한 쩜통과 모드 전환을 확인해 주세요.';
     }
     if (platform === 'macos') return '현재 Mac용 공개 쩜통에서는 API 설정을 저장할 수 있어요. 실제 대화에는 대화 기능이 포함된 Mac용 실행 프로그램이 필요해요.';
     return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. 실제 대화는 이 컴퓨터의 대화용 실행 프로그램에서 웹콘솔을 열어 시작해 주세요.';
@@ -2925,6 +2946,8 @@ HAEMA_CONSOLE.mount = async function() {
         const restored = state.connection === 'connected' && previous?.connection !== 'connected';
         const lost = state.connection !== 'connected' && previous?.connection === 'connected';
         const wasReady = previous?.aiReady;
+        const settingsChanged = state.connection === 'connected' && previous?.connection === 'connected' &&
+            (previous.runtimeMode !== state.runtimeMode || wasReady !== state.aiReady || previous.apiConfigured !== state.apiConfigured);
         previous = state;
         this.localConnectionState = state;
         if (lost || restored || state.remembered && state.connection !== 'connected') {
@@ -2972,6 +2995,8 @@ HAEMA_CONSOLE.mount = async function() {
                 this.updateInputAvailability();
             });
             this.connectionRestoreTask = task;
+        } else if (settingsChanged && !this.connectionRestoreTask) {
+            void this.refreshApiStatus();
         }
     };
     HAEMA_LOCAL_CONNECTION.subscribe(onConnectionState);
