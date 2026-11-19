@@ -299,6 +299,26 @@ window.HAEMA_STORAGE_MODAL = (function () {
         })();
     }
 
+    const windowsControls = [
+        '      <div class="form-group" id="storageWindowsControls">',
+        '        <div class="input-group" role="group" aria-label="Windows의 해마.ai 실행 제어">',
+        '          <a class="btn" id="storageStartHaema" href="haema-ai://start" aria-describedby="storageWindowsHint">해마.ai 시작</a>',
+        '          <a class="btn" id="storageStopHaema" href="haema-ai://stop" aria-describedby="storageWindowsHint">해마.ai 종료</a>',
+        '        </div>',
+        '        <p class="form-hint" id="storageWindowsHint" role="status">처음 한 번 Windows 쩜통 설치 파일의 RegisterWebControls.cmd를 실행해 등록하세요.</p>',
+        '      </div>',
+    ].join("\n");
+
+    function bindWindowsControls(overlay) {
+        const help = overlay.querySelector("#storageWindowsHint");
+        if (!help) return;
+        const requestConfirmation = () => {
+            help.textContent = "Windows에서 해마.ai 실행기 열기를 허용한 뒤, 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 설치 파일의 RegisterWebControls.cmd를 실행해 주세요.";
+        };
+        overlay.querySelector("#storageStartHaema").addEventListener("click", requestConfirmation);
+        overlay.querySelector("#storageStopHaema").addEventListener("click", requestConfirmation);
+    }
+
     function openModal(previous) {
         const app = document.getElementById("app");
         if (!app) return;
@@ -311,6 +331,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (existing) existing.remove();
         const returnFocus = previous?.returnFocus || focusReference(document.activeElement);
         const connected = globalThis.HAEMA_LOCAL_CONNECTION?.status?.().connection === 'connected';
+        const showWindowsControls = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === 'windows';
         const downloadControls = [
             '        <label class="form-label" for="storageDownloadPlatform">내 컴퓨터의 운영체제</label>',
             '        <select class="form-input" id="storageDownloadPlatform">',
@@ -374,6 +395,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '    </div>',
 
             '    <div class="modal-body">',
+            showWindowsControls ? windowsControls : '',
             body,
             '    </div>',
             '  </div>',
@@ -390,6 +412,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         modalFocus.set(overlay, state);
         closeBtn.addEventListener("click", () => closeModal(overlay));
         bindModalKeyboard(overlay, () => closeModal(overlay));
+        bindWindowsControls(overlay);
         overlay.addEventListener("click", event => {
             if (event.target === overlay) closeModal(overlay);
         });
