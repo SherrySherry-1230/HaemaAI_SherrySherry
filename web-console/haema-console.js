@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-20: reconcile the open API form when the runtime mode changes.
 // @editedBy YAONG1230 2026-11-19: header launcher and storage before API in the toolbar
 // @editedBy SherrySherry 2026-11-18
 // @editedBy YAONG1230 2026-11-10: separate toolbar states and calendar status presentation
@@ -227,7 +228,10 @@ HAEMA_CONSOLE.render = function() {
 
     this.attachEventListeners(liveModal);
     this.observeSeonLayout();
-    if (liveModal && typeof HAEMA_API_KEY_MODAL !== 'undefined') HAEMA_API_KEY_MODAL.refreshKeyHint?.();
+    if (liveModal && typeof HAEMA_API_KEY_MODAL !== 'undefined') {
+        HAEMA_API_KEY_MODAL.syncOpenForm?.();
+        HAEMA_API_KEY_MODAL.refreshKeyHint?.();
+    }
     if (this.modalMode && this.modalData && !liveModal) {
         const overlay = document.getElementById("modalOverlay");
         if (overlay) { overlay.classList.add("active"); overlay.style.display = "flex"; }

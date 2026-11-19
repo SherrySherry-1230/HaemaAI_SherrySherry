@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-20: adapt the open model field to the confirmed runtime mode.
 // @editedBy YAONG1230 2026-11-19: preserve the open model picker during refresh.
 // @editedBy SherrySherry 2026-11-19
 // @editedBy SherrySherry 2026-09-24
@@ -297,6 +298,19 @@ function escapeAttr(text) {
 //
 // 출력
 // - 모달 body에 넣을 HTML 문자열
+function renderModelControl(manual, model) {
+    return manual ? `
+        <input class="form-input" id="modalApiModel" type="text" list="modalModelSuggestions"
+            value="${escapeAttr(model)}" placeholder="모델 ID 입력" autocomplete="off">
+        <datalist id="modalModelSuggestions"></datalist>
+        <div class="form-hint">사용할 모델 ID를 입력하세요. 설정 전용 모드에서는 이 컴퓨터에 설정을 저장하고 모델 연결 확인은 전체 실행 모드에서 진행해요.</div>` : `
+        <select class="form-select" id="modalApiModel" data-selected-model="${escapeAttr(model)}">
+            <option value="">모델을 선택하세요</option>
+        </select>
+        <div class="form-hint">선택한 제공자에 맞는 모델을 선택하세요.</div>
+        <button class="btn btn-small btn-ghost" type="button" id="modalRefreshModels">모델 다시 조회</button>`;
+}
+
 function renderApiKeyModalContent(data = {}) {
     // The edit identity belongs to this form, not a previously closed modal.
     editingKeyId = data.keyId || "";
@@ -365,20 +379,10 @@ function renderApiKeyModalContent(data = {}) {
     // renderApiKeyModalContent()는 동기 HTML 반환 함수이므로,
     // buildModelOptions()를 여기서 직접 await 하지 않고 select를 비운 뒤
     // bindEvents() / initModelSelect()에서 비동기로 채운다.
-    const modelControl = isSetupOnlyRuntime() ? `
-            <input class="form-input" id="modalApiModel" type="text" list="modalModelSuggestions"
-                value="${escapeAttr(savedModel)}" placeholder="모델 ID 입력" autocomplete="off">
-            <datalist id="modalModelSuggestions"></datalist>
-            <div class="form-hint">사용할 모델 ID를 입력하세요. 설정 전용 모드에서는 이 컴퓨터에 설정을 저장하고 모델 연결 확인은 전체 실행 모드에서 진행해요.</div>` : `
-            <select class="form-select" id="modalApiModel" data-selected-model="${escapeAttr(savedModel)}">
-                <option value="">모델을 선택하세요</option>
-            </select>
-            <div class="form-hint">선택한 제공자에 맞는 모델을 선택하세요.</div>
-            <button class="btn btn-small btn-ghost" type="button" id="modalRefreshModels">모델 다시 조회</button>`;
     const modelSelect = `
         <div class="form-group" id="modalModelGroup">
             <label class="form-label" for="modalApiModel">모델</label>
-            ${modelControl}
+            <div id="modalModelControl">${renderModelControl(isSetupOnlyRuntime(), savedModel)}</div>
             <div class="form-hint" id="modalApiConnectionStatus" role="status"></div>
         </div>
     `;
@@ -618,10 +622,13 @@ function setProfileActionBusy(busy) {
     profileActionBusy = busy;
     document.querySelectorAll('#modalBody input, #modalBody select, #modalBody .saved-key-actions button, #modalRefreshModels, #modalSave')
         .forEach(control => { control.disabled = busy; });
+    if (!busy) syncOpenForm();
 }
 
 async function saveApiKeyModal() {
     if (profileActionBusy) return false;
+    const form = boundModalBodies.get(document.getElementById("modalBody"));
+    if (form && !form.isReady()) return false;
     const provider = document.getElementById("modalApiProvider")?.value;
     const model = document.getElementById("modalApiModel")?.value.trim();
     const apiKey = document.getElementById("modalApiKey")?.value.trim();
@@ -630,7 +637,7 @@ async function saveApiKeyModal() {
     const setupOnly = isSetupOnlyRuntime();
     const formData = consoleRef?.modalData;
     const targetKeyId = editingKeyId;
-    const targetScope = currentStorageScope();
+    const targetScope = form?.scope ?? currentStorageScope();
 
     // 입력 검증
     if (safeBaseUrl(baseURL) === null) {
@@ -1012,9 +1019,13 @@ function showProfileForm(target) {
 
 async function startEditingKey(keyId) {
     if (profileActionBusy) return false;
+    const body = document.getElementById("modalBody");
+    const form = boundModalBodies.get(body);
+    const request = Symbol();
+    if (form) form.editRequest = request;
     try {
         const keys = await getSavedKeys();
-        if (profileActionBusy) return false;
+        if (profileActionBusy || (form && (form.editRequest !== request || !form.isReady() || document.getElementById("modalBody") !== body))) return false;
         const target = keys.find(item => item.keyId === keyId);
         if (!target) {
             await refreshConsoleAfterProfileAction("편집할 API 키를 찾을 수 없습니다.");
@@ -1035,9 +1046,13 @@ async function startEditingKey(keyId) {
 // =========================================================
 // 제공자 선택이 바뀌면 모델 드롭다운을 다시 그린다.
 // 저장된 키 목록의 사용/편집/삭제 버튼도 여기서 처리한다.
-const boundModalBodies = new WeakSet();
+const boundModalBodies = new WeakMap();
 const listUpdates = new WeakMap();
 const listSignatures = new WeakMap();
+
+function syncOpenForm() {
+    boundModalBodies.get(document.getElementById("modalBody"))?.sync();
+}
 
 function refreshKeyHint() {
     const provider = document.getElementById("modalApiProvider")?.value;
@@ -1082,7 +1097,10 @@ async function updateSavedList(list) {
     const current = () => listUpdates.get(list) === request && document.getElementById("savedKeysList") === list;
     try {
         const html = await renderSavedKeysList();
-        if (current()) list.innerHTML = html;
+        if (current()) {
+            list.innerHTML = html;
+            syncOpenForm();
+        }
     } catch {
         if (current()) list.textContent = "기존 설정 목록을 읽지 못했어요.";
     }
@@ -1093,28 +1111,37 @@ async function bindEvents() {
     if (!modalBody || boundModalBodies.has(modalBody)) return;
 
     const providerSelect = document.getElementById("modalApiProvider");
-    const modelSelect = document.getElementById("modalApiModel");
+    const modelControl = document.getElementById("modalModelControl");
+    let modelSelect = document.getElementById("modalApiModel");
     const apiKeyInput = document.getElementById("modalApiKey");
     const baseUrlInput = document.getElementById("modalApiBaseUrl");
     const connectionStatus = document.getElementById("modalApiConnectionStatus");
-    if (!providerSelect || !modelSelect || !apiKeyInput || !baseUrlInput) {
+    if (!providerSelect || !modelControl || !modelSelect || !apiKeyInput || !baseUrlInput) {
         return;
     }
     // Restore an edited profile's model synchronously. Remote model discovery
     // may take longer than the user needs to submit the form.
     const initialModel = modelSelect.dataset.selectedModel || modelSelect.value || "";
-    const manualModel = modelSelect.tagName === "INPUT";
+    let manualModel = modelSelect.tagName === "INPUT";
+    const scope = currentStorageScope();
+    function confirmedMode() {
+        const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+        if (state?.connection !== "connected") return null;
+        return ["setup-only", "full"].includes(state.runtimeMode) ? state.runtimeMode : null;
+    }
+    const isReady = () => !consoleRef || !!confirmedMode() && sameStorageScope(scope, currentStorageScope());
+    let awaitingScope = false;
     if (!manualModel && providerSelect.value) {
         modelSelect.innerHTML = buildModelOptionsFallback(providerSelect.value, initialModel);
         if (initialModel) modelSelect.value = initialModel;
     }
-    boundModalBodies.add(modalBody);
     setProfileActionBusy(profileActionBusy);
 
     const savedKeysList = document.getElementById("savedKeysList");
     let savedListUpdate = Promise.resolve();
     if (savedKeysList) {
         savedKeysList.addEventListener("click", async (event) => {
+            if (!isReady()) return;
             const useBtn = event.target?.closest(".use-key-btn");
             if (useBtn) {
                 const keyId = useBtn.getAttribute("data-key-id");
@@ -1132,7 +1159,8 @@ async function bindEvents() {
             const deleteBtn = event.target?.closest(".delete-key-btn");
             if (deleteBtn) {
                 const keyId = deleteBtn.getAttribute("data-key-id");
-                if (keyId && await HAEMA_DIALOG.confirm("이 연결 설정을 삭제하시겠습니까?", { title: '연결 설정을 삭제할까요?', confirmText: '삭제하기', cancelText: '취소' })) {
+                if (keyId && await HAEMA_DIALOG.confirm("이 연결 설정을 삭제하시겠습니까?", { title: '연결 설정을 삭제할까요?', confirmText: '삭제하기', cancelText: '취소' })
+                    && isReady() && document.getElementById("modalBody") === modalBody) {
                     await deleteKey(keyId);
                 }
             }
@@ -1159,7 +1187,7 @@ async function bindEvents() {
     }
 
     async function canApplyModelList(version) {
-        const current = () => version === modelRequestVersion && document.getElementById("modalApiModel") === modelSelect;
+        const current = () => version === modelRequestVersion && isReady() && document.getElementById("modalApiModel") === modelSelect;
         const supportsOpen = globalThis.CSS?.supports?.("selector(select:open)");
         // External options must not replace the native list under a pointer or keyboard.
         // In older browsers focus leaving the selector is a reliable point to apply them.
@@ -1171,7 +1199,7 @@ async function bindEvents() {
 
     async function refreshModelOptions(requestVersion, snapshot = connectionSnapshot()) {
         const { provider, selectedModel: currentModel } = snapshot;
-        if (document.getElementById("modalApiModel") !== modelSelect) return;
+        if (requestVersion !== modelRequestVersion || !isReady() || document.getElementById("modalApiModel") !== modelSelect) return;
         if (manualModel || isSetupOnlyRuntime()) return;
 
         if (connectionStatus?.dataset) delete connectionStatus.dataset.modelsFromFallback;
@@ -1206,10 +1234,15 @@ async function bindEvents() {
                 modelSelect.appendChild(preserved);
             }
             modelSelect.value = latestModel;
-            modelSelect.dataset.selectedModel = modelSelect.value || "";
-            if (connectionStatus) connectionStatus.textContent = isLocalProvider(provider) && modelSelect.options.length <= 1
-                ? "연결은 확인했지만 사용할 수 있는 모델이 없어요. 로컬 서버에서 모델을 준비하고 다시 조회해주세요."
-                : "✅ API 연결 확인됨. 모델을 선택하세요.";
+            // A manual local ID is still a draft until discovery returns that ID.
+            modelSelect.dataset.selectedModel = modelSelect.value || latestModel;
+            if (isLocalProvider(provider) && latestModel && !modelSelect.value) {
+                connectionStatus.textContent = "입력한 모델 ID가 로컬 서버의 목록에 없어요. 목록에서 사용할 모델을 선택해 주세요.";
+            } else {
+                connectionStatus.textContent = isLocalProvider(provider) && modelSelect.options.length <= 1
+                    ? "연결은 확인했지만 사용할 수 있는 모델이 없어요. 로컬 서버에서 모델을 준비하고 다시 조회해주세요."
+                    : "✅ API 연결 확인됨. 모델을 선택하세요.";
+            }
         } catch (error) {
             if (!await canApplyModelList(requestVersion)) return;
             const connectionMessage = connectionFailure(error);
@@ -1219,13 +1252,13 @@ async function bindEvents() {
             }
             const latestModel = modelSelect.value || modelSelect.dataset.selectedModel || "";
             modelSelect.innerHTML = buildModelOptionsFallback(provider, latestModel);
-            modelSelect.dataset.selectedModel = isLocalProvider(provider) ? "" : latestModel;
+            modelSelect.dataset.selectedModel = latestModel;
             if (connectionStatus) connectionStatus.textContent = "❌ 모델 목록 확인 실패: " + safeFailure(error, "모델 목록을 확인하지 못했어요. 입력한 설정을 유지한 채 다시 확인해 주세요.");
         }
     }
 
     function scheduleModelRefresh() {
-        if (manualModel || isSetupOnlyRuntime()) return;
+        if (manualModel || isSetupOnlyRuntime() || !isReady()) return;
         const requestVersion = ++modelRequestVersion;
         const snapshot = connectionSnapshot();
         if (modelRefreshTimer !== null) clearTimeout(modelRefreshTimer);
@@ -1260,18 +1293,80 @@ async function bindEvents() {
         refreshKeyHint();
         scheduleModelRefresh();
     });
-    modelSelect.addEventListener(manualModel ? "input" : "change", () => {
+    function recordModelSelection(event) {
+        if (event.target !== modelSelect) return;
         modelSelect.dataset.selectedModel = modelSelect.value || "";
         refreshKeyHint();
-    });
-    modelSelect.addEventListener("keydown", event => {
+    }
+    modelControl.addEventListener("input", recordModelSelection);
+    modelControl.addEventListener("change", recordModelSelection);
+    modelControl.addEventListener("keydown", event => {
         if (event.key === "Escape" && !manualModel && globalThis.CSS?.supports?.("selector(select:open)") && modelSelect.matches(":open")) {
             event.stopPropagation();
         }
     });
-    document.getElementById("modalRefreshModels")?.addEventListener("click", () => {
-        if (!profileActionBusy) scheduleModelRefresh();
+    modelControl.addEventListener("click", event => {
+        if (!profileActionBusy && event.target.closest("#modalRefreshModels")) scheduleModelRefresh();
     });
+
+    function sync() {
+        const mode = confirmedMode();
+        const available = isReady();
+        for (const button of modalBody.querySelectorAll("#modalRefreshModels, .saved-key-actions button")) {
+            button.disabled = profileActionBusy || !available;
+        }
+        const save = document.getElementById("modalSave");
+        if (save) save.disabled = profileActionBusy || !available;
+        if (!available) {
+            if (!awaitingScope) {
+                ++modelRequestVersion;
+                clearTimeout(modelRefreshTimer);
+                modelRefreshTimer = null;
+            }
+            awaitingScope = true;
+            delete connectionStatus.dataset.modelsFromFallback;
+            const currentScope = currentStorageScope();
+            if (!scope) {
+                connectionStatus.textContent = "이 창을 열 때 쩜통을 확인하지 못했어요. 쩜통 연결을 확인한 뒤 창을 닫고 API 연결 설정을 다시 열어 주세요.";
+            } else if (currentScope && !sameStorageScope(scope, currentScope)) {
+                connectionStatus.textContent = "이 초안은 다른 쩜통의 설정이에요. 원래 쩜통에 다시 연결하거나 창을 닫고 현재 쩜통의 설정을 열어 주세요.";
+            } else {
+                connectionStatus.textContent = "쩜통 연결을 확인하고 있어요. 입력한 설정은 그대로 유지됩니다.";
+            }
+            return;
+        }
+        const resumed = awaitingScope;
+        awaitingScope = false;
+        if (!mode) return;
+        const manual = mode === "setup-only";
+        if (manual === manualModel) {
+            if (resumed) {
+                connectionStatus.textContent = "";
+                if (!manual) scheduleModelRefresh();
+            }
+            return;
+        }
+        const model = modelSelect.value || modelSelect.dataset.selectedModel || "";
+        const restoreFocus = modelControl.contains(document.activeElement);
+        ++modelRequestVersion;
+        clearTimeout(modelRefreshTimer);
+        modelRefreshTimer = null;
+        manualModel = manual;
+        modelControl.innerHTML = renderModelControl(manual, model);
+        modelSelect = modelControl.querySelector("#modalApiModel");
+        connectionStatus.textContent = "";
+        delete connectionStatus.dataset.modelsFromFallback;
+        if (manual) {
+            updateModelSuggestions();
+        } else {
+            if (model && !isLocalProvider(providerSelect.value)) modelSelect.add(new Option(model, model, true, true));
+            scheduleModelRefresh();
+        }
+        modelControl.querySelectorAll("input, select, button").forEach(control => { control.disabled = profileActionBusy; });
+        if (restoreFocus) modelSelect.focus({ preventScroll: true });
+    }
+    boundModalBodies.set(modalBody, { scope, isReady, sync });
+    sync();
 
     document.getElementById("modalApiKeyName")?.addEventListener("input", refreshKeyHint);
     refreshKeyHint();
@@ -1282,7 +1377,6 @@ async function bindEvents() {
     } else {
         const requestVersion = ++modelRequestVersion;
         await refreshModelOptions(requestVersion);
-        if (initialModel) modelSelect.dataset.selectedModel = initialModel;
     }
     await savedListUpdate;
 }
@@ -1296,6 +1390,7 @@ return {
     savedProfileState,
     renderApiKeyModalContent,
     refreshKeyHint,
+    syncOpenForm,
     saveApiKeyModal,
     switchToKey,
     deleteKey,
