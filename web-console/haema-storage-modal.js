@@ -120,7 +120,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     function getStoredPath() {
-        return localStorage.getItem(STORAGE_PATH_KEY) || "";
+        try { return localStorage.getItem(STORAGE_PATH_KEY) || ""; } catch { return ""; }
     }
 
     function clearStoredPath() {
@@ -130,15 +130,20 @@ window.HAEMA_STORAGE_MODAL = (function () {
     // 서버가 확인한 저장소 상태만 연결 상태로 사용한다.
     function applyStorageStatus(status) {
         const connected = status.connected === true;
-        if (connected) {
-            localStorage.setItem(STORAGE_PATH_KEY, status.storageRoot);
-            localStorage.setItem("haema_storage_path", status.storageRoot);
-            localStorage.setItem("haema_storage_mode", "direct_input");
-        } else {
-            clearStoredPath();
-            localStorage.removeItem("haema_storage_path");
-        }
+        const previousPath = getStoredPath();
+        try {
+            if (connected) {
+                localStorage.setItem(STORAGE_PATH_KEY, status.storageRoot);
+                localStorage.setItem("haema_storage_path", status.storageRoot);
+                localStorage.setItem("haema_storage_mode", "direct_input");
+            } else {
+                clearStoredPath();
+                localStorage.removeItem("haema_storage_path");
+            }
+        } catch { /* A browser preference failure does not change the authenticated runtime state. */ }
         if (consoleRef) {
+            const sameStore = consoleRef.storageIdentity?.storageId === status.storageId && consoleRef.storageIdentity?.storageRoot === status.storageRoot;
+            consoleRef.storageStatusUnconfirmed = false;
             consoleRef.storageConnected = connected;
             const hasIdentity = connected && typeof status.storageRoot === "string" && status.storageRoot.length > 0 &&
                 typeof status.storageId === "string" && status.storageId.length > 0 &&
@@ -146,7 +151,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
             consoleRef.storageIdentity = hasIdentity
                 ? { storageRoot: status.storageRoot, storageId: status.storageId }
                 : null;
-            consoleRef.updateJJumList(connected ? status.jjums || [] : []);
+            if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
+            consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
         }
         const overlay = document.getElementById("storageModalOverlay");
         if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(status);
@@ -165,7 +171,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             if (generation !== storageRequestGeneration) return { stale: true };
             if (!status || typeof status.connected !== "boolean" ||
                 (status.connected && (typeof status.storageRoot !== "string" || !status.storageRoot.trim() ||
-                    typeof status.storageId !== "string" || !status.storageId.trim() ||
+                    typeof status.storageId !== "string" || !status.storageId || status.storageId.trim() !== status.storageId || status.storageId.length > 512 ||
                     (status.jjums !== undefined && !Array.isArray(status.jjums))))) {
                 throw safeError("저장소 상태를 확인할 수 없습니다.", response.status);
             }
@@ -176,7 +182,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
             // A failed check must not clear saved paths or the visible memory list.
             if (consoleRef) {
                 consoleRef.storageConnected = false;
-                consoleRef.storageIdentity = null;
+                consoleRef.storageStatusUnconfirmed = true;
+                // Retain the last confirmed identity for this tab's read-only history.
+                consoleRef.render?.();
             }
             const unavailable = { connected: false, state: "unavailable" };
             const overlay = document.getElementById("storageModalOverlay");
@@ -260,7 +268,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 link.href = asset.url;
                 link.setAttribute("aria-disabled", "false");
                 if (asset.restricted) {
-                    notice.textContent = "공유받은 Google 계정으로 파일을 다운로드해 주세요. 압축을 풀고 대화 테스트는 StartAI.cmd, 설정만 확인할 때는 Start.cmd를 여세요. 처음 선택한 폴더에 이 PC의 실행 프로그램과 쩜통을 설치해요.";
+                    notice.textContent = "공유받은 Google 계정으로 다운로드해 주세요. 처음 설치할 때는 압축을 풀고 대화 테스트용 StartAI.cmd를 열어 저장할 폴더를 고르세요. 설정만 확인할 때는 Start.cmd를 여세요. 기존 쩜통을 업데이트할 때는 기존 Stop.cmd를 실행하고, 새 ZIP을 별도 위치에 풀어 StartAI.cmd에서 기존 쩜통 폴더를 선택하세요.";
                     return;
                 }
                 link.download = asset.fileName;
@@ -694,5 +702,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
         open: openModal,
         getPath: getStoredPath,
         autoConnect: autoConnectStorage,
+        invalidateChecks() { storageRequestGeneration += 1; },
     };
 })();

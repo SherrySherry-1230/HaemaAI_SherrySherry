@@ -154,8 +154,10 @@
             Promise.resolve().then(() => load(consoleApp, record));
         }
         const hasIntroduction = record.serverText.trim().length > 0;
-        const label = hasIntroduction ? '👤: ' + record.displayName : '👤: 자신을 소개해주세요';
-        return '<button class="tool-button introduction-button' + (hasIntroduction ? ' is-connected' : '') + '" id="introductionBtn" type="button" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-default.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-hover-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-hover.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-connected-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-label">' + consoleApp.escapeHtml(label) + '</span></button>';
+        const unconfirmed = !hasIntroduction && (consoleApp.storageStatusUnconfirmed || consoleApp.apiStatusUnconfirmed ||
+            (consoleApp.canUseIntroduction() && !record.loaded));
+        const label = hasIntroduction ? '👤: ' + record.displayName : unconfirmed ? '👤: 확인 필요' : '👤: 자신을 소개해주세요';
+        return '<button class="tool-button introduction-button' + (hasIntroduction ? ' is-connected' : '') + '" id="introductionBtn" type="button" data-unconfirmed="' + Boolean(unconfirmed) + '" aria-haspopup="dialog" title="' + consoleApp.escapeHtml(label) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-default.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-hover-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-hover.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/introduction-connected-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-label">' + consoleApp.escapeHtml(label) + '</span></button>';
     }
     function open(consoleApp) {
         const record = currentRecord(consoleApp);
@@ -245,5 +247,11 @@
         const record = currentRecord(consoleApp);
         return identified(consoleApp, record) && record.loaded && record.revision > 0 && !!record.serverText.trim();
     }
-    global.HAEMA_INTRODUCTION_MODAL = { button, open, render, bind, save, hasSaved };
+    function retryLoad(consoleApp) {
+        const record = currentRecord(consoleApp);
+        if (consoleApp.canUseIntroduction() && record.attempted && !record.loaded && !record.loading) {
+            void load(consoleApp, record);
+        }
+    }
+    global.HAEMA_INTRODUCTION_MODAL = { button, open, render, bind, save, hasSaved, retryLoad };
 })(window);

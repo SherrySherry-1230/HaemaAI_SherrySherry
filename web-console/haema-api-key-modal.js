@@ -742,12 +742,14 @@ async function refreshConsoleAfterProfileAction(message) {
         return;
     }
 
+    const list = document.getElementById("savedKeysList");
     consoleRef.statusText = message;
     if (typeof consoleRef.refreshApiStatus === "function") {
         await consoleRef.refreshApiStatus();
     } else if (typeof consoleRef.render === "function") {
         consoleRef.render();
     }
+    if (list && list === document.getElementById("savedKeysList")) await updateSavedList(list);
 }
 
 async function clearLocalServerConfig() {
@@ -954,6 +956,37 @@ async function startEditingKey(keyId) {
 // 제공자 선택이 바뀌면 모델 드롭다운을 다시 그린다.
 // 저장된 키 목록의 사용/편집/삭제 버튼도 여기서 처리한다.
 const boundModalBodies = new WeakSet();
+const listUpdates = new WeakMap();
+
+function refreshKeyHint() {
+    const provider = document.getElementById("modalApiProvider")?.value;
+    const hint = document.getElementById("modalApiKeyHint");
+    if (!hint) return;
+    const local = isLocalProvider(provider);
+    const label = document.getElementById("modalApiKeyLabel");
+    if (label) label.textContent = local ? "API 키 (선택사항)" : "API 키";
+    let message = local ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "키는 연결된 내 컴퓨터의 실행 프로그램에 저장해요.";
+    const profile = consoleRef?.confirmedApiProfile;
+    if (!local && profile && consoleRef.apiConfigured && !consoleRef.apiStatusUnconfirmed && consoleRef.isStorageReady?.() &&
+        profile.provider === provider && profile.model && (!editingKeyId || editingKeyId === getCurrentKeyId()) &&
+        (document.getElementById("modalApiBaseUrl")?.value.trim() || getDefaultBaseUrl(provider)) === (profile.baseURL || getDefaultBaseUrl(provider)) &&
+        !document.getElementById("modalApiKey")?.value) {
+        message = "이 컴퓨터에 " + profile.provider + " / " + profile.model + "의 API 키가 저장돼 있어요. 새 설정을 저장할 때만 키를 입력하세요.";
+    }
+    if (hint.textContent !== message) hint.textContent = message;
+}
+
+async function updateSavedList(list) {
+    const request = Symbol();
+    listUpdates.set(list, request);
+    const current = () => listUpdates.get(list) === request && document.getElementById("savedKeysList") === list;
+    try {
+        const html = await renderSavedKeysList();
+        if (current()) list.innerHTML = html;
+    } catch {
+        if (current()) list.textContent = "기존 설정 목록을 읽지 못했어요.";
+    }
+}
 
 async function bindEvents() {
     const modalBody = document.getElementById("modalBody");
@@ -1005,12 +1038,7 @@ async function bindEvents() {
             }
         });
 
-        const renderedList = savedKeysList;
-        savedListUpdate = renderSavedKeysList().then(html => {
-            if (document.getElementById("savedKeysList") === renderedList) renderedList.innerHTML = html;
-        }).catch(() => {
-            if (document.getElementById("savedKeysList") === renderedList) renderedList.textContent = '기존 설정 목록을 읽지 못했어요.';
-        });
+        savedListUpdate = updateSavedList(savedKeysList);
     }
 
     let previousBaseUrl = baseUrlInput.value.trim();
@@ -1024,17 +1052,20 @@ async function bindEvents() {
         else modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
     }
 
-    function updateKeyHint() {
-        const local = isLocalProvider(providerSelect.value);
-        const label = document.getElementById("modalApiKeyLabel");
-        const hint = document.getElementById("modalApiKeyHint");
-        if (label) label.textContent = local ? "API 키 (선택사항)" : "API 키";
-        if (hint) hint.textContent = local ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "키는 연결된 내 컴퓨터의 실행 프로그램에 저장해요.";
-    }
-
     function connectionSnapshot() {
         return { provider: providerSelect.value, apiKey: apiKeyInput.value.trim(), baseUrl: baseUrlInput.value.trim(),
             selectedModel: modelSelect.value || modelSelect.dataset.selectedModel || "" };
+    }
+
+    async function canApplyModelList(version) {
+        const current = () => version === modelRequestVersion && document.getElementById("modalApiModel") === modelSelect;
+        const supportsOpen = globalThis.CSS?.supports?.("selector(select:open)");
+        // External options must not replace the native list under a pointer or keyboard.
+        // In older browsers focus leaving the selector is a reliable point to apply them.
+        while (current() && document.activeElement === modelSelect && (!supportsOpen || modelSelect.matches(":open"))) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        return current();
     }
 
     async function refreshModelOptions(requestVersion, snapshot = connectionSnapshot()) {
@@ -1058,9 +1089,9 @@ async function bindEvents() {
         if (connectionStatus) connectionStatus.textContent = "🔄 API 연결과 모델 목록을 확인하는 중...";
         try {
             const options = await buildModelOptions(provider, currentModel, snapshot);
-            if (requestVersion !== modelRequestVersion || document.getElementById("modalApiModel") !== modelSelect) return;
+            if (!await canApplyModelList(requestVersion)) return;
+            const latestModel = modelSelect.value || modelSelect.dataset.selectedModel || "";
             modelSelect.innerHTML = options;
-            const latestModel = modelSelect.dataset.selectedModel || currentModel;
             if (!isLocalProvider(provider) && latestModel && !Array.from(modelSelect.options).some(option => option.value === latestModel)) {
                 const preserved = document.createElement("option");
                 preserved.value = latestModel;
@@ -1073,14 +1104,15 @@ async function bindEvents() {
                 ? "연결은 확인했지만 사용할 수 있는 모델이 없어요. 로컬 서버에서 모델을 준비하고 다시 조회해주세요."
                 : "✅ API 연결 확인됨. 모델을 선택하세요.";
         } catch (error) {
-            if (requestVersion !== modelRequestVersion || document.getElementById("modalApiModel") !== modelSelect) return;
+            if (!await canApplyModelList(requestVersion)) return;
             const connectionMessage = connectionFailure(error);
             if (connectionMessage) {
                 if (connectionStatus) connectionStatus.textContent = "⚠️ " + connectionMessage;
                 return;
             }
-            modelSelect.innerHTML = buildModelOptionsFallback(provider, currentModel);
-            modelSelect.dataset.selectedModel = isLocalProvider(provider) ? "" : currentModel;
+            const latestModel = modelSelect.value || modelSelect.dataset.selectedModel || "";
+            modelSelect.innerHTML = buildModelOptionsFallback(provider, latestModel);
+            modelSelect.dataset.selectedModel = isLocalProvider(provider) ? "" : latestModel;
             if (connectionStatus) connectionStatus.textContent = "❌ 모델 목록 확인 실패: " + safeFailure(error, "모델 목록을 확인하지 못했어요. 입력한 설정을 유지한 채 다시 확인해 주세요.");
         }
     }
@@ -1111,14 +1143,18 @@ async function bindEvents() {
         clearConnectionSelection();
         baseUrlInput.value = getDefaultBaseUrl(providerSelect.value);
         previousBaseUrl = baseUrlInput.value.trim();
-        updateKeyHint();
+        refreshKeyHint();
         updateModelSuggestions();
         scheduleModelRefresh();
     });
-    apiKeyInput.addEventListener("input", scheduleModelRefresh);
+    apiKeyInput.addEventListener("input", () => {
+        refreshKeyHint();
+        scheduleModelRefresh();
+    });
     baseUrlInput.addEventListener("input", () => {
         if (baseUrlInput.value.trim() !== previousBaseUrl) clearConnectionSelection();
         previousBaseUrl = baseUrlInput.value.trim();
+        refreshKeyHint();
         scheduleModelRefresh();
     });
     modelSelect.addEventListener(manualModel ? "input" : "change", () => {
@@ -1128,7 +1164,7 @@ async function bindEvents() {
         if (!profileActionBusy) scheduleModelRefresh();
     });
 
-    updateKeyHint();
+    refreshKeyHint();
     if (manualModel) {
         updateModelSuggestions();
     } else if (isLocalProvider(providerSelect.value) || apiKeyInput.value.trim()) {
@@ -1148,6 +1184,7 @@ return {
     setConsole,
     safeBaseUrl,
     renderApiKeyModalContent,
+    refreshKeyHint,
     saveApiKeyModal,
     switchToKey,
     deleteKey,

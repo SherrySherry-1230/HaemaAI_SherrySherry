@@ -343,7 +343,10 @@ export function createLocalConnectionClient(input, options = {}) {
     try {
       if (tracked.response.status !== 200) {
         await tracked.response.body?.cancel();
-        throw fail(stage === 'forget' ? 'REMEMBERED_CONNECTION_FORGET_UNCONFIRMED' : 'REMEMBERED_CONNECTION_REJECTED', tracked.response.status, stage);
+        const status = tracked.response.status;
+        if (stage === 'forget') throw fail('REMEMBERED_CONNECTION_FORGET_UNCONFIRMED', status, stage);
+        if (status === 408 || status === 429 || status >= 500) throw fail('CONNECTION_UNAVAILABLE', status, stage);
+        throw fail('REMEMBERED_CONNECTION_REJECTED', status, stage);
       }
       if (tracked.response.headers.get('content-type')?.split(';', 1)[0].trim() !== 'application/json') throw fail('REMEMBERED_CONNECTION_INVALID', tracked.response.status, stage);
       const value = await limitedJson(tracked.response, 8192);
@@ -474,9 +477,18 @@ export function createLocalConnectionClient(input, options = {}) {
       await tracked.response.body?.cancel(); tracked.cleanup(); throw fail('CONNECTION_EXPIRED', tracked.response.status, stage);
     }
     if (tracked.response.status === 401) {
-      await tracked.response.body?.cancel(); tracked.cleanup();
-      if (session === selected) clear('CONNECTION_REQUIRED');
-      throw fail('CONNECTION_REQUIRED', 401, stage);
+      try {
+        if (path === descriptor.requestPath && tracked.response.headers.get('content-type')?.split(';', 1)[0].trim() === 'application/json') {
+          // A provider can deny an operation while the local session remains valid.
+          const result = await limitedJson(tracked.response, 8192).catch(() => null);
+          current(started, tracked, stage);
+          if (result?.success === false && ['AUTH_REQUIRED', 'REAUTH_REQUIRED'].includes(result.code)) {
+            return Response.json(result, { status: 401 });
+          }
+        }
+        if (session === selected) clear('CONNECTION_REQUIRED');
+        throw fail('CONNECTION_REQUIRED', 401, stage);
+      } finally { await tracked.response.body?.cancel().catch(() => {}); tracked.cleanup(); }
     }
     return wrappedResponse(tracked, stage);
   }

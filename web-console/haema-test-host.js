@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-19
 // @editedBy YAONG1230 2026-11-16
 window.HAEMA_TEST_HOST = (() => {
     'use strict';
@@ -24,6 +25,17 @@ window.HAEMA_TEST_HOST = (() => {
         HOST_RESPONSE_INVALID: '호스트 응답 형식을 확인하지 못했어요. 대화 상태 확인으로 다시 확인해 주세요.',
         HOST_HTTP_NOT_FOUND: '호스트 연결 기능을 찾지 못했어요. 실행 프로그램을 확인한 뒤 대화 상태 확인을 눌러 주세요.',
         UNAVAILABLE: '호스트 대화 준비를 확인하지 못했어요. 연결 상태를 다시 확인해 주세요.',
+        SERVICE_PREPARATION_UNAVAILABLE: '대화 서비스 연결을 확인하지 못했어요. 이 PC에서 대화용 실행 파일을 열고 서비스 연결 코드를 확인해 주세요.',
+        HOST_MEMORY_PROCESSING_FAILED: '이 메시지의 기억 처리를 완료하지 못했어요. 대화 기록은 쩜통에 남아 있어요.',
+        MEMORY_RESPONSE_INVALID: '기억 추출 결과의 형식이 맞지 않아 답변을 만들지 못했어요. 메시지는 쩜통에 남아 있어요.',
+        MODEL_ACCESS_DENIED: '모델 요청 권한을 확인하지 못했어요. API 키의 모델 사용 권한과 실행 프로그램의 서비스 연결을 확인해 주세요.',
+        MODEL_REQUEST_REJECTED: '모델이 대화 요청을 거절했어요. API 설정에서 대화에 사용할 수 있는 모델을 선택해 주세요.',
+        MODEL_LIMIT_REACHED: '모델 요청 한도에 도달했어요. 서비스의 사용 가능량을 확인해 주세요.',
+        MODEL_UNAVAILABLE: '모델 서비스의 응답을 받지 못했어요. 네트워크와 서비스 상태를 확인해 주세요.',
+        HOST_MODEL_FAILED: '호스트가 이 메시지에 대한 답변을 만들지 못했어요. 모델 설정을 확인해 주세요.',
+        HOST_MODEL_EMPTY_RESPONSE: '모델이 빈 답변을 반환했어요. 메시지는 쩜통에 남아 있어요.',
+        HOST_MODEL_INCOMPLETE_RESPONSE: '모델 답변이 끝나기 전에 출력이 중단됐어요. 메시지는 쩜통에 남아 있어요.',
+        HOST_MODEL_CANCELLED: '모델 응답 대기가 끝났어요. 메시지는 쩜통에 남아 있어요.',
         AI_SETUP_REQUIRED: '연결 점검 모드예요. 실제 대화를 위한 실행 준비가 필요해요.',
         AI_NOT_CONFIGURED: 'API 설정을 확인한 뒤 다시 보내 주세요.',
         CONNECTION_REQUIRED: '이 컴퓨터의 실행 프로그램을 연결해 주세요. 작성한 내용은 보존했어요.',
@@ -118,7 +130,11 @@ window.HAEMA_TEST_HOST = (() => {
             ...(turn.error ? { error: { code: turn.error.code } } : {}), ...(turn.calendar ? { calendar: turn.calendar } : {}) }));
         session.turns = result.turns.flatMap(turn => [{ role: 'user', content: turn.text },
             ...(turn.state === 'complete' && turn.reply.text ? [{ role: 'assistant', content: turn.reply.text }] : []),
-            ...(turn.state === 'failed' ? [{ role: 'status', content: message(turn.error?.code) }] : [])]);
+            ...(turn.state === 'failed' ? [{ role: 'status', content: turn.error?.code === 'UNAVAILABLE'
+                ? (turn.memory?.status === 'saved' || turn.memory?.status === 'partial'
+                    ? '기억 처리 후 호스트 답변을 완료하지 못했어요. 이 메시지는 쩜통에 남아 있어요.'
+                    : '메시지를 받은 뒤 대화 처리를 완료하지 못했어요. 이 메시지는 쩜통에 남아 있어요.')
+                : message(turn.error?.code) }] : [])]);
         for (const turn of result.turns) {
             const envelope = turn.tokenUsage;
             if (!envelope?.tokenUsage || !session.usage) continue;
@@ -250,6 +266,15 @@ window.HAEMA_TEST_HOST = (() => {
     }
     function canSend(session) {
         const status = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+        const app = globalThis.HAEMA_CONSOLE;
+        if (status?.connection === 'connected' && typeof app?.getConversationScope === 'function') {
+            const current = app.getConversationScope();
+            if (!app.isStorageReady() || current?.storageId !== session.scope.storageId || current.ownerId !== session.scope.ownerId) {
+                session.status = '이 대화를 저장한 쩜통의 연결을 확인해 주세요. 작성한 내용은 보존했어요.';
+                changed(session);
+                return false;
+            }
+        }
         if (status?.connection === 'connected' && status.aiReady === true) return true;
         session.status = message(status?.connection !== 'connected' ? 'CONNECTION_REQUIRED' :
             status.runtimeMode === 'setup-only' ? 'AI_SETUP_REQUIRED' : 'AI_NOT_CONFIGURED');

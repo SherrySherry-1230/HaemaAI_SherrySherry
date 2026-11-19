@@ -1,6 +1,6 @@
 // @editedBy SherrySherry 2026-11-19
-import { consumeConnectionFragment, createLocalConnectionClient, createRememberedKey, LocalConnectionError } from './local-connection-client.mjs?v=20261118-direct';
-import { createRememberedConnectionStore } from './remembered-connection-store.mjs?v=20261118-direct';
+import { consumeConnectionFragment, createLocalConnectionClient, createRememberedKey, LocalConnectionError } from './local-connection-client.mjs?v=20261119-recovery';
+import { createRememberedConnectionStore } from './remembered-connection-store.mjs?v=20261119-recovery';
 
 const connectionFailures = new Set(['CONNECTION_REQUIRED', 'CONNECTION_EXPIRED', 'CONNECTION_CLOSED', 'CONNECTION_REJECTED',
   'CONNECTION_UNAVAILABLE', 'CONNECTION_TRANSPORT_UNAVAILABLE', 'INVALID_CONNECTION_RESPONSE']);
@@ -34,12 +34,13 @@ export function createConsoleConnection(options = {}) {
   let client = null, descriptor = null, generation = 0, starting = null, recovering = null, streamController = null;
   let pendingEnvelope = null, binding = null, failureError = null, permissionChecked = false, storeLoaded = false;
   let store, storeQueue = Promise.resolve(), renewalTimer = null, sessionExpiresAt = null, deferRenewalUntil = 0;
-  let enrollmentGrant = null, storeObservation = null, blocked = false, closed = false;
+  let enrollmentGrant = null, storeObservation = null, blocked = false, closed = false, settingsRevision = 0;
   let state = Object.freeze({ connection: 'disconnected', events: 'idle', permission: 'unknown', runtimeMode: 'unknown',
     apiConfigured: false, aiReady: false, noticeCode: 'CONNECTION_REQUIRED', firstFailure: null, eventFailure: null,
     remembered: false, rememberNoticeCode: '', recovering: false });
 
   function publish(next) {
+    if (Object.keys(next).every(key => Object.is(next[key], state[key]))) return state;
     state = Object.freeze({ ...state, ...next });
     for (const listener of [...listeners]) { try { listener(state); } catch { /* A view cannot interrupt cleanup. */ } }
     return state;
@@ -136,13 +137,13 @@ export function createConsoleConnection(options = {}) {
     publish({ runtimeMode, apiConfigured, aiReady, noticeCode: settingsNotice(runtimeMode, apiConfigured, aiReady) });
     return true;
   }
-  async function inspect(response, operation, activeGeneration) {
+  async function inspect(response, operation, activeGeneration, readRevision = null) {
     if (generation !== activeGeneration || operation !== 'settings.status' && operation !== 'calendar.connect' && response.status !== 503) return;
     let value;
     if (response.headers.get('content-type')?.split(';', 1)[0].trim() === 'application/json') {
       try { value = await response.clone().json(); } catch { /* Use validated fields only. */ }
     }
-    if (generation !== activeGeneration) return;
+    if (generation !== activeGeneration || (readRevision !== null && readRevision !== settingsRevision)) return;
     if (operation === 'settings.status') {
       if (!applySettings(response.ok ? value : null)) throw new LocalConnectionError('SETTINGS_UNCONFIRMED', response.status, 'settings-status');
     } else if (operation === 'calendar.connect' && response.ok && value?.success === true && isCurrentRuntimeUrl(value.authorizationUrl)) {
@@ -292,7 +293,8 @@ export function createConsoleConnection(options = {}) {
     if (closed || blocked || !binding || !client) return Promise.resolve(state);
     const selected = client, activeGeneration = generation;
     stopTimer();
-    return reservedFlight('recover', { connection: 'reconnecting', recovering: true }, async () => {
+    const stillConnected = state.connection === 'connected' && selected.status?.().state === 'connected';
+    return reservedFlight('recover', { connection: stillConnected ? 'connected' : 'reconnecting', recovering: true }, async () => {
       try {
         if (generation !== activeGeneration || client !== selected || closed) return state;
         if (binding.expiresAt <= now()) throw new LocalConnectionError('REMEMBERED_CONNECTION_GRANT_EXPIRED', null, 'resume');
@@ -345,16 +347,18 @@ export function createConsoleConnection(options = {}) {
     const selected = client;
     if (!selected || state.connection !== 'connected') throw notConnected();
     const stage = operation === 'settings.status' ? 'settings-status' : 'operation';
+    const readRevision = operation === 'settings.status' ? ++settingsRevision : null;
     try {
       // Each invocation is dispatched once. Authentication recovery never replays it.
       const response = await selected.invoke(operation, input, settings);
       if (generation !== activeGeneration || client !== selected || closed) {
         await response.body?.cancel(); throw new LocalConnectionError('CONNECTION_CLOSED', null, stage);
       }
-      await inspect(response, operation, activeGeneration); return response;
+      if (response.ok && (operation === 'settings.save' || operation === 'settings.clear')) settingsRevision++;
+      await inspect(response, operation, activeGeneration, readRevision); return response;
     } catch (caught) {
       const error = safeError(caught, stage);
-      if (generation === activeGeneration && client === selected && !closed
+      if (generation === activeGeneration && client === selected && !closed && (readRevision === null || readRevision === settingsRevision)
           && (connectionFailures.has(error.code) || error.code === 'SETTINGS_UNCONFIRMED')) {
         diagnostic(error.stage, error.status);
         if (authFailures.has(error.code) && binding && !blocked) {
@@ -502,6 +506,7 @@ export function createConsoleConnection(options = {}) {
     if (closed || document?.visibilityState !== 'visible') return;
     if (state.connection === 'setup-required' && !blocked && !binding) void start();
     else if (state.connection === 'connected' && binding && needsRecovery()) void recover('visibility');
+    else if (state.connection === 'disconnected' && binding && !blocked) void recover('visibility');
   };
   document?.addEventListener?.('visibilitychange', onVisibility);
   return Object.freeze({ start, connect, request, recheck, disconnect, describeFailure,

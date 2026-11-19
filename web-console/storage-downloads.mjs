@@ -5,7 +5,7 @@ const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tag
 const downloadBase = 'https://github.com/' + repository + '/releases/download/' + tag + '/';
 const platforms = ['windows', 'macos'];
 const windowsTester = Object.freeze({
-    url: 'https://drive.google.com/uc?export=download&id=1Fb9UeLPfV7Blz0ftQYQ-rFTe7OFeqETj',
+    url: 'https://drive.google.com/uc?export=download&id=1qLzS2410dYJuPD3Bw28BvNXtE3Xnp_9W',
     restricted: true,
 });
 

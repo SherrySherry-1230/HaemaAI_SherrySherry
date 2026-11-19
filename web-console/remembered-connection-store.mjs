@@ -1,5 +1,5 @@
 // @editedBy SherrySherry 2026-11-18
-import { LocalConnectionError, validateRememberedBinding } from './local-connection-client.mjs?v=20261118-direct';
+import { LocalConnectionError, validateRememberedBinding } from './local-connection-client.mjs?v=20261119-recovery';
 
 const STORE = 'connections';
 const KEY = 'current';
