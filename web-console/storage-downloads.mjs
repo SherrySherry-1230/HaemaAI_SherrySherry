@@ -4,6 +4,10 @@ const tag = 'console-installers';
 const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag;
 const downloadBase = 'https://github.com/' + repository + '/releases/download/' + tag + '/';
 const platforms = ['windows', 'macos'];
+const windowsTester = Object.freeze({
+    url: 'https://drive.google.com/uc?export=download&id=1Fb9UeLPfV7Blz0ftQYQ-rFTe7OFeqETj',
+    restricted: true,
+});
 
 export function detectDownloadPlatform(navigator = globalThis.navigator) {
     const platform = navigator?.userAgentData?.platform || navigator?.platform || navigator?.userAgent || '';
@@ -30,14 +34,16 @@ export function parseInstallerRelease(release) {
 }
 
 export async function loadDownloads(fetcher = globalThis.fetch) {
+    let release = { state: 'unavailable', downloads: {} };
     try {
         const response = await fetcher(releaseApi, {
             credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
             headers: { Accept: 'application/vnd.github+json' },
             signal: AbortSignal.timeout(8000),
         });
-        if (response.status === 404) return { state: 'unpublished', downloads: {} };
-        if (response.ok) return parseInstallerRelease(await response.json());
+        if (response.status === 404) release.state = 'unpublished';
+        else if (response.ok) release = parseInstallerRelease(await response.json());
     } catch { /* The console remains available while downloads cannot be checked. */ }
-    return { state: 'unavailable', downloads: {} };
+    release.downloads.windows ??= windowsTester;
+    return release;
 }

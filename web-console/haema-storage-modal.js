@@ -253,17 +253,22 @@ window.HAEMA_STORAGE_MODAL = (function () {
         platform.value = downloads?.detectPlatform?.() || "";
 
         function updateLink() {
-            const asset = release.state === "available" && release.downloads?.[platform.value];
+            const asset = release.downloads?.[platform.value];
+            link.textContent = asset?.restricted ? "Windows 테스트용 쩜통 다운로드" : "쩜통 다운로드";
+            link.removeAttribute("download");
             if (asset) {
                 link.href = asset.url;
-                link.download = asset.fileName;
                 link.setAttribute("aria-disabled", "false");
+                if (asset.restricted) {
+                    notice.textContent = "공유받은 Google 계정으로 파일을 다운로드해 주세요. 압축을 풀고 대화 테스트는 StartAI.cmd, 설정만 확인할 때는 Start.cmd를 여세요. 처음 선택한 폴더에 이 PC의 실행 프로그램과 쩜통을 설치해요.";
+                    return;
+                }
+                link.download = asset.fileName;
                 const startFile = platform.value === "windows" ? "Start.cmd" : "Start.command";
                 notice.textContent = "압축을 풀고 " + startFile + " 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
                 return;
             }
             link.removeAttribute("href");
-            link.removeAttribute("download");
             link.setAttribute("aria-disabled", "true");
             if (release.state === "loading") notice.textContent = "다운로드할 수 있는 파일을 확인하고 있어요.";
             else if (release.state === "unavailable") notice.textContent = "다운로드 파일을 확인할 수 없어요. 잠시 후 쩜통 버튼을 다시 열어 주세요.";
@@ -275,7 +280,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         link.addEventListener("click", event => {
             if (!link.href) event.preventDefault();
         });
-        overlay.querySelector("#storageReconnectBtn").addEventListener("click", () => {
+        overlay.querySelector("#storageReconnectBtn")?.addEventListener("click", () => {
             globalThis.HAEMA_RECONNECT_LOCAL?.();
         });
         updateLink();
@@ -298,8 +303,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (existing) existing.remove();
         const returnFocus = previous?.returnFocus || focusReference(document.activeElement);
         const connected = globalThis.HAEMA_LOCAL_CONNECTION?.status?.().connection === 'connected';
-        const body = !connected ? [
-            '      <div class="form-group" id="storageDownloadSetup">',
+        const downloadControls = [
             '        <label class="form-label" for="storageDownloadPlatform">내 컴퓨터의 운영체제</label>',
             '        <select class="form-input" id="storageDownloadPlatform">',
             '          <option value="">운영체제를 선택해 주세요</option>',
@@ -308,6 +312,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '        </select>',
             '        <a class="btn" id="storageDownloadLink" target="_blank" rel="noopener noreferrer" aria-disabled="true">쩜통 다운로드</a>',
             '        <p class="form-hint" id="storageDownloadNotice" role="status"></p>',
+        ].join("\n");
+        const body = !connected ? [
+            '      <div class="form-group" id="storageDownloadSetup">',
+            downloadControls,
             '        <button class="btn" id="storageReconnectBtn" type="button">이미 설치한 쩜통 연결</button>',
             '      </div>',
         ].join("\n") : [
@@ -342,6 +350,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '        </button>',
             '      </div>',
 
+            '      </details>',
+            '      <details id="storageDownloadOptions">',
+            '        <summary>쩜통 설치 파일 다운로드</summary>',
+            downloadControls,
             '      </details>',
         ].join("\n");
 
@@ -387,6 +399,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
             focusInside(overlay);
             return;
         }
+
+        const downloadOptions = overlay.querySelector("#storageDownloadOptions");
+        function openDownloads() {
+            if (!downloadOptions.open) return;
+            downloadOptions.removeEventListener("toggle", openDownloads);
+            bindDownloads(overlay);
+        }
+        downloadOptions.addEventListener("toggle", openDownloads);
 
         const createBtn = overlay.querySelector("#storageCreateBtn");
         const folderSelectBtn = overlay.querySelector("#storageFolderSelectBtn");
