@@ -116,6 +116,20 @@ window.HAEMA_TEST_HOST = (() => {
         sessions.set(key, session);
         return session;
     }
+    // The turn journal is authoritative for writes. A changed list size cannot
+    // distinguish new memories from updates, retries, or other open sessions.
+    function readMemoryOutcome(memory) {
+        const count = value => Number.isSafeInteger(value) && value >= 0;
+        if (!object(memory) || !['saved', 'partial'].includes(memory.status) || !count(memory.storedCount)) return null;
+        const result = { status: memory.status, storedCount: memory.storedCount };
+        for (const field of ['draftCount', 'failedSummaries']) if (count(memory[field])) result[field] = memory[field];
+        if (count(memory.rejectedDraftCount) && memory.rejectedDraftCount <= result.draftCount) result.rejectedDraftCount = memory.rejectedDraftCount;
+        if (count(memory.createdCount) && count(memory.updatedCount) && memory.createdCount + memory.updatedCount === memory.storedCount) {
+            result.createdCount = memory.createdCount;
+            result.updatedCount = memory.updatedCount;
+        }
+        return result;
+    }
     function accept(session, result) {
         if (!scopeFields.every(key => result[key] === session.scope[key]) || !Array.isArray(result.turns) ||
             !result.turns.every(turn => object(turn) && valid(turn.turnId) && typeof turn.text === 'string' && ['pending', 'complete', 'failed'].includes(turn.state) &&
@@ -126,12 +140,13 @@ window.HAEMA_TEST_HOST = (() => {
             (session.pending.timeZone !== undefined && pendingTurn.timeZone !== undefined && pendingTurn.timeZone !== session.pending.timeZone))) throw new Error('turn conflict');
         if (result[httpStatus] === 202 && (!pendingTurn || pendingTurn.state !== 'pending')) throw Object.assign(new Error('invalid accepted response'), { code: 'HOST_RESPONSE_INVALID' });
         session.records = result.turns.map(turn => ({ turnId: turn.turnId, text: turn.text, state: turn.state,
+            memory: readMemoryOutcome(turn.memory),
             ...(turn.timeZone === undefined ? {} : { timeZone: turn.timeZone }),
             ...(turn.state === 'complete' ? { reply: { text: turn.reply.text, usage: turn.reply.usage } } : {}),
             ...(turn.error ? { error: { code: turn.error.code } } : {}), ...(turn.calendar ? { calendar: turn.calendar } : {}) }));
         session.turns = result.turns.flatMap(turn => [{ role: 'user', content: turn.text },
-            ...(turn.state === 'complete' && turn.reply.text ? [{ role: 'assistant', content: turn.reply.text }] : []),
-            ...(turn.state === 'failed' ? [{ role: 'status', content: turn.error?.code === 'UNAVAILABLE'
+            ...(turn.state === 'complete' && turn.reply.text ? [{ role: 'assistant', content: turn.reply.text, turnId: turn.turnId }] : []),
+            ...(turn.state === 'failed' ? [{ role: 'status', turnId: turn.turnId, content: turn.error?.code === 'UNAVAILABLE'
                 ? (turn.memory?.status === 'saved' || turn.memory?.status === 'partial'
                     ? '기억 처리 후 호스트 답변을 완료하지 못했어요. 이 메시지는 쩜통에 남아 있어요.'
                     : '메시지를 받은 뒤 대화 처리를 완료하지 못했어요. 이 메시지는 쩜통에 남아 있어요.')

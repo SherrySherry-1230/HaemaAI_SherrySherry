@@ -304,9 +304,11 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 };
 
 HAEMA_CONSOLE.renderRightPanel = function() {
+    const host = this.selectedTestHost && globalThis.HAEMA_TEST_HOST.state;
+    const listStatus = host?.memoryRefreshing ? ' · 갱신 중' : host?.memoryNotice ? ' · 마지막 조회' : '';
     return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
-        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.storageStatusUnconfirmed && !this.storageIdentity ? '확인 필요' : (this.allJJums || []).length) + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
+        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.storageStatusUnconfirmed && !this.storageIdentity ? '확인 필요' : (this.allJJums || []).length) + listStatus + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
         '</div><div class="panel-viewport haema-panel-viewport"><div class="haema-panel-scroll" data-scroll-key="haema-panel">' +
         '<div class="haema-scroll" data-scroll-key="haema">' + this.renderHostPreview() + this.renderJJumListSection() + '</div></div></div></section>';
 };
@@ -470,22 +472,32 @@ HAEMA_CONSOLE.bindHostPicker = function() {
     this.updateHostPickerView();
 };
 
+HAEMA_CONSOLE.refreshHostMemoryList = async function(host, retry = false) {
+    const current = () => globalThis.HAEMA_TEST_HOST.state === host && this.selectedTestHost === host.scope?.hostId;
+    const terminal = host.records?.findLast(turn => turn.state !== 'pending')?.turnId;
+    if (!current() || !terminal || host.memoryRefreshing || (host.memoryRefreshId === terminal && !retry)) return;
+    host.memoryRefreshing = true;
+    host.memoryRefreshId = terminal;
+    try {
+        await this.loadLocalServerData();
+        host.memoryNotice = '';
+    } catch {
+        host.memoryNotice = '기억 목록을 갱신하지 못해 마지막으로 읽은 목록을 표시해요. 대화 상태 확인을 누르면 다시 읽어요.';
+    } finally {
+        host.memoryRefreshing = false;
+        if (current()) {
+            // A later turn may have finished before the previous list read returned.
+            void this.refreshHostMemoryList(host);
+            this.render();
+        }
+    }
+};
+
 HAEMA_CONSOLE.activateTestHost = function() {
     if (!this.selectedTestHost) return;
     globalThis.HAEMA_TEST_HOST.activate(this.getConversationScope(), this.selectedTestHost, () => {
         if (!this.selectedTestHost) return;
-        const host = globalThis.HAEMA_TEST_HOST.state;
-        const terminal = host.records?.filter(turn => turn.state !== 'pending').at(-1)?.turnId;
-        if (terminal && !host.memoryRefreshing && (host.memoryRefreshId !== terminal || host.memoryNotice)) {
-            host.memoryRefreshing = true;
-            host.memoryRefreshId = terminal;
-            this.loadLocalServerData().then(() => { host.memoryNotice = ''; }).catch(() => {
-                host.memoryNotice = '대화 기록은 받았지만 기억 목록을 다시 읽지 못했어요. 대화 상태 확인으로 다시 읽을 수 있어요.';
-            }).finally(() => {
-                host.memoryRefreshing = false;
-                if (globalThis.HAEMA_TEST_HOST.state === host && this.selectedTestHost) this.render();
-            });
-        }
+        void this.refreshHostMemoryList(globalThis.HAEMA_TEST_HOST.state);
         this.render();
     });
 };
@@ -610,16 +622,36 @@ HAEMA_CONSOLE.renderTestHostControls = function() {
     return '<div class="test-host-controls"><strong>' + this.escapeHtml(name) + '</strong>' + controls + '</div>';
 };
 
+HAEMA_CONSOLE.hostMemorySummary = function(memory) {
+    if (!memory) return '';
+    const counts = memory.createdCount !== undefined ? `새 쩜 ${memory.createdCount}개 · 기존 쩜 갱신 ${memory.updatedCount}개` :
+        `저장된 쩜 ${memory.storedCount}개`;
+    const parts = [counts];
+    if (memory.draftCount === 0) parts.push('추출된 후보 0개');
+    if (memory.rejectedDraftCount > 0) parts.push(`저장하지 못한 후보 ${memory.rejectedDraftCount}개`);
+    if (memory.failedSummaries > 0) parts.push(`요약 실패 ${memory.failedSummaries}건`);
+    if (memory.status === 'partial' && !memory.failedSummaries && !memory.rejectedDraftCount) parts.push('일부 처리 미완료');
+    return parts.join(' · ');
+};
+
 HAEMA_CONSOLE.renderTestHostHistory = function() {
     const host = globalThis.HAEMA_TEST_HOST.state;
+    const byId = new Map((host.records || []).map(turn => [turn.turnId, turn]));
+    const lastTerminal = host.records?.findLast(turn => turn.state !== 'pending');
     const turns = host.pending && !host.records?.some(turn => turn.turnId === host.pending.turnId)
         ? [...host.turns, { role: 'user', content: host.pending.text }] : host.turns;
     return turns.map(turn => {
-        if (turn.role === 'status') return '<p class="message-meta" role="status">' + this.escapeHtml(turn.content) + '</p>';
+        const record = byId.get(turn.turnId);
+        let outcome = this.hostMemorySummary(record?.memory);
+        if (!outcome && record && record === lastTerminal && record.state === 'complete') {
+            outcome = '이 답변의 쩜 저장 결과를 실행 프로그램에서 받지 못했어요.';
+        }
+        const memory = outcome ? '<p class="message-meta">' + this.escapeHtml(outcome) + '</p>' : '';
+        if (turn.role === 'status') return '<p class="message-meta" role="status">' + this.escapeHtml(turn.content) + '</p>' + memory;
         const user = turn.role === 'user';
         return '<div class="message-row ' + (user ? 'user' : 'test-host-reply') + '" role="group" aria-label="' +
             (user ? '사용자' : '호스트') + '" data-test-host-role="' + (user ? 'user' : 'assistant') +
-            '"><div class="message-stack"><div class="message-bubble">' + this.escapeHtml(turn.content) + '</div></div></div>';
+            '"><div class="message-stack"><div class="message-bubble">' + this.escapeHtml(turn.content) + '</div>' + memory + '</div></div>';
     }).join('') + (host.status ? '<p class="message-meta" role="status">' + this.escapeHtml(host.status) + '</p>' : '') +
         (host.memoryNotice ? '<p class="message-meta" role="status">' + this.escapeHtml(host.memoryNotice) + '</p>' : '');
 };
@@ -1058,7 +1090,11 @@ HAEMA_CONSOLE.attachEventListeners = function(liveModal) {
         else this.switchChatHost(event.target.value);
     });
     this.bindHostPicker();
-    document.getElementById('testHostReload')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.refresh());
+    document.getElementById('testHostReload')?.addEventListener('click', async () => {
+        const host = globalThis.HAEMA_TEST_HOST.state;
+        await globalThis.HAEMA_TEST_HOST.refresh();
+        if (host.memoryNotice) await this.refreshHostMemoryList(host, true);
+    });
     document.getElementById('testHostRetry')?.addEventListener('click', () => this.isConversationReady() ? globalThis.HAEMA_TEST_HOST.retry() : this.handleInputAreaClick());
     document.getElementById('calendarConnect')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.connectCalendar());
     document.getElementById('calendarStatus')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.calendarStatus());
@@ -2807,6 +2843,8 @@ HAEMA_CONSOLE.loadLocalServerData = async function() {
     const scope = this.getConversationScope();
     const epoch = this.conversationScopeEpoch;
     if (!scope) throw new Error('연결된 저장소를 확인해 주세요.');
+    const readId = (this.memoryListReadId || 0) + 1;
+    this.memoryListReadId = readId;
     await this.verifyConversationScope(scope);
     const response = await HAEMA_LOCAL_CONNECTION.request('memory.list', { ownerId: scope.ownerId });
     const data = await response.json();
@@ -2814,6 +2852,8 @@ HAEMA_CONSOLE.loadLocalServerData = async function() {
     await this.verifyConversationScope(scope);
     if (epoch !== this.conversationScopeEpoch || !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 이전 목록은 적용하지 않았어요.');
     if (!Array.isArray(data.jjums)) throw new Error('기억 목록을 확인하지 못했어요.');
+    if (readId < (this.appliedMemoryListReadId || 0)) return this.allJJums;
+    this.appliedMemoryListReadId = readId;
     this.allJJums = data.jjums;
     this.render();
     return this.allJJums;
