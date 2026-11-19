@@ -21,7 +21,9 @@ window.HAEMA_TEST_HOST = (() => {
     const changed = session => { if (session === active) notify?.(); };
     const scopeFields = ['storageId', 'ownerId', 'hostId', 'conversationId'];
     const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const message = code => ({
+    const message = code => code === 'AI_SETUP_REQUIRED'
+        ? globalThis.HAEMA_CONSOLE.setupModeNotice()
+        : ({
         HOST_RESPONSE_INVALID: '호스트 응답 형식을 확인하지 못했어요. 대화 상태 확인으로 다시 확인해 주세요.',
         HOST_HTTP_NOT_FOUND: '호스트 연결 기능을 찾지 못했어요. 실행 프로그램을 확인한 뒤 대화 상태 확인을 눌러 주세요.',
         UNAVAILABLE: '호스트 대화 준비를 확인하지 못했어요. 연결 상태를 다시 확인해 주세요.',
@@ -36,7 +38,6 @@ window.HAEMA_TEST_HOST = (() => {
         HOST_MODEL_EMPTY_RESPONSE: '모델이 빈 답변을 반환했어요. 메시지는 쩜통에 남아 있어요.',
         HOST_MODEL_INCOMPLETE_RESPONSE: '모델 답변이 끝나기 전에 출력이 중단됐어요. 메시지는 쩜통에 남아 있어요.',
         HOST_MODEL_CANCELLED: '모델 응답 대기가 끝났어요. 메시지는 쩜통에 남아 있어요.',
-        AI_SETUP_REQUIRED: '연결 점검 모드예요. 실제 대화를 위한 실행 준비가 필요해요.',
         AI_NOT_CONFIGURED: 'API 설정을 확인한 뒤 다시 보내 주세요.',
         CONNECTION_REQUIRED: '이 컴퓨터의 실행 프로그램을 연결해 주세요. 작성한 내용은 보존했어요.',
         HOST_STORAGE_CHANGED: '저장소가 바뀌었어요. 원래 저장소를 다시 연결해 주세요.',
@@ -199,7 +200,8 @@ window.HAEMA_TEST_HOST = (() => {
             session.readinessNotice = '';
             return true;
         } catch (error) {
-            session.readinessNotice = message(error.code) + ' 대화 상태 확인을 눌러 다시 확인해 주세요.';
+            session.readinessNotice = message(error.code);
+            if (error.code !== 'AI_SETUP_REQUIRED') session.readinessNotice += ' 대화 상태 확인을 눌러 다시 확인해 주세요.';
             return false;
         } finally { updateReady(session); }
     }

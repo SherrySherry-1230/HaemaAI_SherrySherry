@@ -1219,6 +1219,15 @@ HAEMA_CONSOLE.isApiKeyReady = function() {
     return this.apiConfigured === true && globalThis.HAEMA_LOCAL_CONNECTION?.status().aiReady === true;
 };
 
+HAEMA_CONSOLE.setupModeNotice = function() {
+    const platform = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.();
+    if (platform === 'windows') {
+        return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. Windows 테스트용 쩜통을 압축 해제한 폴더에서 Stop.cmd로 종료한 뒤 같은 폴더의 StartAI.cmd를 실행해 주세요. 실행 창에서 서비스 접속 코드를 요청하면 입력하고, 새로 열린 웹콘솔에서 대화해 주세요.';
+    }
+    if (platform === 'macos') return '현재 Mac용 공개 쩜통에서는 API 설정을 저장할 수 있어요. 실제 대화에는 대화 기능이 포함된 Mac용 실행 프로그램이 필요해요.';
+    return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. 실제 대화는 이 컴퓨터의 대화용 실행 프로그램에서 웹콘솔을 열어 시작해 주세요.';
+};
+
 HAEMA_CONSOLE.canUseIntroduction = function() {
     return this.isStorageReady() && this.apiConfigured && this.introductionAvailable;
 };
@@ -1258,15 +1267,22 @@ HAEMA_CONSOLE.openIntroduction = function() {
 HAEMA_CONSOLE.refreshApiStatus = async function() {
     const requestId = (this.apiStatusRequest || 0) + 1;
     this.apiStatusRequest = requestId;
+    const scope = this.getConversationScope();
+    const stillCurrent = () => {
+        const current = this.getConversationScope();
+        return requestId === this.apiStatusRequest && scope?.ownerId === current?.ownerId &&
+            scope?.storageId === current?.storageId && scope?.storageRoot === current?.storageRoot;
+    };
     try {
         const response = await HAEMA_LOCAL_CONNECTION.request('settings.status');
         if (!response.ok) throw new Error('AI 설정 상태를 확인하지 못했어요.');
         const config = await response.json();
-        if (requestId !== this.apiStatusRequest) return;
+        if (!stillCurrent()) return;
         this.apiStatusUnconfirmed = false;
         this.apiConfigured = (config.providerConfigured ?? config.configured) === true;
-        this.confirmedApiProfile = this.apiConfigured && typeof config.provider === 'string' && typeof config.model === 'string'
-            ? { provider: config.provider, model: config.model, baseURL: HAEMA_API_KEY_MODAL.safeBaseUrl(config.baseUrl) || '' }
+        this.confirmedApiProfile = this.apiConfigured && this.isStorageReady() && !this.storageStatusUnconfirmed && this.hasStorageId(scope) &&
+            typeof config.provider === 'string' && typeof config.model === 'string'
+            ? { scope, provider: config.provider, model: config.model, baseURL: HAEMA_API_KEY_MODAL.safeBaseUrl(config.baseUrl) || '' }
             : null;
         this.introductionAvailable = config.introductionAvailable === undefined
             ? HAEMA_LOCAL_CONNECTION.status().aiReady === true : config.introductionAvailable === true;
@@ -1274,9 +1290,8 @@ HAEMA_CONSOLE.refreshApiStatus = async function() {
         if (this.apiConfigured) {
             try {
                 const profiles = await HAEMA_API_KEY_MODAL.getSavedKeys();
-                if (requestId !== this.apiStatusRequest) return;
-                const id = localStorage.getItem('haema_current_key_id');
-                const active = profiles.find(item => item.keyId === id && item.provider === config.provider && item.model === config.model);
+                if (!stillCurrent()) return;
+                const active = profiles.find(item => HAEMA_API_KEY_MODAL.savedProfileState?.(item) === 'active');
                 this.apiKeyName = active?.name || active?.keyName || config.provider || '';
                 localStorage.setItem('haema_api_provider', config.provider || '');
                 localStorage.setItem('haema_api_model', config.model || '');
@@ -1284,7 +1299,8 @@ HAEMA_CONSOLE.refreshApiStatus = async function() {
             } catch { /* Browser preferences are optional; settings.status is authoritative. */ }
         }
     } catch {
-        if (requestId !== this.apiStatusRequest) return;
+        if (!stillCurrent()) return;
+        this.confirmedApiProfile = null;
         this.apiStatusUnconfirmed = true;
         this.apiConfigured = false;
         this.introductionAvailable = false;
@@ -1321,6 +1337,9 @@ HAEMA_CONSOLE.handleInputAreaClick = async function() {
             HAEMA_STORAGE_MODAL.open();
         } else if (!this.apiConfigured) {
             this.openApiKeyModal();
+        } else if (globalThis.HAEMA_LOCAL_CONNECTION?.status().runtimeMode === 'setup-only' &&
+            (!this.introductionAvailable || HAEMA_INTRODUCTION_MODAL.hasSaved(this))) {
+            await HAEMA_DIALOG.alert(this.setupModeNotice(), { title: '대화용 실행 프로그램을 열어 주세요' });
         } else if (!this.introductionAvailable) {
             await HAEMA_DIALOG.alert('AI 설정은 저장됐어요. 현재 실행 프로그램에서는 자기소개를 저장할 수 없어요.', { title: '실행 모드를 확인해 주세요' });
         } else if (!HAEMA_INTRODUCTION_MODAL.hasSaved(this)) {
@@ -2621,11 +2640,13 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const placeholder = test ? '선택한 호스트에게 메시지를 입력하세요.' : '챗봇AI와 대화하는 것처럼 입력해주세요.';
     const isInputDisabled = !this.isConversationReady();
     const storageLabel = this.storageStatusUnconfirmed ? '확인 필요' : this.storageConnected ? '연결' : '없음';
-    const apiLabel = this.apiStatusUnconfirmed ? '확인 필요' : this.apiConfigured ? this.formatApiButtonLabel(this.apiKeyName || '설정') : '없음';
+    const setupOnly = this.apiConfigured && this.localConnectionState?.connection === 'connected' &&
+        this.localConnectionState.runtimeMode === 'setup-only';
+    const apiLabel = this.apiStatusUnconfirmed ? '확인 필요' : setupOnly ? '설정만' : this.apiConfigured ? this.formatApiButtonLabel(this.apiKeyName || '설정') : '없음';
     const storageTitle = this.storageStatusUnconfirmed ? '저장소 연결을 다시 확인해 주세요' : this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
-    const apiTitle = this.apiStatusUnconfirmed ? '저장된 AI 설정을 아직 확인하지 못했어요' : this.apiConfigured ? 'AI 연결 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'AI 연결 설정';
+    const apiTitle = this.apiStatusUnconfirmed ? '저장된 AI 설정을 아직 확인하지 못했어요' : setupOnly ? 'API 설정은 저장됐어요. 현재 설정 전용 모드예요.' : this.apiConfigured ? 'AI 연결 설정됨' + (this.apiKeyName ? ': ' + this.apiKeyName : '') : 'AI 연결 설정';
     const storageBtn = '<button class="tool-button' + (this.storageConnected ? ' is-connected' : '') + '" id="storageBtn" type="button" title="' + this.escapeHtml(storageTitle) + '" aria-label="' + this.escapeHtml(storageTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/storage-default.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover has-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/storage-hover-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/storage-hover.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/storage-connected-glow.png);border-image-source:var(--button-art)"></span>' + this.renderToolbarContent('🪣', storageLabel, this.storageStatusUnconfirmed ? null : this.storageConnected) + '</button>';
-    const apiBtn = '<button class="tool-button api-key-button' + (this.apiConfigured ? ' is-connected' : '') + '" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-default.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-hover.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover tool-button-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-hover-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-connected-glow.png);border-image-source:var(--button-art)"></span>' + this.renderToolbarContent('🗝️', apiLabel, this.apiStatusUnconfirmed ? null : this.apiConfigured, true) + '</button>';
+    const apiBtn = '<button class="tool-button api-key-button' + (this.apiConfigured && !this.apiStatusUnconfirmed && !setupOnly ? ' is-connected' : '') + '" id="apiKeyBtn" type="button" title="' + this.escapeHtml(apiTitle) + '" aria-label="' + this.escapeHtml(apiTitle) + '"><span class="tool-button-art is-default" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-default.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-hover.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-hover tool-button-glow" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-hover-glow.png);border-image-source:var(--button-art)"></span><span class="tool-button-art is-connected-hover" aria-hidden="true" style="--button-art:url(Resources/haema-design/button-raster-4x/key-connected-glow.png);border-image-source:var(--button-art)"></span>' + this.renderToolbarContent('🗝️', apiLabel, this.apiStatusUnconfirmed || setupOnly ? null : this.apiConfigured, true) + '</button>';
     const introductionBtn = this.renderIntroductionButton();
     return '<section class="panel panel-left" aria-label="대화"><div class="conversation-toolbar">' + storageBtn + apiBtn + introductionBtn + '</div>' +
         '<div class="chat-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' +
@@ -2868,6 +2889,7 @@ HAEMA_CONSOLE.mount = async function() {
         }
         if (lost) {
             this.storageConnected = false;
+            this.confirmedApiProfile = null;
             this.apiConfigured = false;
             this.introductionAvailable = false;
             this.apiStatusRequest = (this.apiStatusRequest || 0) + 1;
@@ -2883,9 +2905,10 @@ HAEMA_CONSOLE.mount = async function() {
         if (restored) {
             const priorStore = this.storageIdentity;
             // A new authenticated connection owns a fresh check even if the previous one is still pending.
-            const task = Promise.allSettled([
-                this.refreshApiStatus(), globalThis.HAEMA_STORAGE_MODAL?.autoConnect?.()
-            ]).then(() => {
+            // Read settings after storage.status has established which store this connection serves.
+            const task = Promise.resolve(globalThis.HAEMA_STORAGE_MODAL?.autoConnect?.()).then(() => {
+                if (task === this.connectionRestoreTask) return this.refreshApiStatus();
+            }).then(() => {
                 if (task !== this.connectionRestoreTask) return;
                 if (this.storageConnected && priorStore && priorStore.storageId === this.storageIdentity?.storageId &&
                     priorStore.storageRoot === this.storageIdentity.storageRoot) {
