@@ -4,6 +4,7 @@
  * 결과의 0~1 값은 기존 recall의 잠정 검색 점수다. 확정 R이나 직접 언급 5점이 아니다.
  * 문장부호와 이름 접두어는 구조적 후보를 준비하는 기준이며 의미 완결을 확정하지 않는다.
  */
+import { isOrdinaryConversationMemory } from './userIntroductionEvidence.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import type { JJum } from './types/jjum.ts';
 import type { IncrementalConversationWork, SpeculativeResult } from './incrementalConversation.ts';
@@ -124,7 +125,7 @@ export class SpeculativeMemoryExplorer {
     const stored = await this.storage.listJJums(this.ownerId, { status: 'active' });
     assertCurrent(work);
     // Recheck scope/status even when a custom adapter fails to apply its query filter.
-    const active = stored.filter((item) => item.ownerId === this.ownerId && item.status === 'active');
+    const active = stored.filter((item) => item.ownerId === this.ownerId && item.status === 'active' && isOrdinaryConversationMemory(item));
     const labels = new Set(active.flatMap((item) => [item.jjumName, ...item.aliases, ...item.jjtags])
       .map((label) => normalized(label.trim())).filter(Boolean));
     const nextCache = updateSearch(this.cache, scope, text, labels);

@@ -40,7 +40,7 @@ export interface ValidationResult {
 }
 
 const STATUSES: JJumStatus[] = ['active', 'resting', 'archived', 'merged'];
-const FACT_SOURCES: FactSource[] = ['conversation', 'user_edit', 'batch'];
+const FACT_SOURCES: FactSource[] = ['conversation', 'user_edit', 'batch', 'introduction'];
 const EDIT_ACTORS: EditActor[] = ['user', 'ai', 'batch'];
 
 function str(v: unknown): v is string {

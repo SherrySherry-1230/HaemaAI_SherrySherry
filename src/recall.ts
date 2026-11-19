@@ -24,6 +24,8 @@ import { strongestSeons } from './seons.ts';
 export { GUIDE_MODES, type GuideMode };
 
 export interface RecallOptions {
+  /** Apply the caller's memory scope before traversal, model scoring, and statistics updates. */
+  includeMemory?: (jjum: JJum) => boolean;
   /** 쩜선 확산 홉 수. 기본 1, 최대 2 (초과 지정 시 2로 잘린다) */
   hops?: number;
   /** 홉마다 살릴 상위 N개 (weight·점수순). 기본 10 */
@@ -232,7 +234,8 @@ export async function recall(
   const touch = options.touch ?? true;
 
   const cueList = [...new Set(cues.map(norm).filter(Boolean))];
-  const active = await adapter.listJJums(ownerId, { status: 'active' });
+  const listed = await adapter.listJJums(ownerId, { status: 'active' });
+  const active = options.includeMemory ? listed.filter(options.includeMemory) : listed;
   const byId = new Map(active.map((c) => [c.jjumId, c]));
 
   // ── 직접 매칭: 이름·별칭 / JJ-tag ──

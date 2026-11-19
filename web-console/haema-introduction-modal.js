@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-05
+// @editedBy SherrySherry 2026-11-19
 // @editedBy YAONG1230 2026-10-31: distinguish saved introductions from pending self-JJum updates
 // @editedBy YAONG1230 2026-10-28: original SVG nine-slice artwork; server label and dialog behavior preserved
 // @editedBy YAONG1230 2026-10-26: independent introduction button artwork; server label preserved
@@ -174,7 +174,7 @@
             '<p class="introduction-status" id="introductionStatus" role="status" aria-live="polite">' + consoleApp.escapeHtml(message(consoleApp, record)) + '</p>' +
             '<p class="introduction-status" id="introductionDraftWarning" role="status">' + consoleApp.escapeHtml(record.draftWarning) + '</p>' +
             '<button class="btn btn-secondary" id="introductionReload" type="button">저장된 소개 다시 확인</button> ' +
-            '<button class="btn btn-secondary" id="introductionRetry" type="button" style="display:none">저장된 호칭 다시 반영</button>';
+            '<button class="btn btn-secondary" id="introductionRetry" type="button" style="display:none">저장된 소개 다시 반영</button>';
     }
     function bind(consoleApp) {
         const record = consoleApp.modalData;
@@ -227,7 +227,9 @@
             acceptSaved(record, result);
             record.dirty = record.text !== record.serverText;
             record.notice = record.dirty ? '작성 중인 입력은 유지했어요.' :
-                record.pendingRetry ? '' : '자기소개가 저장됐어요.';
+                record.pendingRetry ? '' : result.userSelfJJum?.contentSynced === true
+                    ? '자기소개를 자아쩜에 반영했어요. 다음 호스트 대화에서 소개 속 기억을 확인해요.'
+                    : '자기소개가 저장됐어요.';
             preserveDraft(record, !record.dirty);
             if (result.ok && result.userSelfJJum?.status === 'synced') record.listNeedsRefresh = true;
             await refreshSavedJJum(consoleApp, record);

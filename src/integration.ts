@@ -12,6 +12,7 @@ import type {
   ExtractRequest,
   ExtractedDraft,
 } from './adapters/aiAdapter.ts';
+import { INTRODUCTION_SOURCE, introductionStagingStores, isOrdinaryConversationMemory } from './userIntroductionEvidence.ts';
 import type { StorageAdapter } from './adapters/storageAdapter.ts';
 import { createJJum } from './createJJum.ts';
 import { upsertSeon } from './seons.ts';
@@ -148,6 +149,10 @@ export async function putJJums(
 
 export interface ConversationProcessingResult {
   storedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  draftCount: number;
+  rejectedDraftCount: number;
   failedSummaries: number;
   receipt: ConversationReceipt;
 }
@@ -173,6 +178,20 @@ export class ConversationProcessingError extends Error {
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+
+/** Some providers spell absent optional fields as null. Never infer required fields or evidence. */
+function normalizeOptionalDraftFields(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const draft = { ...value } as Record<string, unknown>;
+  for (const key of ['eventSummary', 'updateMemo', 'relatedNames', 'requestLayaReview']) {
+    if (draft[key] === null) delete draft[key];
+  }
+  for (const key of ['eventSummary', 'updateMemo']) {
+    const text = draft[key];
+    if (typeof text === 'string' && text.trim() === '') delete draft[key];
+  }
+  return draft;
+}
 
 /** 잘못된 초안 하나가 다른 정상 초안의 처리를 막지 않게 한다. */
 function isStorageDraft(value: unknown): value is ExtractedDraft {
@@ -213,6 +232,11 @@ export async function processConversationToStorage(
   },
 ): Promise<ConversationProcessingResult> {
   if (ownerId !== extractReq.ownerId) throw new Error('Conversation ownerId must match request ownerId');
+  const isIntroduction = options?.sourceService === INTRODUCTION_SOURCE;
+  if (isIntroduction && !introductionStagingStores.has(storageAdapter)) {
+    throw new Error('Introduction extraction requires its scoped in-memory workspace');
+  }
+  const includeMemory = isIntroduction ? (jjum: JJum) => jjum.sourceService === INTRODUCTION_SOURCE : isOrdinaryConversationMemory;
   const now = extractReq.now ?? Date.now();
   const prepared = prepareConversationRequest({ ...extractReq, now });
   const receipt = conversationReceipt(prepared);
@@ -246,7 +270,9 @@ export async function processConversationToStorage(
     if (!Number.isSafeInteger(chunkSize) || chunkSize < 1) throw new Error('Invalid mention history chunk size');
     const result = await withConversationLock(storageAdapter, ownerId, async () => {
       assertCurrent();
-      const stored = await storageAdapter.listJJums(ownerId);
+      const listed = await storageAdapter.listJJums(ownerId);
+      const stored = listed.filter(includeMemory);
+      const reservedIds = new Set(listed.filter(jjum => !includeMemory(jjum)).map(jjum => jjum.jjumId));
       assertCurrent();
       const turns = new Map(prepared.turns.map((turn) => [turn.utteranceId, turn]));
       // 비활성 쩜의 기록도 확인하여 같은 ID로 확정 발화를 바꾸지 못하게 한다.
@@ -272,7 +298,7 @@ export async function processConversationToStorage(
         ...contextText.split(/\s+/).filter(Boolean),
         ...current.flatMap((jjum) => [jjum.jjumName, ...jjum.aliases, ...jjum.jjtags])
           .filter((name) => name.trim() && contextText.includes(name.trim().toLowerCase())),
-      ])], { touch: false, now, topicLimit: 0 });
+      ])], { touch: false, now, topicLimit: 0, includeMemory });
       assertCurrent();
       const drafts = await extractJJums(aiAdapter, {
         ...prepared, knownNames, recalledJJums: recalled.candidates.map((candidate) => candidate.jjum),
@@ -324,10 +350,18 @@ export async function processConversationToStorage(
         return [...all.values()].filter((jjum) =>
           [jjum.jjumName, ...jjum.aliases].some((candidate) => normalize(candidate) === key));
       };
-      for (const draft of drafts) {
-        if (!isStorageDraft(draft)) continue;
+      let rejectedDraftCount = 0;
+      for (const rawDraft of drafts) {
+        const draft = normalizeOptionalDraftFields(rawDraft);
+        if (!isStorageDraft(draft)) {
+          rejectedDraftCount++;
+          continue;
+        }
         const candidates = matches(draft.jjumName);
-        if (candidates.length > 1) continue;
+        if (candidates.length > 1) {
+          rejectedDraftCount++;
+          continue;
+        }
         const claimed = new Set(draft.mentions!.filter((mention) => {
           const turn = turns.get(mention?.utteranceId);
           return turn?.final && (evidenceIds === undefined || evidenceIds.has(turn.utteranceId))
@@ -338,6 +372,7 @@ export async function processConversationToStorage(
           .filter(([, ids]) => [...ids].some((id) => claimed.has(id))).map(([id]) => id);
         if (boundIds.length > 1) throw new Error('Ambiguous stored conversation relation identity');
         const boundId = boundIds[0];
+        if (boundId && reservedIds.has(boundId)) { rejectedDraftCount++; continue; }
         if (boundId && inactive.some((jjum) => jjum.jjumId === boundId)) continue;
         const bound = boundId ? all.get(boundId) : undefined;
         // 저장된 쩜선은 상대가 한 번 저장됐다는 근거다. 사라진 기억을 생성 중단으로 간주하지 않는다.
@@ -361,7 +396,10 @@ export async function processConversationToStorage(
           if (previous && previous.kind !== mention.kind) conflictingKinds.add(turn.utteranceId);
           evidence.set(turn.utteranceId, { turn, kind: mention.kind });
         }
-        if (evidence.size === 0) continue;
+        if (evidence.size === 0) {
+          rejectedDraftCount++;
+          continue;
+        }
         if (evidenceIds && ![...evidence.keys()].some((utteranceId) => evidenceIds.has(utteranceId))) continue;
         // 비활성 쩜에 이미 반영된 발화는 새 쩜으로 복제하거나 상태를 되살리지 않는다.
         const inactiveReplay = inactive.some((jjum) =>
@@ -635,7 +673,11 @@ export async function processConversationToStorage(
           reviewIntents.set(jjumId, captureLayaReviewIntent(storageAdapter, all.get(jjumId)!, evidence));
         }
       }
-      return { storedCount: savedIds.size, failedSummaries, receipt };
+      const createdCount = [...savedIds].filter((id) => created.has(id)).length;
+      return {
+        storedCount: savedIds.size, createdCount, updatedCount: savedIds.size - createdCount,
+        draftCount: drafts.length, rejectedDraftCount, failedSummaries, receipt,
+      };
     });
     // 모델 실행 중 소유자 잠금을 잡지 않는다. 서비스가 결과 저장 직전 현재 내용을 다시 확인한다.
     for (const [jjumId, intent] of reviewIntents) {

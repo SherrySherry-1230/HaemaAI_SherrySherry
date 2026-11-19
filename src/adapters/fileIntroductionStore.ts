@@ -23,7 +23,14 @@ export interface UserSelfJJumBinding {
   syncedRevision: number;
 }
 
+export interface IntroductionExtraction {
+  revision: number;
+  digest: string;
+  status: 'ready' | 'partial' | 'failed' | 'pending' | 'too-long';
+}
+
 interface StoredIntroduction {
+  extraction?: IntroductionExtraction;
   schemaVersion: 1;
   storageId: string;
   ownerId: string;
@@ -125,6 +132,12 @@ export class FileIntroductionStore {
         validateIntroductionRevision(binding.syncedRevision);
         if (binding.syncedRevision > value.revision) throw new Error('Invalid user JJum synchronization revision');
       }
+      if (stored.extraction !== undefined) {
+        const result = stored.extraction;
+        if (!result || !Number.isSafeInteger(result.revision) || result.revision < 1 || result.revision > value.revision
+          || !['ready', 'partial', 'failed', 'pending', 'too-long'].includes(result.status)
+          || typeof result.digest !== 'string' || !/^[0-9a-f]{64}$/.test(result.digest)) throw new Error('Invalid introduction extraction receipt');
+      }
       return stored;
     } catch (cause) {
       throw new IntroductionStoreError('corrupt', 'Introduction is invalid; original file was preserved', { cause });
@@ -140,6 +153,20 @@ export class FileIntroductionStore {
   readUserSelfJJum(ownerId: string): UserSelfJJumBinding | null {
     const binding = this.readStored(ownerId)?.userSelfJJum;
     return binding ? { ...binding } : null;
+  }
+
+  readExtraction(ownerId: string): IntroductionExtraction | undefined {
+    return this.readStored(ownerId)?.extraction;
+  }
+
+  markExtraction(ownerId: string, result: IntroductionExtraction, beforeCommit?: () => void) {
+    this.updateMetadata(ownerId, result.revision, stored => {
+      if (result.status === 'pending' && stored.extraction?.revision === result.revision) {
+        throw new IntroductionStoreError('conflict', 'Introduction extraction already claimed');
+      }
+      stored.extraction = { ...result };
+      return true;
+    }, beforeCommit);
   }
 
   save(ownerId: string, value: { text: string; displayName: string }, expectedRevision: number,
@@ -212,6 +239,15 @@ export class FileIntroductionStore {
 
   /** 소개 revision을 늘리지 않고 같은 revision·같은 ID의 동기화 완료만 기록한다. */
   markUserSelfJJumSynced(ownerId: string, jjumId: string, revision: number, beforeCommit?: () => void): void {
+    this.updateMetadata(ownerId, revision, stored => {
+      if (stored.userSelfJJum?.jjumId !== jjumId) throw new IntroductionStoreError('conflict', 'Introduction binding changed');
+      if (stored.userSelfJJum.syncedRevision === revision) return false;
+      stored.userSelfJJum = { jjumId, syncedRevision: revision };
+      return true;
+    }, beforeCommit);
+  }
+
+  private updateMetadata(ownerId: string, revision: number, update: (stored: StoredIntroduction) => boolean, beforeCommit?: () => void) {
     validateIntroductionRevision(revision);
     const { directories, file } = this.location(ownerId);
     const lock = `${file}.lock`;
@@ -225,11 +261,10 @@ export class FileIntroductionStore {
         throw cause;
       }
       const stored = this.readStored(ownerId);
-      if (!stored || stored.introduction.revision !== revision || stored.userSelfJJum?.jjumId !== jjumId) {
+      if (!stored || stored.introduction.revision !== revision) {
         throw new IntroductionStoreError('conflict', 'Introduction changed before user JJum synchronization completed');
       }
-      if (stored.userSelfJJum.syncedRevision === revision) return;
-      stored.userSelfJJum = { jjumId, syncedRevision: revision };
+      if (!update(stored)) return;
       temporary = `${file}.${randomUUID()}.tmp`;
       const descriptor = fs.openSync(temporary, 'wx', 0o600);
       try { fs.writeFileSync(descriptor, `${JSON.stringify(stored)}\n`, 'utf8'); fs.fsyncSync(descriptor); }

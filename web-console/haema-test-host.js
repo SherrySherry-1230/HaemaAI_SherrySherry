@@ -5,7 +5,7 @@ window.HAEMA_TEST_HOST = (() => {
     const hosts = [
         { id: 'friend', name: '친구친구이야기해,마' }, { id: 'schedule', name: '일정기억해,마' },
         { id: 'mindfulness', name: '마음챙김해,마' }, { id: 'diet', name: '다이어트해,마' },
-        { id: 'creative', name: '창작해,마' }, { id: 'pet', name: '해마해,마' }
+        { id: 'creative', name: '창작해,마' }, { id: 'pet', name: '키워달라해마해,마' }
     ];
     const sessions = new Map();
     const unconnectedDrafts = new Map();
@@ -40,6 +40,7 @@ window.HAEMA_TEST_HOST = (() => {
         HOST_MODEL_CANCELLED: '모델 응답 대기가 끝났어요. 메시지는 쩜통에 남아 있어요.',
         AI_NOT_CONFIGURED: 'API 설정을 확인한 뒤 다시 보내 주세요.',
         CONNECTION_REQUIRED: '이 컴퓨터의 실행 프로그램을 연결해 주세요. 작성한 내용은 보존했어요.',
+        HOST_INTRODUCTION_CHANGED: '자기소개가 변경됐어요. 새 메시지를 보내면 최신 소개를 참고해요.',
         HOST_STORAGE_CHANGED: '저장소가 바뀌었어요. 원래 저장소를 다시 연결해 주세요.',
         HOST_CONVERSATION_BUSY: '이 호스트의 이전 메시지를 처리하고 있어요. 상태를 확인해 주세요.',
         HOST_TURN_INTERRUPTED: '이전 실행이 중단됐어요. 기록은 유지하며 자동으로 다시 보내지 않아요.',
@@ -120,8 +121,17 @@ window.HAEMA_TEST_HOST = (() => {
     // distinguish new memories from updates, retries, or other open sessions.
     function readMemoryOutcome(memory) {
         const count = value => Number.isSafeInteger(value) && value >= 0;
-        if (!object(memory) || !['saved', 'partial'].includes(memory.status) || !count(memory.storedCount)) return null;
-        const result = { status: memory.status, storedCount: memory.storedCount };
+        if (!object(memory)) return null;
+        const result = {};
+        const intro = memory.introduction;
+        if (object(intro) && ['ready', 'partial', 'failed'].includes(intro.status) &&
+            Number.isSafeInteger(intro.revision) && intro.revision > 0) {
+            result.introduction = { status: intro.status,
+                ...(intro.code === 'INTRODUCTION_TOO_LONG' ? { tooLong: true } : {}),
+                ...(count(intro.storedCount) ? { storedCount: intro.storedCount } : {}) };
+        }
+        if (!['saved', 'partial'].includes(memory.status) || !count(memory.storedCount)) return result.introduction ? result : null;
+        Object.assign(result, { status: memory.status, storedCount: memory.storedCount });
         for (const field of ['draftCount', 'failedSummaries']) if (count(memory[field])) result[field] = memory[field];
         if (count(memory.rejectedDraftCount) && memory.rejectedDraftCount <= result.draftCount) result.rejectedDraftCount = memory.rejectedDraftCount;
         if (count(memory.createdCount) && count(memory.updatedCount) && memory.createdCount + memory.updatedCount === memory.storedCount) {

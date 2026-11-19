@@ -20,7 +20,7 @@ export type JJumId = string;
 export type JJumTimestamp = number;
 
 /** 기억 조각의 출처 */
-export type FactSource = 'conversation' | 'user_edit' | 'batch';
+export type FactSource = 'conversation' | 'user_edit' | 'batch' | 'introduction';
 
 /** 편집 이력의 주체 */
 export type EditActor = 'user' | 'ai' | 'batch';

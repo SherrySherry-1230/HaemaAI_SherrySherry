@@ -625,12 +625,21 @@ HAEMA_CONSOLE.renderTestHostControls = function() {
 HAEMA_CONSOLE.hostMemorySummary = function(memory) {
     if (!memory) return '';
     const counts = memory.createdCount !== undefined ? `새 쩜 ${memory.createdCount}개 · 기존 쩜 갱신 ${memory.updatedCount}개` :
-        `저장된 쩜 ${memory.storedCount}개`;
+        memory.storedCount !== undefined ? `저장된 쩜 ${memory.storedCount}개` : '이번 메시지의 쩜 저장 결과 미확인';
     const parts = [counts];
     if (memory.draftCount === 0) parts.push('추출된 후보 0개');
     if (memory.rejectedDraftCount > 0) parts.push(`저장하지 못한 후보 ${memory.rejectedDraftCount}개`);
     if (memory.failedSummaries > 0) parts.push(`요약 실패 ${memory.failedSummaries}건`);
     if (memory.status === 'partial' && !memory.failedSummaries && !memory.rejectedDraftCount) parts.push('일부 처리 미완료');
+    const intro = memory.introduction;
+    if (intro) {
+        if (intro.storedCount !== undefined) parts.push(`자기소개에서 반영한 쩜 ${intro.storedCount}개`);
+        if (intro.tooLong) {
+            parts.push('자기소개 원문은 저장됐어요. 소개가 길어 기억 추출을 마치지 못했어요. 기억에 반영할 내용을 짧게 정리해 다시 저장해 주세요.');
+        } else if (intro.status === 'partial' || intro.status === 'failed') {
+            parts.push('자기소개 기억 반영이 끝나지 않았어요. 자기소개를 다시 저장하면 다음 대화에서 재시도해요.');
+        }
+    }
     return parts.join(' · ');
 };
 

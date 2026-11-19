@@ -2,9 +2,15 @@
 import type { StorageAdapter, JJumQuery } from './adapters/storageAdapter.ts';
 import type { JJum } from './types/jjum.ts';
 import type { JJumV5 } from './types/jjumV5.ts';
+import { withoutUserIntroductionEvidence, INTRODUCTION_SOURCE } from './userIntroductionEvidence.ts';
+import { consoleHosts } from './consoleHosts.ts';
 import { buildV5HostMemory } from './v5Memory.ts';
 
+export { INTRODUCTION_SOURCE };
+export const introductionDomain = (revision: number) => 'introduction:' + revision;
+
 export interface HostMemoryScope {
+  introductionRevision?: number;
   ownerId: string;
   storageId: string;
   hostId: string;
@@ -79,13 +85,15 @@ export function readHostMemoryAccess(jjum: JJum): HostMemoryAccess | null {
 function canRead(jjum: JJum, scope: HostMemoryScope): boolean {
   if (jjum.ownerId !== scope.ownerId || jjum.schemaVersion !== 4) return false;
   const access = readHostMemoryAccess(jjum);
+  if (jjum.sourceService === INTRODUCTION_SOURCE && (scope.introductionRevision === undefined
+    || access?.domain !== introductionDomain(scope.introductionRevision))) return false;
   return !!access && (access.visibility.scope === 'public'
     || (access.visibility.scope === 'restricted' && access.visibility.hostIds.includes(scope.hostId)));
 }
 
 function canWrite(jjum: JJum, scope: HostMemoryScope): boolean {
   const access = readHostMemoryAccess(jjum);
-  return canRead(jjum, scope) && access?.visibility.scope === 'restricted'
+  return jjum.sourceService !== INTRODUCTION_SOURCE && canRead(jjum, scope) && access?.visibility.scope === 'restricted'
     && access.visibility.hostIds.length === 1 && access.visibility.hostIds[0] === scope.hostId
     && access.domain === scope.domain;
 }
@@ -104,7 +112,7 @@ export function projectHostMemory(jjum: JJum | JJumV5, inputScope: HostMemorySco
       usage: 'background', alreadyKnownToHost: projected.alreadyKnownToHost,
     };
   }
-  const record = jjum as JJum;
+  const record = withoutUserIntroductionEvidence(jjum as JJum);
   if (!canRead(record, scope)) return null;
   const access = readHostMemoryAccess(record)!;
   const evidence = own(access.knownByHost, scope.hostId) as { evidenceIds: string[] } | undefined;
@@ -124,20 +132,23 @@ export function projectHostMemory(jjum: JJum | JJumV5, inputScope: HostMemorySco
  * 새 내용은 별도 쩜이 될 수 있다. 기존 자료를 자동 복제·재분류·마이그레이션하지 않는다.
  */
 export function createHostMemoryStorage(base: StorageAdapter, inputScope: HostMemoryScope,
-  options: { mode: 'read' | 'write' }): StorageAdapter {
+  options: { mode: 'read' | 'write' | 'introduction' }): StorageAdapter {
   const scope = checkedScope(inputScope);
-  if (!['read', 'write'].includes(options.mode)) throw new HostMemoryAccessError('Invalid host memory mode');
+  if (!['read', 'write', 'introduction'].includes(options.mode) || (options.mode === 'introduction' && !scope.introductionRevision)) throw new HostMemoryAccessError('Invalid host memory mode');
   const assertOwner = (ownerId: string) => {
     if (ownerId !== scope.ownerId) throw new HostMemoryAccessError('Memory owner does not match the selected conversation');
   };
-  const visible = (jjum: JJum) => options.mode === 'write' ? canWrite(jjum, scope) : canRead(jjum, scope);
+  const writable = (jjum: JJum) => options.mode === 'introduction'
+    ? jjum.sourceService === INTRODUCTION_SOURCE && canRead(jjum, scope)
+    : canWrite(jjum, scope);
+  const visible = (jjum: JJum) => options.mode === 'read' ? canRead(jjum, scope) : writable(jjum);
   const assertMutation = () => {
-    if (options.mode !== 'write') throw new HostMemoryAccessError('Shared host memory views are read-only');
+    if (options.mode === 'read') throw new HostMemoryAccessError('Shared host memory views are read-only');
   };
   const getWritable = async (ownerId: string, jjumId: string) => {
     assertOwner(ownerId); assertMutation();
     const existing = await base.getJJum(ownerId, jjumId);
-    if (!existing || !canWrite(existing, scope)) throw new HostMemoryAccessError();
+    if (!existing || !writable(existing)) throw new HostMemoryAccessError();
     return existing;
   };
   const prepareSave = async (ownerId: string, jjum: JJum): Promise<JJum> => {
@@ -146,9 +157,22 @@ export function createHostMemoryStorage(base: StorageAdapter, inputScope: HostMe
     const existing = await base.getJJum(ownerId, jjum.jjumId);
     let access: HostMemoryAccess;
     if (existing) {
-      if (!canWrite(existing, scope)) throw new HostMemoryAccessError();
+      if (!writable(existing)) throw new HostMemoryAccessError();
       // 추출 결과나 호출자가 전달한 context로 기존 권한을 확장하지 않는다.
       access = readHostMemoryAccess(existing)!;
+      const view = withoutUserIntroductionEvidence(existing);
+      if (view !== existing) {
+        // Host edits operate on a redacted view. Preserve the owner's protected fields.
+        jjum = { ...jjum, facts: [...jjum.facts.filter(f => f.source !== 'introduction'),
+          ...existing.facts.filter(f => !view.facts.includes(f))],
+          summary: view.summary !== existing.summary && jjum.summary === view.summary ? existing.summary : jjum.summary };
+      }
+    } else if (options.mode === 'introduction') {
+      if (jjum.sourceService !== INTRODUCTION_SOURCE) throw new HostMemoryAccessError();
+      const hostIds = consoleHosts.map(host => host.id);
+      access = { version: 1, visibility: { scope: 'restricted', hostIds },
+        usageByHost: Object.fromEntries(hostIds.map(id => [id, 'direct' as const])),
+        domain: introductionDomain(scope.introductionRevision!) };
     } else {
       const evidenceIds = [...new Set(scope.evidenceIds ?? [])];
       access = { version: 1, visibility: { scope: 'restricted', hostIds: [scope.hostId] },
@@ -167,14 +191,14 @@ export function createHostMemoryStorage(base: StorageAdapter, inputScope: HostMe
     async getJJum(ownerId, jjumId) {
       assertOwner(ownerId);
       const jjum = await base.getJJum(ownerId, jjumId);
-      return jjum && visible(jjum) ? structuredClone(jjum) : null;
+      return jjum && visible(jjum) ? structuredClone(withoutUserIntroductionEvidence(jjum)) : null;
     },
     async listJJums(ownerId, query?: JJumQuery) {
       assertOwner(ownerId);
-      const jjums = (await base.listJJums(ownerId, query ? { ...query, limit: undefined } : undefined)).filter(visible);
+      const jjums = (await base.listJJums(ownerId, query ? { ...query, limit: undefined } : undefined)).filter(visible).map(withoutUserIntroductionEvidence);
       return structuredClone(query?.limit !== undefined && query.limit >= 0 ? jjums.slice(0, query.limit) : jjums);
     },
-    async findByName(ownerId, name) { assertOwner(ownerId); return structuredClone((await base.findByName(ownerId, name)).filter(visible)); },
+    async findByName(ownerId, name) { assertOwner(ownerId); return structuredClone((await base.findByName(ownerId, name)).filter(visible).map(withoutUserIntroductionEvidence)); },
     async countJJums(ownerId, status) { return (await wrapper.listJJums(ownerId, { status })).length; },
     async putJJum(ownerId, jjum) { await base.putJJum(ownerId, await prepareSave(ownerId, jjum)); },
     async putJJums(ownerId, jjums) {

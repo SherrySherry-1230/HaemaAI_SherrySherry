@@ -23,7 +23,8 @@ import { isDeepStrictEqual } from 'node:util';
 import type { JJum, JJumId, JJumStatus, LayaTag } from '../types/jjum.ts';
 import { validateJJum } from '../types/validateJJum.ts';
 import { preserveStoredV4Extensions } from './preserveV4Extensions.ts';
-import { validateDisplayName } from '../introduction.ts';
+import { validateDisplayName, type Introduction } from '../introduction.ts';
+import { withIntroductionEvidence } from '../userIntroductionEvidence.ts';
 import { invalidateLayaReview, isLayaTag, layaContentSnapshot, pendingLayaTag } from '../layaReview.ts';
 import type { JJumQuery, JJumSortKey, StorageAdapter } from './storageAdapter.ts';
 
@@ -537,7 +538,7 @@ export class FileAdapter implements StorageAdapter {
     ownerId: string,
     jjumId: string,
     displayName: string,
-    options?: { introductionRevision?: number },
+    options?: { introductionRevision?: number; introduction?: Introduction },
   ): Promise<JJum> {
     validateDisplayName(displayName);
     const revision = options?.introductionRevision;
@@ -567,7 +568,10 @@ export class FileAdapter implements StorageAdapter {
           || !['user', 'ai', 'batch'].includes(value.by)))) {
       throw new Error('Nickname synchronization cannot repair malformed aliases or edit history');
     }
-    if (original.jjumName === displayName) {
+    const source = original as unknown as JJum;
+    const updated = options?.introduction ? withIntroductionEvidence(source, options.introduction) : source;
+    const nameChanged = original.jjumName !== displayName;
+    if (!nameChanged && updated === source) {
       // 앞선 파일 저장 후 인덱스 저장만 실패했다면 조회가 인덱스를 복구한다. 이력은 추가하지 않는다.
       return this.getJJumSync(ownerId, jjumId)!;
     }
@@ -582,13 +586,12 @@ export class FileAdapter implements StorageAdapter {
       });
     const { verdict: _oldVerdict, ...tagExtensions } = checked.jjum.layaTag ?? {};
     const renamed = {
-      ...original,
-      jjumName: displayName,
-      aliases,
+      ...updated,
+      ...(nameChanged ? { jjumName: displayName, aliases } : {}),
       editHistory: [...(original.editHistory as JJum['editHistory'] | undefined ?? []), {
         date: now,
-        action: 'user_display_name_changed',
-        field: 'jjumName',
+        action: nameChanged ? 'user_display_name_changed' : 'user_introduction_updated',
+        field: nameChanged ? 'jjumName' : 'facts',
         by: 'user' as const,
         reviewRequested: true,
         ...(revision !== undefined ? { introductionRevision: revision } : {}),

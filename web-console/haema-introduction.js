@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-05
+// @editedBy SherrySherry 2026-11-19
 // @editedBy YAONG1230 2026-10-31: validate saved introduction / pending self-JJum separately
 // @editedBy YAONG1230 2026-10-21
 // Preserve the saved introduction and its independent JJum status.
@@ -52,7 +52,8 @@
     function userSelfJJumView(value) {
         if (value === undefined || value === null) return value;
         return { jjumId: value.jjumId, status: value.status,
-            ...(value.syncedRevision === undefined ? {} : { syncedRevision: value.syncedRevision }) };
+            ...(value.syncedRevision === undefined ? {} : { syncedRevision: value.syncedRevision }),
+            ...(value.status === 'synced' && value.contentSynced === true ? { contentSynced: true } : {}) };
     }
     const failure = (code, message, status = 0) => ({ ok: false, code, error: message, status });
     const invalid = status => failure('INTRODUCTION_INVALID', '자기소개 응답을 확인하지 못했어요. 입력한 내용은 그대로 두었습니다.', status);
