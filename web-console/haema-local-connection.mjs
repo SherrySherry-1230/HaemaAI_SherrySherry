@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-18
+// @editedBy SherrySherry 2026-11-19
 import { consumeConnectionFragment, createLocalConnectionClient, createRememberedKey, LocalConnectionError } from './local-connection-client.mjs?v=20261118-direct';
 import { createRememberedConnectionStore } from './remembered-connection-store.mjs?v=20261118-direct';
 
@@ -117,13 +117,23 @@ export function createConsoleConnection(options = {}) {
     }
     return true;
   }
+  function settingsNotice(mode, configured, ready) {
+    if (mode === 'setup-only') return 'AI_SETUP_REQUIRED';
+    if (!configured) return 'API_SETTINGS_REQUIRED';
+    return ready ? '' : 'AI_SETUP_REQUIRED';
+  }
   function applySettings(value) {
-    if (!value || typeof value !== 'object' || Array.isArray(value) || typeof value.configured !== 'boolean') {
+    if (!value || typeof value.configured !== 'boolean' ||
+        (value.mode !== undefined && !['setup-only', 'full'].includes(value.mode)) ||
+        (value.aiReady !== undefined && typeof value.aiReady !== 'boolean') ||
+        (value.providerConfigured !== undefined && typeof value.providerConfigured !== 'boolean')) {
       publish({ runtimeMode: 'unknown', apiConfigured: false, aiReady: false, noticeCode: 'SETTINGS_UNCONFIRMED' }); return false;
     }
-    const setupOnly = value.mode === 'setup-only' || value.aiReady === false;
-    publish({ runtimeMode: setupOnly ? 'setup-only' : 'full', apiConfigured: value.configured, aiReady: !setupOnly && value.configured,
-      noticeCode: setupOnly ? 'AI_SETUP_REQUIRED' : value.configured ? '' : 'API_SETTINGS_REQUIRED' });
+    const setupOnly = value.mode === 'setup-only' || (!value.mode && value.aiReady === false);
+    const apiConfigured = typeof value.providerConfigured === 'boolean' ? value.providerConfigured : value.configured;
+    const aiReady = !setupOnly && apiConfigured && value.configured && value.aiReady !== false;
+    const runtimeMode = setupOnly ? 'setup-only' : 'full';
+    publish({ runtimeMode, apiConfigured, aiReady, noticeCode: settingsNotice(runtimeMode, apiConfigured, aiReady) });
     return true;
   }
   async function inspect(response, operation, activeGeneration) {
@@ -301,8 +311,7 @@ export function createConsoleConnection(options = {}) {
           try { await inspect(response, 'settings.status', activeGeneration); } finally { await response.body?.cancel(); }
           if (generation !== activeGeneration || client !== selected || closed) return state;
         }
-        clearFailure(); publish({ connection: 'connected', recovering: false, noticeCode: state.runtimeMode === 'setup-only'
-          ? 'AI_SETUP_REQUIRED' : state.apiConfigured ? '' : 'API_SETTINGS_REQUIRED' });
+        clearFailure(); publish({ connection: 'connected', recovering: false, noticeCode: settingsNotice(state.runtimeMode, state.apiConfigured, state.aiReady) });
         watchEvents(selected, activeGeneration); scheduleRenewal();
       } catch (caught) {
         if (generation === activeGeneration && client === selected && !closed) {
@@ -366,7 +375,8 @@ export function createConsoleConnection(options = {}) {
     if (blocked) return Promise.resolve(state);
     const activeGeneration = generation;
     const pending = (async () => {
-      if (!storeLoaded) {
+      // The first-run app may have registered this browser in another tab.
+      if (!storeLoaded || (state.connection === 'setup-required' && !binding && !pendingEnvelope)) {
         let selectedStore = null;
         try {
           await storeQueue;
@@ -464,8 +474,8 @@ export function createConsoleConnection(options = {}) {
         ? '현재 연결은 사용할 수 있지만 브라우저에 연결 정보를 저장하지 못했어요. 이 사이트의 저장소 접근 설정을 확인해 주세요. 새로고침 후에는 자동 연결되지 않을 수 있어요.'
         : '이 브라우저의 연결 저장소에 접근할 수 없어요. 브라우저에서 이 사이트의 저장소 접근 설정을 확인해 주세요.';
       if (code === 'CONNECTION_CRYPTO_UNAVAILABLE') return '이 브라우저의 보안 키 기능을 사용할 수 없어요. 브라우저에서 보안 키 기능을 사용할 수 있는지 확인해 주세요.';
-      if (code === 'REMEMBERED_CONNECTION_KEY_INVALID') return '이 브라우저에 저장된 연결 인증 키를 확인할 수 없어요. 이 브라우저의 연결 기억을 재설정한 뒤 해마.ai 실행 프로그램에서 다시 연결해 주세요.';
-      if (code === 'REMEMBERED_CONNECTION_INVALID') return '이 브라우저에 저장된 연결 정보의 형식을 확인할 수 없어요. 이 브라우저의 연결 기억을 재설정한 뒤 해마.ai 실행 프로그램에서 다시 연결해 주세요.';
+      if (code === 'REMEMBERED_CONNECTION_KEY_INVALID') return '이 브라우저에 저장된 연결 인증 키를 확인할 수 없어요. 연결 기억을 재설정한 뒤 쩜통 버튼의 안내에 따라 해마.ai 실행 프로그램의 시작 파일을 다시 열어 주세요.';
+      if (code === 'REMEMBERED_CONNECTION_INVALID') return '이 브라우저에 저장된 연결 정보의 형식을 확인할 수 없어요. 연결 기억을 재설정한 뒤 쩜통 버튼의 안내에 따라 해마.ai 실행 프로그램의 시작 파일을 다시 열어 주세요.';
       return null;
     };
     if (!arguments.length) {
@@ -479,7 +489,7 @@ export function createConsoleConnection(options = {}) {
     if (!selected) return null;
     const message = rememberedMessage(selected.code);
     if (message) return message;
-    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '이 브라우저의 연결 등록이 필요해요. 내 컴퓨터의 해마.ai 실행 프로그램에서 웹콘솔을 한 번 열어 연결해 주세요.';
+    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '쩜통 버튼에서 이 컴퓨터에 맞는 실행 프로그램과 쩜통을 다운로드한 뒤 압축을 풀고 시작 파일을 열어 주세요. 이미 준비했다면 같은 시작 파일을 다시 열어 연결할 수 있어요.';
     if (selected.code === 'CONNECTION_PERMISSION_DENIED') return 'Chrome 주소창의 사이트 설정에서 로컬 네트워크 접근을 허용한 뒤 연결 버튼을 눌러 주세요.';
     if (selected.code === 'CONNECTION_PERMISSION_REQUIRED') return '연결 버튼을 눌러 주세요. Chrome이 로컬 네트워크 접근을 물으면 허용해 주세요.';
     if (selected.code === 'CONNECTION_EXPIRED') return '내 컴퓨터 연결의 인증 시간이 끝났어요. 연결 버튼을 눌러 다시 연결해 주세요.';
@@ -489,7 +499,9 @@ export function createConsoleConnection(options = {}) {
     return `내 컴퓨터 해마.ai 실행 프로그램의 ${phase} 단계에서 실패했어요${http}. 연결 버튼을 눌러 다시 연결해 주세요.`;
   }
   const onVisibility = () => {
-    if (!closed && document?.visibilityState === 'visible' && state.connection === 'connected' && binding && needsRecovery()) void recover('visibility');
+    if (closed || document?.visibilityState !== 'visible') return;
+    if (state.connection === 'setup-required' && !blocked && !binding) void start();
+    else if (state.connection === 'connected' && binding && needsRecovery()) void recover('visibility');
   };
   document?.addEventListener?.('visibilitychange', onVisibility);
   return Object.freeze({ start, connect, request, recheck, disconnect, describeFailure,

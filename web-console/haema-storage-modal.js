@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-18
+// @editedBy SherrySherry 2026-11-19
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
 // @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원
@@ -17,7 +17,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     const missingConnections = new WeakSet();
 
     function connectionFailure(error) {
-        if (missingConnections.has(error)) return "내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 경로는 그대로 남아 있어요.";
+        if (missingConnections.has(error)) return "쩜통 버튼에서 쩜통을 다운로드한 뒤 압축을 풀고 시작 파일을 열어 주세요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요. 입력한 경로는 그대로 남아 있어요.";
         try {
             const message = globalThis.HAEMA_LOCAL_CONNECTION?.describeFailure?.(error);
             return typeof message === "string" && message ? message : null;
@@ -31,9 +31,12 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
     function safeFailure(error, fallback) { return connectionFailure(error) || safeMessages.get(error) || fallback; }
     function showFailure(error, fallback) {
-        const reconnect = connectionFailure(error) && globalThis.HAEMA_RECONNECT_LOCAL;
+        const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+        const openDownload = connectionFailure(error) && (missingConnections.has(error)
+            || state?.connection === 'setup-required' && !state.remembered);
+        const reconnect = openDownload ? openModal : connectionFailure(error) && globalThis.HAEMA_RECONNECT_LOCAL;
         return HAEMA_DIALOG.alert(safeFailure(error, fallback), { tone: 'error',
-            ...(typeof reconnect === 'function' ? { confirmText: '다시 연결', onConfirm: reconnect } : {}) });
+            ...(typeof reconnect === 'function' ? { confirmText: openDownload ? '쩜통 다운로드' : '다시 연결', onConfirm: reconnect } : {}) });
     }
 
     async function requestLocal(operation, input = {}) {
@@ -61,7 +64,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function focusInside(overlay) {
         if (!isOpen(overlay) || document.querySelector("dialog[open]")) return;
-        const preferred = overlay.querySelector("#storagePathInput:not(:disabled), #storageDirectInputBtn, #existingStorageConnectBtn");
+        const options = overlay.querySelector("#storageManageOptions");
+        const preferred = options && !options.open ? overlay.querySelector("#storageManageSummary") :
+            overlay.querySelector("#storageDownloadPlatform, #storagePathInput:not(:disabled), #storageDirectInputBtn, #existingStorageConnectBtn");
         const target = availableControl(preferred) ? preferred : overlay.querySelector("button:not(:disabled)");
         if (availableControl(target)) target.focus({ preventScroll: true });
     }
@@ -92,7 +97,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 return;
             }
             if (event.key !== "Tab") return;
-            const controls = [...overlay.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
+            const controls = [...overlay.querySelectorAll("button, input, select, textarea, summary, a[href], [tabindex]")]
                 .filter(element => element.tabIndex >= 0 && availableControl(element));
             const first = controls[0], last = controls.at(-1);
             if (!first) return;
@@ -143,6 +148,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 : null;
             consoleRef.updateJJumList(connected ? status.jjums || [] : []);
         }
+        const overlay = document.getElementById("storageModalOverlay");
+        if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(status);
     }
 
     async function autoConnectStorage() {
@@ -171,7 +178,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 consoleRef.storageConnected = false;
                 consoleRef.storageIdentity = null;
             }
-            return { connected: false, state: "unavailable" };
+            const unavailable = { connected: false, state: "unavailable" };
+            const overlay = document.getElementById("storageModalOverlay");
+            if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(unavailable);
+            return unavailable;
         }
     }
 
@@ -234,7 +244,49 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return pending;
     }
 
-    function openModal() {
+    function bindDownloads(overlay) {
+        const platform = overlay.querySelector("#storageDownloadPlatform");
+        const link = overlay.querySelector("#storageDownloadLink");
+        const notice = overlay.querySelector("#storageDownloadNotice");
+        const downloads = globalThis.HAEMA_STORAGE_DOWNLOADS;
+        let release = { state: "loading" };
+        platform.value = downloads?.detectPlatform?.() || "";
+
+        function updateLink() {
+            const asset = release.state === "available" && release.downloads?.[platform.value];
+            if (asset) {
+                link.href = asset.url;
+                link.download = asset.fileName;
+                link.setAttribute("aria-disabled", "false");
+                const startFile = platform.value === "windows" ? "Start.cmd" : "Start.command";
+                notice.textContent = "압축을 풀고 " + startFile + " 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
+                return;
+            }
+            link.removeAttribute("href");
+            link.removeAttribute("download");
+            link.setAttribute("aria-disabled", "true");
+            if (release.state === "loading") notice.textContent = "다운로드할 수 있는 파일을 확인하고 있어요.";
+            else if (release.state === "unavailable") notice.textContent = "다운로드 파일을 확인할 수 없어요. 잠시 후 쩜통 버튼을 다시 열어 주세요.";
+            else if (!platform.value) notice.textContent = "사용할 컴퓨터의 운영체제를 선택해 주세요.";
+            else notice.textContent = "이 운영체제용 파일은 아직 공개되지 않았어요.";
+        }
+
+        platform.addEventListener("change", updateLink);
+        link.addEventListener("click", event => {
+            if (!link.href) event.preventDefault();
+        });
+        overlay.querySelector("#storageReconnectBtn").addEventListener("click", () => {
+            globalThis.HAEMA_RECONNECT_LOCAL?.();
+        });
+        updateLink();
+        void (async () => {
+            try { release = await downloads.load(); }
+            catch { release = { state: "unavailable" }; }
+            if (isOpen(overlay)) updateLink();
+        })();
+    }
+
+    function openModal(previous) {
         const app = document.getElementById("app");
         if (!app) return;
         const existing = document.getElementById("storageModalOverlay");
@@ -244,18 +296,24 @@ window.HAEMA_STORAGE_MODAL = (function () {
         }
         // 닫힘 전환 중 재열어도 같은 ID의 폼이 두 개 남지 않는다.
         if (existing) existing.remove();
-        const returnFocus = focusReference(document.activeElement);
-
-        const modalHtml = [
-            '<div class="modal-overlay" id="storageModalOverlay">',
-            '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">',
-            '    <div class="modal-header">',
-            '      <div class="modal-title" id="storageModalTitle">🪣 저장 폴더 연결</div>',
-            '      <button class="modal-close" id="storageModalClose" type="button" aria-label="저장 폴더 연결 닫기">&times;</button>',
-            '    </div>',
-
-            '    <div class="modal-body">',
-
+        const returnFocus = previous?.returnFocus || focusReference(document.activeElement);
+        const connected = globalThis.HAEMA_LOCAL_CONNECTION?.status?.().connection === 'connected';
+        const body = !connected ? [
+            '      <div class="form-group" id="storageDownloadSetup">',
+            '        <label class="form-label" for="storageDownloadPlatform">내 컴퓨터의 운영체제</label>',
+            '        <select class="form-input" id="storageDownloadPlatform">',
+            '          <option value="">운영체제를 선택해 주세요</option>',
+            '          <option value="windows">Windows (64비트)</option>',
+            '          <option value="macos">macOS (Apple Silicon / Intel)</option>',
+            '        </select>',
+            '        <a class="btn" id="storageDownloadLink" target="_blank" rel="noopener noreferrer" aria-disabled="true">쩜통 다운로드</a>',
+            '        <p class="form-hint" id="storageDownloadNotice" role="status"></p>',
+            '        <button class="btn" id="storageReconnectBtn" type="button">이미 설치한 쩜통 연결</button>',
+            '      </div>',
+        ].join("\n") : [
+            '      <p class="form-hint" id="storageConfirmedPath" role="status"></p>',
+            '      <details id="storageManageOptions">',
+            '        <summary id="storageManageSummary">저장 폴더 설정</summary>',
             '      <div class="form-group">',
             '        <label class="form-label" for="storagePathInput">저장소 경로</label>',
             '        <div class="input-group">',
@@ -276,11 +334,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '      </div>',
 
             '      <div class="form-group">',
-            '        <label class="form-label">기억 저장 위치</label>',
-            '        <p class="form-hint">선택한 컴퓨터의 폴더에 쩜과 대화 기록을 보관합니다.</p>',
-            '      </div>',
-
-            '      <div class="form-group">',
             '        <button class="btn btn-create" id="storageCreateBtn" type="button">',
             '          생성 + 연결',
             '        </button>',
@@ -289,6 +342,19 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '        </button>',
             '      </div>',
 
+            '      </details>',
+        ].join("\n");
+
+        const modalHtml = [
+            '<div class="modal-overlay" id="storageModalOverlay">',
+            '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">',
+            '    <div class="modal-header">',
+            '      <div class="modal-title" id="storageModalTitle">🪣 ' + (connected ? "내 쩜통" : "쩜통 다운로드") + '</div>',
+            '      <button class="modal-close" id="storageModalClose" type="button" aria-label="쩜통 창 닫기">&times;</button>',
+            '    </div>',
+
+            '    <div class="modal-body">',
+            body,
             '    </div>',
             '  </div>',
             '</div>',
@@ -297,44 +363,76 @@ window.HAEMA_STORAGE_MODAL = (function () {
         app.insertAdjacentHTML("beforeend", modalHtml);
 
         const overlay = document.getElementById("storageModalOverlay");
-        const modal = document.getElementById("storageModal");
         const closeBtn = document.getElementById("storageModalClose");
-        const createBtn = document.getElementById("storageCreateBtn");
-        const folderSelectBtn = document.getElementById("storageFolderSelectBtn");
-        const directInputBtn = document.getElementById("storageDirectInputBtn");
-        const pathInput = document.getElementById("storagePathInput");
-        const pathClearBtn = document.getElementById("storagePathClearBtn");
-        const clearBtn = document.getElementById("storageClearBtn");
-        const folderHint = document.getElementById("storageFolderHint");
+        if (!overlay || !closeBtn) return;
+        overlay.classList.add("active");
+        const state = { returnFocus, draft: previous?.draft };
+        modalFocus.set(overlay, state);
+        closeBtn.addEventListener("click", () => closeModal(overlay));
+        bindModalKeyboard(overlay, () => closeModal(overlay));
+        overlay.addEventListener("click", event => {
+            if (event.target === overlay) closeModal(overlay);
+        });
 
-
-        if (
-            !overlay ||
-            !modal ||
-            !closeBtn ||
-            !createBtn ||
-            !folderSelectBtn ||
-            !directInputBtn ||
-            !pathInput ||
-            !pathClearBtn ||
-            !clearBtn ||
-            !folderHint
-        ) {
+        state.unsubscribe = globalThis.HAEMA_LOCAL_CONNECTION?.subscribe?.(next => {
+            if (!isOpen(overlay) || (next.connection === "connected") === connected) return;
+            const child = document.getElementById("existingStorageModalOverlay");
+            if (modalFocus.get(child)?.parent === overlay) closeExistingModal(child, false);
+            state.unsubscribe?.();
+            overlay.remove();
+            openModal({ returnFocus, draft: state.draft });
+        });
+        if (!connected) {
+            bindDownloads(overlay);
+            focusInside(overlay);
             return;
         }
 
-        overlay.classList.add("active");
-        modalFocus.set(overlay, { returnFocus });
+        const createBtn = overlay.querySelector("#storageCreateBtn");
+        const folderSelectBtn = overlay.querySelector("#storageFolderSelectBtn");
+        const directInputBtn = overlay.querySelector("#storageDirectInputBtn");
+        const pathInput = overlay.querySelector("#storagePathInput");
+        const pathClearBtn = overlay.querySelector("#storagePathClearBtn");
+        const clearBtn = overlay.querySelector("#storageClearBtn");
+        const folderHint = overlay.querySelector("#storageFolderHint");
 
-        // 이미 저장된 경로가 있으면 불러오기
+        const confirmed = overlay.querySelector("#storageConfirmedPath");
+        const options = overlay.querySelector("#storageManageOptions");
         const storedPath = getStoredPath();
-        if (storedPath) {
-            pathInput.value = storedPath;
-            pathInput.disabled = true;
-            folderSelectBtn.textContent = "📁 다시 선택";
-            pathClearBtn.style.display = "inline-block";
-            clearBtn.style.display = "inline-block";
+        function setInitialPath(value) {
+            pathInput.value = value;
+            pathInput.disabled = !!value;
+            folderSelectBtn.textContent = value ? "📁 다시 선택" : "📁 폴더 선택";
+            pathClearBtn.style.display = value ? "inline-block" : "none";
+            clearBtn.style.display = value ? "inline-block" : "none";
         }
+        function keepDraft() {
+            state.draft = { value: pathInput.value, hint: folderHint.textContent };
+        }
+        state.showStatus = status => {
+            if (status?.connected === true && typeof status.storageRoot === "string" && status.storageRoot.trim()) {
+                confirmed.textContent = "연결된 쩜통 위치 · " + status.storageRoot;
+                if (!state.draft) setInitialPath(status.storageRoot);
+            } else if (status?.state === "unavailable") {
+                confirmed.textContent = "저장 위치를 확인하지 못했어요.";
+            } else if (status?.connected === false) {
+                confirmed.textContent = "연결된 저장 폴더가 없어요.";
+                options.open = true;
+            } else {
+                confirmed.textContent = "실행 프로그램에서 확인된 저장 위치가 여기에 표시돼요.";
+            }
+        };
+        setInitialPath(storedPath);
+        state.showStatus(consoleRef?.storageConnected && consoleRef.storageIdentity
+            ? { connected: true, storageRoot: consoleRef.storageIdentity.storageRoot } : null);
+        if (state.draft) {
+            options.open = true;
+            pathInput.disabled = false;
+            pathInput.value = state.draft.value;
+            folderHint.textContent = state.draft.hint;
+            pathClearBtn.style.display = pathInput.value ? "inline-block" : "none";
+        }
+        pathInput.addEventListener("input", keepDraft);
 
         // [📁 폴더 선택] 버튼 클릭
         let selectingFolder = false;
@@ -353,6 +451,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 createBtn.textContent = "폴더 선택 중...";
                 selected = await handleFolderSelect(overlay);
                 if (selected && isOpen(overlay)) {
+                    keepDraft();
                     folderSelectBtn.textContent = "📁 다시 선택";
                     pathClearBtn.style.display = "inline-block";
                 }
@@ -378,6 +477,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             folderHint.textContent = "실제 절대 경로를 직접 입력해주세요.";
             folderHint.style.color = "";
             folderHint.style.fontWeight = "normal";
+            keepDraft();
         });
 
         // 지우기 버튼 클릭
@@ -387,6 +487,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             folderSelectBtn.textContent = "📁 폴더 선택";
             pathClearBtn.style.display = "none";
             folderHint.textContent = "해마 장기기억 저장소가 생성될 상위 폴더 경로를 입력하거나 폴더를 선택하세요.";
+            keepDraft();
         });
 
         // 캐시 지우기 버튼 클릭
@@ -398,15 +499,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             pathClearBtn.style.display = "none";
             clearBtn.style.display = "none";
             folderHint.textContent = "캐시가 지워졌습니다. 새로운 저장소를 설정하세요.";
-        });
-
-        closeBtn.addEventListener("click", () => closeModal(overlay));
-        bindModalKeyboard(overlay, () => closeModal(overlay));
-
-        overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) {
-                closeModal(overlay);
-            }
+            keepDraft();
         });
 
         createBtn.addEventListener("click", async function() {
@@ -449,6 +542,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function closeModal(overlay) {
         if (isOpen(overlay)) {
+            modalFocus.get(overlay)?.unsubscribe?.();
             const child = document.getElementById("existingStorageModalOverlay");
             if (modalFocus.get(child)?.parent === overlay) closeExistingModal(child, false);
             overlay.classList.remove("active");

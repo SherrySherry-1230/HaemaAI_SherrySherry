@@ -179,8 +179,9 @@ HAEMA_CONSOLE.render = function() {
         const pendingRestore = this.incrementalDraftRestore;
         const draftRestore = pendingRestore?.draftVersion === this.draftVersion ? pendingRestore : null;
         if (draftRestore) this.lastInputValue = draftRestore.text;
-        const fromHost = userInput?.dataset?.editor?.startsWith('host-');
-        const normalValue = draftRestore ? draftRestore.text : fromHost ? this.lastInputValue : preservedValue;
+        const sameEditor = userInput.dataset.editor === restoredInput.dataset.editor;
+        const normalValue = draftRestore ? draftRestore.text : sameEditor ? preservedValue : this.readMemoryDraft();
+        if (!this.selectedTestHost && !sameEditor) this.lastInputValue = normalValue;
         const restoredValue = this.selectedTestHost ? globalThis.HAEMA_TEST_HOST.state.draft : normalValue;
         if (restoredInput.value !== restoredValue) restoredInput.value = restoredValue;
         this.incrementalDraftRestore = null;
@@ -480,7 +481,7 @@ HAEMA_CONSOLE.activateTestHost = function() {
 };
 
 HAEMA_CONSOLE.chatEditorKey = function() {
-    return this.selectedTestHost ? 'host-' + this.conversationScopeEpoch + '-' + this.selectedTestHost : 'haema';
+    return this.selectedTestHost ? 'host-' + this.conversationScopeEpoch + '-' + this.selectedTestHost : 'haema-' + this.conversationScopeEpoch;
 };
 
 HAEMA_CONSOLE.switchChatHost = function(value) {
@@ -525,7 +526,7 @@ HAEMA_CONSOLE.switchChatHost = function(value) {
 HAEMA_CONSOLE.sendTestHostMessage = async function() {
     const input = document.getElementById('userInput');
     const host = globalThis.HAEMA_TEST_HOST;
-    if (!input || this.isComposing || !this.isStorageReady() || !this.isApiKeyReady() ||
+    if (!input || this.isComposing || !this.isConversationReady() ||
         host.state.loading || host.state.sending || !host.state.ready || !input.value.trim()) return;
     host.setDraft(input.value);
     this.pendingConversationScroll = true;
@@ -1016,11 +1017,11 @@ HAEMA_CONSOLE.attachEventListeners = function() {
     });
     this.bindHostPicker();
     document.getElementById('testHostReload')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.refresh());
-    document.getElementById('testHostRetry')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.retry());
+    document.getElementById('testHostRetry')?.addEventListener('click', () => this.isConversationReady() ? globalThis.HAEMA_TEST_HOST.retry() : this.handleInputAreaClick());
     document.getElementById('calendarConnect')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.connectCalendar());
     document.getElementById('calendarStatus')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.calendarStatus());
     document.getElementById('calendarDisconnect')?.addEventListener('click', () => globalThis.HAEMA_TEST_HOST.disconnectCalendar());
-    document.getElementById('introductionBtn')?.addEventListener('click', () => HAEMA_INTRODUCTION_MODAL.open(this));
+    document.getElementById('introductionBtn')?.addEventListener('click', () => this.openIntroduction());
 
     document.querySelectorAll("[data-action]").forEach(element => {
         element.addEventListener("click", event => {
@@ -1174,28 +1175,70 @@ HAEMA_CONSOLE.isApiKeyReady = function() {
     return this.apiConfigured === true && globalThis.HAEMA_LOCAL_CONNECTION?.status().aiReady === true;
 };
 
+HAEMA_CONSOLE.canUseIntroduction = function() {
+    return this.isStorageReady() && this.apiConfigured && this.introductionAvailable;
+};
+
+HAEMA_CONSOLE.isConversationReady = function() {
+    if (!this.isStorageReady() || !this.isApiKeyReady()) return false;
+    if (HAEMA_INTRODUCTION_MODAL.hasSaved(this)) return true;
+    // Older sessions could begin before introductions were part of onboarding.
+    // Resume only scoped, existing work. A newly allocated conversation ID is
+    // also present on an unused store and cannot establish a prior conversation.
+    const scope = this.getConversationScope();
+    if (!this.hasStorageId(scope)) return false;
+    if (this.selectedTestHost) {
+        const host = globalThis.HAEMA_TEST_HOST.state;
+        return host.scope?.hostId === this.selectedTestHost && HAEMA_CONVERSATION_SESSION.sameScope(scope, host.storageScope)
+            && (!!host.pending || host.records.length > 0);
+    }
+    try {
+        const conversationId = this.conversationSession?.current(scope);
+        if (!conversationId) return false;
+        const key = JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId, conversationId]);
+        if (this.priorConversationKey !== key) {
+            const previous = HAEMA_INCREMENTAL_CONTROLLER.create({ scope, conversationId }).getState();
+            this.priorConversation = (!previous.storageBlocked && (previous.entries.length > 0 || previous.nextSequence > 1)) ||
+                this.conversationSession.pending(scope).length > 0;
+            this.priorConversationKey = key;
+        }
+        return this.priorConversation;
+    } catch { return false; }
+};
+
+HAEMA_CONSOLE.openIntroduction = function() {
+    if (!this.canUseIntroduction()) return this.handleInputAreaClick();
+    return HAEMA_INTRODUCTION_MODAL.open(this);
+};
+
 HAEMA_CONSOLE.refreshApiStatus = async function() {
+    const requestId = (this.apiStatusRequest || 0) + 1;
+    this.apiStatusRequest = requestId;
     try {
         const response = await HAEMA_LOCAL_CONNECTION.request('settings.status');
-        if (!response.ok) throw new Error("설정 상태를 확인할 수 없습니다.");
+        if (!response.ok) throw new Error('AI 설정 상태를 확인하지 못했어요.');
         const config = await response.json();
-        this.apiConfigured = config.configured === true;
-        localStorage.setItem("haema_api_configured", String(this.apiConfigured));
+        if (requestId !== this.apiStatusRequest) return;
+        this.apiConfigured = (config.providerConfigured ?? config.configured) === true;
+        this.introductionAvailable = config.introductionAvailable === undefined
+            ? HAEMA_LOCAL_CONNECTION.status().aiReady === true : config.introductionAvailable === true;
+        this.apiKeyName = config.provider || '';
         if (this.apiConfigured) {
-            localStorage.setItem("haema_api_provider", config.provider || "");
-            localStorage.setItem("haema_api_model", config.model || "");
-            localStorage.setItem("haema_api_base_url", config.baseUrl || "");
-        try {
-            const cipher = new WebCryptoCipher();
-            await cipher.generateSessionKey();
-            const saved = await new ConsoleConfigStore(cipher).load();
-            const active = typeof activeApiKeySet === 'function' ? activeApiKeySet(saved) : saved.apiKeySet;
-            this.apiKeyName = active?.name || active?.keyName || active?.provider || config.provider || '';
-        } catch { this.apiKeyName = config.provider || ''; }
+            try {
+                const profiles = await HAEMA_API_KEY_MODAL.getSavedKeys();
+                if (requestId !== this.apiStatusRequest) return;
+                const id = localStorage.getItem('haema_current_key_id');
+                const active = profiles.find(item => item.keyId === id && item.provider === config.provider && item.model === config.model);
+                this.apiKeyName = active?.name || active?.keyName || config.provider || '';
+                localStorage.setItem('haema_api_provider', config.provider || '');
+                localStorage.setItem('haema_api_model', config.model || '');
+                localStorage.setItem('haema_api_base_url', HAEMA_API_KEY_MODAL.safeBaseUrl(config.baseUrl) || '');
+            } catch { /* Browser preferences are optional; settings.status is authoritative. */ }
         }
     } catch {
+        if (requestId !== this.apiStatusRequest) return;
         this.apiConfigured = false;
-
+        this.introductionAvailable = false;
     }
     this.render();
 };
@@ -1204,9 +1247,7 @@ HAEMA_CONSOLE.refreshApiStatus = async function() {
 HAEMA_CONSOLE.updateInputAvailability = function() {
     const userInput = document.getElementById("userInput");
     if (!userInput) return;
-    const storageReady = this.isStorageReady();
-    const apiKeyReady = this.isApiKeyReady();
-    const isReady = storageReady && apiKeyReady;
+    const isReady = this.isConversationReady();
     userInput.disabled = false;
     userInput.readOnly = !isReady;
     userInput.setAttribute('aria-readonly', String(!isReady));
@@ -1224,35 +1265,19 @@ HAEMA_CONSOLE.updateInputAvailability = function() {
 // ===== input-area 클릭 시 처리 =====
 HAEMA_CONSOLE.handleInputAreaClick = async function() {
     if (this.inputWarningOpen) return;
-    const storageReady = this.isStorageReady();
-    const apiKeyReady = this.isApiKeyReady();
-    if (storageReady && apiKeyReady) return;
+    if (this.isConversationReady()) return;
     this.inputWarningOpen = true;
     try {
-        const connection = globalThis.HAEMA_LOCAL_CONNECTION?.status();
-        if (connection?.connection !== 'connected') {
-            await HAEMA_DIALOG.alert('내 컴퓨터의 해마 실행 프로그램과 먼저 연결해 주세요.', { title: '연결이 필요해요' });
-        } else if (connection.runtimeMode === 'setup-only') {
-            await HAEMA_DIALOG.alert('지금은 설정을 확인하는 중이에요. 대화 연결 준비가 끝나면 입력할 수 있어요.', { title: '대화 준비가 필요해요' });
-        } else if (!storageReady && !apiKeyReady) {
-            await HAEMA_DIALOG.alert("저장소와 AI 연결을 설정하면 대화를 시작할 수 있어요.", { title: '대화할 준비를 해볼까요?' });
-            this.statusText = "🪣저장소🪣와 🗝️AI 연결🗝️을 모두 준비해 주세요";
-            this.render();
-            if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
-                HAEMA_STORAGE_MODAL.open();
-            }
-        } else if (!storageReady) {
-            await HAEMA_DIALOG.alert("기억을 보관할 저장 폴더를 먼저 연결해주세요.", { title: '저장소를 연결해주세요' });
-            this.statusText = "🪣저장소🪣가 연결되지 않았습니다.";
-            this.render();
-            if (typeof HAEMA_STORAGE_MODAL !== "undefined" && typeof HAEMA_STORAGE_MODAL.open === "function") {
-                HAEMA_STORAGE_MODAL.open();
-            }
-        } else if (!apiKeyReady) {
-            await HAEMA_DIALOG.alert("사용할 AI와 모델의 연결 설정을 확인해주세요.", { title: 'AI 연결을 확인해주세요', tone: 'error' });
-            this.statusText = "🗝️AI 연결🗝️ 설정을 확인해주세요.";
-            this.render();
+        if (!this.isStorageReady()) {
+            HAEMA_STORAGE_MODAL.open();
+        } else if (!this.apiConfigured) {
             this.openApiKeyModal();
+        } else if (!this.introductionAvailable) {
+            await HAEMA_DIALOG.alert('AI 설정은 저장됐어요. 현재 실행 프로그램에서는 자기소개를 저장할 수 없어요.', { title: '실행 모드를 확인해 주세요' });
+        } else if (!HAEMA_INTRODUCTION_MODAL.hasSaved(this)) {
+            HAEMA_INTRODUCTION_MODAL.open(this);
+        } else {
+            await HAEMA_DIALOG.alert('설정과 자기소개는 저장됐어요. 현재 실행 프로그램에서는 AI 대화를 사용할 수 없어요.', { title: 'AI 실행이 필요해요' });
         }
     } finally {
         this.inputWarningOpen = false;
@@ -1411,6 +1436,10 @@ HAEMA_CONSOLE.restoreTokenUsage = async function(scope, conversationId, epoch = 
         if (!isCurrent()) return;
         const outcome = this.getTokenUsageStore()?.restore(scope, conversationId, payload.conversationUsage);
         if (outcome?.ok === false) throw new Error(outcome.error);
+        if (outcome?.summary?.turnCount > 0) {
+            this.priorConversationKey = JSON.stringify([scope.ownerId, scope.storageRoot, scope.storageId, conversationId]);
+            this.priorConversation = true;
+        }
         this.tokenUsageError = null;
     } catch (error) {
         if (HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope()) && epoch === this.conversationScopeEpoch) {
@@ -1499,7 +1528,7 @@ HAEMA_CONSOLE.waitForConversationComposition = function() {
 // A storage switch stops local delivery, never deletes the server's session or
 // silently submits old text into another physical store.
 HAEMA_CONSOLE.syncIncrementalConversation = function(scope) {
-    if (!this.isApiKeyReady() || !scope || !this.hasStorageId(scope)) {
+    if (!this.isConversationReady() || !scope || !this.hasStorageId(scope)) {
         if (this.incrementalController) {
             this.incrementalController.stop();
             this.incrementalDraftRestore = null;
@@ -1637,7 +1666,7 @@ HAEMA_CONSOLE.scheduleIncrementalUsage = function(controller) {
 HAEMA_CONSOLE.handleSend = function() {
     if (!!this.selectedTestHost) return this.sendTestHostMessage();
     if (this.sending || this.isComposing) return;
-    if (!this.isStorageReady() || !this.isApiKeyReady()) {
+    if (!this.isConversationReady()) {
         this.handleInputAreaClick();
         return;
     }
@@ -1688,7 +1717,7 @@ HAEMA_CONSOLE.retryConversation = async function(utteranceId) {
     const message = this.conversationHistory.find(item => item.failed && !item.acknowledged &&
         item.request?.turns[0].utteranceId === utteranceId && HAEMA_CONVERSATION_SESSION.sameScope(item.scope, scope));
     if (!message) return;
-    if (!this.isStorageReady() || !this.isApiKeyReady()) { this.handleInputAreaClick(); return; }
+    if (!this.isConversationReady()) { this.handleInputAreaClick(); return; }
     return this.sendConversationRequest(message, true);
 };
 
@@ -1880,7 +1909,7 @@ HAEMA_CONSOLE.handleInput = function(inputValue) {
     }
     this.lastInputValue = inputValue;
     try { sessionStorage.setItem(this.memoryDraftKey(), inputValue); } catch {}
-    if (this.isApiKeyReady()) this.incrementalController?.sample(inputValue);
+    if (this.isConversationReady()) this.incrementalController?.sample(inputValue);
     const indicator = document.getElementById('typingIndicator');
     if (!inputValue || !inputValue.trim()) {
         if (this.typingTimer) clearTimeout(this.typingTimer);
@@ -2221,6 +2250,7 @@ HAEMA_CONSOLE.openCreateModal = function() {
 };
 
 HAEMA_CONSOLE.openApiKeyModal = function() {
+    if (!this.isStorageReady()) return HAEMA_STORAGE_MODAL.open();
     this.modalReturnFocus = this.getFocusReference(document.activeElement);
     // API 키 모달은 이제 haema-api-key-modal.js에서 담당한다.
     // 여기서는 모드만 설정하고, 실제 콘텐츠 렌더링과 저장은 분리 파일에 맡긴다.
@@ -2229,7 +2259,7 @@ HAEMA_CONSOLE.openApiKeyModal = function() {
         apiKey: "",
         provider: localStorage.getItem("haema_api_provider") || "",
         model: localStorage.getItem("haema_api_model") || "",
-        baseURL: localStorage.getItem("haema_api_base_url") || "",
+        baseURL: HAEMA_API_KEY_MODAL.safeBaseUrl(localStorage.getItem("haema_api_base_url")) || "",
     };
     this.render();
 
@@ -2282,8 +2312,16 @@ HAEMA_CONSOLE.saveModal = async function() {
     }
     if (this.modalMode === "apiKey") {
         if (typeof HAEMA_API_KEY_MODAL !== "undefined") {
-            await HAEMA_API_KEY_MODAL.saveApiKeyModal();
-            await this.refreshApiStatus();
+            const form = this.modalData;
+            const saved = await HAEMA_API_KEY_MODAL.saveApiKeyModal();
+            if (saved) {
+                const savedForm = this.modalData;
+                await this.refreshApiStatus();
+                if (this.modalMode === 'apiKey' && this.modalData === savedForm &&
+                    savedForm?.keyId === form?.keyId && this.canUseIntroduction() && !HAEMA_INTRODUCTION_MODAL.hasSaved(this)) {
+                    HAEMA_INTRODUCTION_MODAL.open(this);
+                }
+            }
         }
         return;
     }
@@ -2528,7 +2566,7 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const inputValue = test ? globalThis.HAEMA_TEST_HOST.state.draft : this.readMemoryDraft();
     const editor = this.escapeHtml(this.chatEditorKey());
     const placeholder = test ? '선택한 호스트에게 메시지를 입력하세요.' : '챗봇AI와 대화하는 것처럼 입력해주세요.';
-    const isInputDisabled = !this.isStorageReady() || !this.isApiKeyReady();
+    const isInputDisabled = !this.isConversationReady();
     const storageLabel = this.storageConnected ? '연결' : '없음';
     const apiLabel = this.apiConfigured ? this.formatApiButtonLabel(this.apiKeyName || '설정') : '없음';
     const storageTitle = this.storageConnected ? '저장소 연결됨' : '저장소 연결하기';
@@ -2544,7 +2582,7 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
         (test ? this.renderTestHostHistory() : this.renderHaemaHistory()) + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
         '<div class="input-area"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" data-editor="' + editor + '" placeholder="' + placeholder + '" aria-label="메시지 입력"' + (isInputDisabled ? ' readonly' : '') + '>' + this.escapeHtml(inputValue) + '</textarea>' +
-        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button></div></div></div></section>';
+        '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (isInputDisabled || this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button></div></div></div></section>';
 };
 
 HAEMA_CONSOLE.renderRecallSection = function() {
@@ -2772,6 +2810,8 @@ HAEMA_CONSOLE.mount = async function() {
         if (state.connection !== 'connected') {
             this.storageConnected = false;
             this.apiConfigured = false;
+            this.introductionAvailable = false;
+            this.apiStatusRequest = (this.apiStatusRequest || 0) + 1;
             this.incrementalController?.stop();
             this.incrementalController = null;
         } else if (!state.aiReady) {

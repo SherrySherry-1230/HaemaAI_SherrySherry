@@ -59,6 +59,7 @@
     function message(consoleApp, record) {
         if (!record.scope || !identified(consoleApp, record)) return '저장소를 연결한 뒤 자기소개를 저장할 수 있어요. 입력은 이 탭에 보관해요.';
         if (!isCurrent(consoleApp, record)) return '연결된 저장소가 바뀌었어요. 입력은 이전 저장소의 초안으로 보관해요.';
+        if (!consoleApp.canUseIntroduction()) return '저장소와 AI 설정을 확인해 주세요. 작성 중인 소개는 이 탭에 보관해요.';
         if (record.saving) return '자기소개를 저장하고 있어요.';
         if (record.loading) return '저장된 자기소개를 확인하고 있어요. 먼저 작성하셔도 괜찮아요.';
         const detail = record.error || record.notice;
@@ -76,14 +77,14 @@
         const warning = document.getElementById('introductionDraftWarning');
         if (text) text.disabled = record.saving;
         if (save) {
-            save.disabled = record.saving || record.loading || !record.loaded || !isCurrent(consoleApp, record) || !record.text.trim();
+            save.disabled = !consoleApp.canUseIntroduction() || record.saving || record.loading || !record.loaded || !isCurrent(consoleApp, record) || !record.text.trim();
             save.textContent = record.saving ? '저장 중…' :
                 record.pendingRetry && record.text === record.pendingRetry.text ? '자아쩜 반영 다시 시도' : '저장';
         }
         if (reload) reload.disabled = record.loading || record.saving || !identified(consoleApp, record) || !isCurrent(consoleApp, record);
         if (retry) {
             retry.style.display = record.pendingRetry && record.text !== record.pendingRetry.text ? '' : 'none';
-            retry.disabled = record.loading || record.saving || !record.loaded || !isCurrent(consoleApp, record);
+            retry.disabled = !consoleApp.canUseIntroduction() || record.loading || record.saving || !record.loaded || !isCurrent(consoleApp, record);
         }
         if (status) status.textContent = message(consoleApp, record);
         if (warning) warning.textContent = record.draftWarning;
@@ -148,7 +149,7 @@
     }
     function button(consoleApp) {
         const record = currentRecord(consoleApp);
-        if (identified(consoleApp, record) && !record.attempted && !record.loading) {
+        if (consoleApp.canUseIntroduction() && identified(consoleApp, record) && !record.attempted && !record.loading) {
             record.attempted = true;
             Promise.resolve().then(() => load(consoleApp, record));
         }
@@ -204,7 +205,7 @@
     }
     async function save(consoleApp, retrySaved = false) {
         const record = consoleApp.modalData;
-        if (!record || record.saving || record.loading || !record.loaded || !isCurrent(consoleApp, record)) return;
+        if (!consoleApp.canUseIntroduction() || !record || record.saving || record.loading || !record.loaded || !isCurrent(consoleApp, record)) return;
         const pending = record.pendingRetry;
         if (retrySaved && !pending) return;
         const retry = pending && (retrySaved || record.text === pending.text);
@@ -240,5 +241,9 @@
             notify(consoleApp, record);
         }
     }
-    global.HAEMA_INTRODUCTION_MODAL = { button, open, render, bind, save };
+    function hasSaved(consoleApp) {
+        const record = currentRecord(consoleApp);
+        return identified(consoleApp, record) && record.loaded && record.revision > 0 && !!record.serverText.trim();
+    }
+    global.HAEMA_INTRODUCTION_MODAL = { button, open, render, bind, save, hasSaved };
 })(window);

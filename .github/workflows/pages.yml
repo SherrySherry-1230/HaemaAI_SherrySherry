@@ -177,6 +177,7 @@ jobs:
               "web-console/haema-toolbar.css",
               "web-console/local-connection-client.mjs",
               "web-console/remembered-connection-store.mjs",
+              "web-console/storage-downloads.mjs",
           )
           destination = Path("_site")
           destination.mkdir()

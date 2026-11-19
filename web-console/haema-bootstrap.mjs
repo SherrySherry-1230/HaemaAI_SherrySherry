@@ -1,7 +1,9 @@
-// @editedBy SherrySherry 2026-11-18
-import { connection } from './haema-local-connection.mjs?v=20261118-direct';
+// @editedBy SherrySherry 2026-11-19
+import { connection } from './haema-local-connection.mjs?v=20261119-download';
+import { detectDownloadPlatform, loadDownloads } from './storage-downloads.mjs?v=20261119-download';
+globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads });
 const connectionStarted = connection.start();
-const setupMessage = '이 컴퓨터에서 해마.ai 실행 프로그램을 처음 한 번 설정해 연결해 주세요. 연결을 기억한 브라우저에서는 다음부터 이 웹주소를 직접 열거나 새로고침해 사용할 수 있어요.';
+const setupMessage = '쩜통 버튼에서 이 컴퓨터에 맞는 쩜통을 다운로드해 주세요. 압축을 풀고 시작 파일을 한 번 열면 실행부와 쩜통을 준비하고 웹콘솔에 연결해요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요.';
 const resettable = new Set(['REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
     'REMEMBERED_CONNECTION_GRANT_EXPIRED', 'REMEMBERED_CONNECTION_KEY_INVALID', 'REMEMBERED_CONNECTION_INVALID']);
 async function showConnectionNotice(state) {
@@ -30,7 +32,7 @@ globalThis.HAEMA_RECONNECT_LOCAL = () => {
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261118-direct", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=4", "web-console/haema-introduction-modal.js?v=9", "web-console/haema-test-host.js?v=3", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-storage-first", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261118-direct"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261119-download", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=4", "web-console/haema-introduction-modal.js?v=20261119-download", "web-console/haema-test-host.js?v=3", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-download", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-download"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');
@@ -39,6 +41,7 @@ for (const source of scripts) {
         document.body.append(script);
     });
 }
+await globalThis.HAEMA_CONSOLE.mount();
 let connectionState = await connectionStarted;
 if (connectionState.connection === 'awaiting-permission') {
     let connecting;
@@ -51,8 +54,6 @@ if (connectionState.connection === 'awaiting-permission') {
 }
 if (connectionState.connection === 'setup-required' && !connectionState.firstFailure) {
     if (connectionState.rememberNoticeCode) await showConnectionNotice(connectionState);
-    else await globalThis.HAEMA_DIALOG.alert(setupMessage, { title: '처음 한 번 연결해 주세요' });
 } else if (connectionState.firstFailure || connectionState.connection === 'permission-denied') {
     await showConnectionNotice(connectionState);
 }
-await globalThis.HAEMA_CONSOLE.mount();

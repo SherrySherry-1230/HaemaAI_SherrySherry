@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-18
+// @editedBy SherrySherry 2026-11-19
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-07
 // @editedBy YAONG1230 2026-10-16
@@ -8,7 +8,7 @@ const HAEMA_API_KEY_MODAL = (() => {
 const safeMessages = new WeakMap();
 const missingConnections = new WeakSet();
 function connectionFailure(error) {
-    if (missingConnections.has(error)) return "내 컴퓨터의 실행 프로그램에서 웹 콘솔을 다시 열어 연결해 주세요. 입력한 설정은 그대로 남아 있어요.";
+    if (missingConnections.has(error)) return "쩜통 버튼에서 쩜통을 다운로드한 뒤 압축을 풀고 시작 파일을 열어 주세요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요. 입력한 설정은 그대로 남아 있어요.";
     try {
         const message = globalThis.HAEMA_LOCAL_CONNECTION?.describeFailure?.(error);
         return typeof message === "string" && message ? message : null;
@@ -28,9 +28,13 @@ async function notifyConnectionFailure(error) {
     const message = connectionFailure(error);
     if (!message) return false;
     if (consoleRef) consoleRef.statusText = "⚠️ " + message;
-    const reconnect = globalThis.HAEMA_RECONNECT_LOCAL;
+    const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+    const state = connection?.status?.();
+    const openDownload = (!connection || state?.connection === 'setup-required' && !state.remembered)
+        && globalThis.HAEMA_STORAGE_MODAL?.open;
+    const reconnect = openDownload || globalThis.HAEMA_RECONNECT_LOCAL;
     await HAEMA_DIALOG.alert(message, { title: '실행 프로그램 연결을 확인해 주세요', tone: 'warning',
-        ...(typeof reconnect === 'function' ? { confirmText: '다시 연결', onConfirm: reconnect } : {}) });
+        ...(typeof reconnect === 'function' ? { confirmText: openDownload ? '쩜통 다운로드' : '다시 연결', onConfirm: reconnect } : {}) });
     return true;
 }
 function requestLocal(operation, input = {}) {
@@ -162,8 +166,24 @@ function getDefaultBaseUrl(provider) {
     return PROVIDER_BASE_URLS[provider] || "";
 }
 
+// Providers append paths such as /models or /chat/completions to this base.
+function safeBaseUrl(value) {
+    if (!value) return '';
+    if (typeof value !== 'string' || /[?#\\\u0000-\u001f\u007f]/.test(value)) return null;
+    try {
+        const url = new URL(value);
+        return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? value : null;
+    } catch { return null; }
+}
+const baseUrlNotice = 'Base URL에는 http(s) 주소와 경로만 입력해 주세요. 인증 키는 API 키 입력칸에 넣어 주세요.';
+
 function isLocalProvider(provider) {
     return provider === "ollama" || provider === "lmstudio";
+}
+
+function isSetupOnlyRuntime() {
+    const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+    return state?.connection === "connected" && state.runtimeMode === "setup-only";
 }
 
 // =========================================================
@@ -205,6 +225,7 @@ async function fetchProviderModels(provider, credentials = {}) {
     const apiKey = credentials.apiKey ?? document.getElementById("modalApiKey")?.value ?? "";
     const baseUrl = credentials.baseUrl ?? document.getElementById("modalApiBaseUrl")?.value.trim() ?? "";
 
+    if (safeBaseUrl(baseUrl) === null) throw safeError(baseUrlNotice);
     const res = await requestLocal("models.list", { provider, apiKey, baseUrl });
 
     if (!res.ok) {
@@ -280,7 +301,7 @@ function renderApiKeyModalContent(data = {}) {
     editingKeyId = data.keyId || "";
     const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
     const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
-    const savedBaseUrl = data.baseURL ?? localStorage.getItem("haema_api_base_url") ?? "";
+    const savedBaseUrl = safeBaseUrl(data.baseURL ?? localStorage.getItem("haema_api_base_url")) || "";
     const displayedBaseUrl = savedBaseUrl || (isLocalProvider(savedProvider) ? getDefaultBaseUrl(savedProvider) : "");
     const savedKey = data.apiKey || "";
     const savedName = data.name || "";
@@ -332,10 +353,10 @@ function renderApiKeyModalContent(data = {}) {
     const apiKeyInput = `
         <div class="form-group">
             <label class="form-label" id="modalApiKeyLabel" for="modalApiKey">${isLocalProvider(savedProvider) ? "API 키 (선택사항)" : "API 키"}</label>
-            <input class="form-input" id="modalApiKey" type="password"
+            <input class="form-input" id="modalApiKey" type="password" autocomplete="off"
                 value="${escapeHtml(savedKey)}"
                 placeholder="sk-...">
-            <div class="form-hint" id="modalApiKeyHint">${isLocalProvider(savedProvider) ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "실제 API 인증 키를 입력하세요."}</div>
+            <div class="form-hint" id="modalApiKeyHint">${isLocalProvider(savedProvider) ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "키는 연결된 내 컴퓨터의 실행 프로그램에 저장해요."}</div>
         </div>
     `;
 
@@ -343,14 +364,20 @@ function renderApiKeyModalContent(data = {}) {
     // renderApiKeyModalContent()는 동기 HTML 반환 함수이므로,
     // buildModelOptions()를 여기서 직접 await 하지 않고 select를 비운 뒤
     // bindEvents() / initModelSelect()에서 비동기로 채운다.
-    const modelSelect = `
-        <div class="form-group" id="modalModelGroup">
-            <label class="form-label" for="modalApiModel">모델</label>
+    const modelControl = isSetupOnlyRuntime() ? `
+            <input class="form-input" id="modalApiModel" type="text" list="modalModelSuggestions"
+                value="${escapeAttr(savedModel)}" placeholder="모델 ID 입력" autocomplete="off">
+            <datalist id="modalModelSuggestions"></datalist>
+            <div class="form-hint">사용할 모델 ID를 입력하세요. 설정 전용 모드에서는 이 컴퓨터에 설정을 저장하고 모델 연결 확인은 전체 실행 모드에서 진행해요.</div>` : `
             <select class="form-select" id="modalApiModel" data-selected-model="${escapeAttr(savedModel)}">
                 <option value="">모델을 선택하세요</option>
             </select>
             <div class="form-hint">선택한 제공자에 맞는 모델을 선택하세요.</div>
-            <button class="btn btn-small btn-ghost" type="button" id="modalRefreshModels">모델 다시 조회</button>
+            <button class="btn btn-small btn-ghost" type="button" id="modalRefreshModels">모델 다시 조회</button>`;
+    const modelSelect = `
+        <div class="form-group" id="modalModelGroup">
+            <label class="form-label" for="modalApiModel">모델</label>
+            ${modelControl}
             <div class="form-hint" id="modalApiConnectionStatus" role="status"></div>
         </div>
     `;
@@ -396,7 +423,7 @@ async function renderSavedKeysList() {
     return keys.map((item, index) => {
         const displayProvider = item.provider || "제공자 없음";
         const displayModel = item.model || "모델 없음";
-        const maskedKey = maskApiKey(item.apiKey) || (isLocalProvider(item.provider) ? "키 없이 연결" : "");
+        const maskedKey = item.requiresKey ? "사용 시 키 입력" : maskApiKey(item.apiKey) || (isLocalProvider(item.provider) ? "키 없이 연결" : "");
         const isSelected = item.keyId === getCurrentKeyId();
         return `
             <div class="saved-key-item ${isSelected ? "selected" : ""}" data-key-id="${escapeAttr(item.keyId)}">
@@ -435,54 +462,69 @@ function maskApiKey(key) {
 // 여러 키를 목록 형태로 저장/불러오기/삭제/전환할 수 있게 한다.
 // 암호화된 ConsoleConfigStore를 사용한다.
 
-async function getSavedKeys() {
-    if (typeof ConsoleConfigStore !== "undefined" && typeof WebCryptoCipher !== "undefined") {
-        try {
-            const { config } = await loadEncryptedConfig();
-            return config.sets;
-        } catch (e) {
-            console.error("HAEMA_API_KEY_MODAL: 암호화 저장소 로드 실패");
-            return [];
-        }
-    } else {
-        // 레거시 방식 폴백
-        try {
-            const raw = localStorage.getItem("haema_api_keys");
-            if (!raw) return [];
-            const parsed = JSON.parse(raw);
-            if (!Array.isArray(parsed)) return [];
-            return parsed;
-        } catch (e) {
-            return [];
-        }
+// New browser profiles store only display/connection metadata. Previously saved
+// profiles remain readable with their original key until explicitly edited.
+const profilesKey = 'haema_api_profile_metadata_v1';
+function readProfileMetadata() {
+    const parsed = JSON.parse(localStorage.getItem(profilesKey) ?? '[]');
+    if (!Array.isArray(parsed) || parsed.some(item => !item || typeof item.keyId !== 'string' ||
+        typeof item.provider !== 'string' || typeof item.model !== 'string' || typeof item.requiresKey !== 'boolean' ||
+        (item.metadataOnly !== undefined && typeof item.metadataOnly !== 'boolean'))) {
+        throw safeError('저장된 연결 설정 목록을 읽지 못했어요.');
     }
+    return parsed;
+}
+async function getSavedKeys() {
+    const profiles = new Map((await getLegacyKeys()).map(item => [item.keyId, item]));
+    for (const item of readProfileMetadata()) profiles.set(item.keyId, item);
+    return [...profiles.values()];
+}
+async function getLegacyKeys() {
+    const encrypted = localStorage.getItem('haema.console.config.v1');
+    let current;
+    if (encrypted) {
+        try { current = (await loadEncryptedConfig(encrypted)).config.sets; }
+        catch { return []; }
+    }
+    let previous = [];
+    try { previous = readPlainProfiles(localStorage.getItem('haema_api_keys')); }
+    catch { /* Encrypted profiles are independent of the older list. */ }
+    return [...new Map([...previous, ...(current || [])].map(item => [item.keyId, item])).values()];
+}
+function readPlainProfiles(raw) {
+    if (!raw) return [];
+    const profiles = JSON.parse(raw);
+    if (!Array.isArray(profiles) || profiles.some(item => !item || typeof item.keyId !== 'string')) {
+        throw safeError('기존 API 프로필 목록을 확인하지 못했어요.');
+    }
+    return profiles;
 }
 
-async function loadEncryptedConfig() {
+async function loadEncryptedConfig(raw = localStorage.getItem('haema.console.config.v1')) {
     if (typeof ConsoleConfigStore === "undefined" || typeof WebCryptoCipher === "undefined") {
         throw safeError("암호화된 API 설정 저장소를 사용할 수 없습니다.");
     }
 
     const cipher = new WebCryptoCipher();
     await cipher.generateSessionKey();
-    const store = new ConsoleConfigStore(cipher);
-    const config = await store.load();
-    if (!Array.isArray(config.sets)) config.sets = [];
-    return { store, config };
+    try {
+        const config = raw ? await cipher.decrypt(JSON.parse(raw)) : { sets: [], apiKeySet: null };
+        if (!Array.isArray(config?.sets)) throw new Error();
+        return { cipher, config };
+    } catch {
+        throw safeError('기존 API 프로필을 읽을 수 없어요. 해당 프로필을 저장한 탭에서 다시 시도해 주세요.');
+    }
 }
 
-async function persistApiKeyProfile(keyItem, activate = false, prepareOnly = false) {
-    const { store, config } = await loadEncryptedConfig();
-    const existingIndex = config.sets.findIndex(item => item.keyId === keyItem.keyId);
-    if (existingIndex >= 0) {
-        config.sets[existingIndex] = keyItem;
-    } else {
-        config.sets.push(keyItem);
-    }
-    if (activate) config.apiKeySet = keyItem;
-    if (prepareOnly) await store.cipher.encrypt(config);
-    else await store.save(config);
-    return config;
+function persistProfileMetadata(keyItem, isNew) {
+    const { keyId, name, provider, model, baseURL, updatedAt } = keyItem;
+    const profiles = readProfileMetadata();
+    const previous = profiles.find(item => item.keyId === keyId);
+    const metadataOnly = isNew || previous?.metadataOnly === true ||
+        (!localStorage.getItem('haema.console.config.v1') && !localStorage.getItem('haema_api_keys'));
+    const next = profiles.filter(item => item.keyId !== keyId);
+    next.push({ keyId, name, provider, model, baseURL, updatedAt, requiresKey: !!keyItem.apiKey, metadataOnly });
+    localStorage.setItem(profilesKey, JSON.stringify(next));
 }
 
 function getCurrentKeyId() {
@@ -504,7 +546,7 @@ function setCurrentKeyId(keyId) {
 function setActiveKeyMetadata(keyItem) {
     localStorage.setItem("haema_api_provider", keyItem.provider || "");
     localStorage.setItem("haema_api_model", keyItem.model || "");
-    localStorage.setItem("haema_api_base_url", keyItem.baseURL || "");
+    localStorage.setItem("haema_api_base_url", safeBaseUrl(keyItem.baseURL) || "");
     setCurrentKeyId(keyItem.keyId || "");
 }
 
@@ -538,10 +580,15 @@ async function saveApiKeyModal() {
     const apiKey = document.getElementById("modalApiKey")?.value.trim();
     const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim();
     const name = document.getElementById("modalApiKeyName")?.value.trim();
+    const setupOnly = isSetupOnlyRuntime();
     const formData = consoleRef?.modalData;
     const targetKeyId = editingKeyId;
 
     // 입력 검증
+    if (safeBaseUrl(baseURL) === null) {
+        await HAEMA_DIALOG.alert(baseUrlNotice, { tone: 'warning' });
+        return false;
+    }
     if (!name) {
         await HAEMA_DIALOG.alert("설정 이름을 입력해주세요!", { tone: 'warning' });
         return false;
@@ -551,10 +598,10 @@ async function saveApiKeyModal() {
         return false;
     }
     if (!model) {
-        await HAEMA_DIALOG.alert("모델을 선택해주세요!", { tone: 'warning' });
+        await HAEMA_DIALOG.alert(setupOnly ? "모델 ID를 입력해 주세요." : "모델을 선택해주세요!", { tone: 'warning' });
         return false;
     }
-    if (!isLocalProvider(provider) && !apiKey) {
+    if ((!isLocalProvider(provider) || (consoleRef?.modalData?.requiresKey && consoleRef.modalData.provider === provider)) && !apiKey) {
         await HAEMA_DIALOG.alert("API 키를 입력해주세요!", { tone: 'warning' });
         return false;
     }
@@ -565,10 +612,12 @@ async function saveApiKeyModal() {
     let serverSaved = false;
 
     try {
-        const validation = await validateProviderConnection(provider, apiKey, baseURL, model);
-        if (!validation.ok) {
-            await notifySaveResult(false, provider, model, false, validation.message);
-            return false;
+        if (!setupOnly) {
+            const validation = await validateProviderConnection(provider, apiKey, baseURL, model);
+            if (!validation.ok) {
+                await notifySaveResult(false, provider, model, false, validation.message);
+                return false;
+            }
         }
 
         const keyItem = {
@@ -581,9 +630,8 @@ async function saveApiKeyModal() {
             updatedAt: new Date().toISOString()
         };
 
-        // Verify encryption without replacing a saved profile before the server
-        // accepts it. A rejected request never needs to roll back another tab.
-        await persistApiKeyProfile(keyItem, false, true);
+        // An unreadable profile list must never be replaced by a partial copy.
+        readProfileMetadata();
         // Retrying this draft reuses its profile instead of appending a duplicate.
         if (!consoleRef || consoleRef.modalData === formData) {
             editingKeyId = keyItem.keyId;
@@ -595,7 +643,7 @@ async function saveApiKeyModal() {
             return false;
         }
 
-        await persistApiKeyProfile(keyItem, true);
+        persistProfileMetadata(keyItem, !targetKeyId);
         setActiveKeyMetadata(keyItem);
         localStorage.setItem("haema_api_configured", "true");
 
@@ -611,7 +659,7 @@ async function saveApiKeyModal() {
             };
         }
 
-        await notifySaveResult(true, provider, model);
+        await notifySaveResult(true, provider, model, setupOnly);
         return true;
     } catch (error) {
         if (await notifyConnectionFailure(error)) return false;
@@ -631,7 +679,7 @@ async function saveApiKeyModal() {
 async function validateProviderConnection(provider, apiKey, baseUrl, model) {
     const response = await requestLocal("models.list", { provider, apiKey, baseUrl });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.success) {
+    if (!response.ok || payload?.success !== true || !Array.isArray(payload.models)) {
         return {
             ok: false,
             message: operationMessage("모델 목록 요청을 완료하지 못했어요.", response.status)
@@ -660,7 +708,7 @@ async function saveConnectionSettings(keyItem) {
     }
 
     const data = await response.json().catch(() => null);
-    if (!data || !data.success) {
+    if (data?.success !== true) {
         throw safeError("API 설정 저장 완료를 확인할 수 없어요.", response.status);
     }
 
@@ -671,12 +719,14 @@ async function saveConnectionSettings(keyItem) {
 // 12. 저장 결과 안내
 // =========================================================
 // 상태 텍스트를 유지하고, 연결 실패는 캐릭터 알림으로도 안내한다.
-async function notifySaveResult(success, provider, model, serverSaveOnlyFailed = false, errorMessage = "") {
+function savedSettingsMessage(provider, model, setupOnly) {
+    return setupOnly ? `✅ 이 컴퓨터에 연결 설정을 저장했어요. ${provider} / ${model}의 모델 연결은 아직 확인하지 않았어요.`
+        : `✅ 연결 설정 저장 완료: ${provider} / ${model}`;
+}
+async function notifySaveResult(success, provider, model, setupOnly = false, errorMessage = "") {
     const message = !success
         ? `❌ API 연결 실패: ${errorMessage || "제공자와 Base URL, 필요한 경우 키를 확인해주세요."}`
-        : serverSaveOnlyFailed
-        ? `✅ 연결 프로필 보관 완료: ${provider} / ${model} (서버 저장은 확인되지 않았습니다)`
-        : `✅ 연결 설정 저장 완료: ${provider} / ${model}`;
+        : savedSettingsMessage(provider, model, setupOnly);
 
     if (consoleRef && typeof consoleRef.render === "function") {
         consoleRef.statusText = message;
@@ -721,7 +771,18 @@ async function switchToKey(keyId) {
             return false;
         }
 
-        if (isLocalProvider(target.provider)) {
+        if (safeBaseUrl(target.baseURL) === null) {
+            await HAEMA_DIALOG.alert(baseUrlNotice, { tone: 'warning' });
+            return false;
+        }
+        if (target.requiresKey && !target.apiKey) {
+            showProfileForm(target);
+            if (consoleRef) consoleRef.statusText = '이 설정을 적용하려면 API 키를 입력한 뒤 저장해 주세요.';
+            document.getElementById('modalApiKey')?.focus?.();
+            return false;
+        }
+        const setupOnly = isSetupOnlyRuntime();
+        if (!setupOnly && isLocalProvider(target.provider)) {
             const validation = await validateProviderConnection(target.provider, target.apiKey || "", target.baseURL || "", target.model);
             if (!validation.ok) {
                 await notifySaveResult(false, target.provider, target.model, false, validation.message);
@@ -733,7 +794,6 @@ async function switchToKey(keyId) {
             return false;
         }
 
-        await persistApiKeyProfile(target, true);
         setActiveKeyMetadata(target);
         localStorage.setItem("haema_api_configured", "true");
         if (consoleRef) {
@@ -747,7 +807,8 @@ async function switchToKey(keyId) {
                 apiKey: ""
             };
         }
-        await refreshConsoleAfterProfileAction(`✅ 연결 설정 전환 완료: ${target.provider} / ${target.model}`);
+        await refreshConsoleAfterProfileAction(setupOnly ? savedSettingsMessage(target.provider, target.model, true)
+            : `✅ 연결 설정 전환 완료: ${target.provider} / ${target.model}`);
         return true;
     } catch (error) {
         if (await notifyConnectionFailure(error)) return false;
@@ -767,24 +828,47 @@ async function deleteKey(keyId) {
     setProfileActionBusy(true);
     let serverConfigCleared = false;
     try {
-        const { store, config } = await loadEncryptedConfig();
-        const target = config.sets.find(item => item.keyId === keyId);
+        const metadata = readProfileMetadata().find(item => item.keyId === keyId);
+        const legacyKey = 'haema.console.config.v1';
+        const raw = metadata?.metadataOnly === true ? null : localStorage.getItem(legacyKey);
+        const legacy = raw ? await loadEncryptedConfig(raw) : null;
+        const plainRaw = metadata?.metadataOnly === true ? null : localStorage.getItem('haema_api_keys');
+        const plain = readPlainProfiles(plainRaw);
+        const plainTarget = plain.find(item => item?.keyId === keyId);
+        const legacyTarget = legacy?.config.sets.find(item => item?.keyId === keyId);
+        const target = metadata || legacyTarget || plainTarget;
         if (!target) {
             await refreshConsoleAfterProfileAction("삭제할 API 키를 찾을 수 없습니다.");
             return false;
         }
-
-        const deletingActiveKey = getCurrentKeyId() === keyId || config.apiKeySet?.keyId === keyId;
+        const activeLegacy = legacy?.config.apiKeySet?.keyId === keyId;
+        let nextEncrypted;
+        if (legacyTarget || activeLegacy) {
+            const next = { ...legacy.config, sets: legacy.config.sets.filter(item => item?.keyId !== keyId) };
+            if (activeLegacy) next.apiKeySet = null;
+            nextEncrypted = JSON.stringify(await legacy.cipher.encrypt(next));
+        }
+        function verifyProfileSnapshot() {
+            const current = readProfileMetadata().find(item => item.keyId === keyId);
+            if (JSON.stringify(current) !== JSON.stringify(metadata) || (metadata?.metadataOnly !== true &&
+                (localStorage.getItem(legacyKey) !== raw || localStorage.getItem('haema_api_keys') !== plainRaw))) {
+                throw safeError('다른 탭에서 API 프로필이 변경됐어요. 목록을 확인한 뒤 다시 시도해 주세요.');
+            }
+        }
+        verifyProfileSnapshot();
+        const currentId = getCurrentKeyId();
+        const deletingActiveKey = currentId === keyId || !currentId && activeLegacy;
         if (deletingActiveKey && !await clearLocalServerConfig()) {
             await refreshConsoleAfterProfileAction("활성 API 설정을 서버에서 지우지 못해 프로필을 삭제하지 않았습니다.");
             return false;
         }
         serverConfigCleared = deletingActiveKey;
-
-        config.sets = config.sets.filter(item => item.keyId !== keyId);
-        if (deletingActiveKey) config.apiKeySet = null;
-        await store.save(config);
-
+        verifyProfileSnapshot();
+        if (nextEncrypted) localStorage.setItem(legacyKey, nextEncrypted);
+        if (plainTarget) localStorage.setItem('haema_api_keys', JSON.stringify(plain.filter(item => item?.keyId !== keyId)));
+        if (metadata) {
+            localStorage.setItem(profilesKey, JSON.stringify(readProfileMetadata().filter(item => item.keyId !== keyId)));
+        }
         if (deletingActiveKey) {
             clearActiveKeyMetadata();
             if (consoleRef) {
@@ -816,6 +900,34 @@ async function deleteKey(keyId) {
 // =========================================================
 // 저장된 프로필의 값을 모달 입력칸에 불러온다.
 // 이후 저장하면 같은 keyId를 유지한 채 업데이트된다.
+function showProfileForm(target) {
+    editingKeyId = target.keyId;
+    const name = target.name || target.keyName || "";
+    const baseURL = safeBaseUrl(target.baseURL);
+    const existingKey = baseURL === null ? "" : target.apiKey || "";
+    if (consoleRef && typeof consoleRef.render === "function") {
+        consoleRef.modalMode = "apiKey";
+        consoleRef.modalData = {
+            keyId: target.keyId,
+            requiresKey: target.requiresKey === true,
+            name,
+            apiKey: existingKey,
+            provider: target.provider || "",
+            baseURL: baseURL || "",
+            model: target.model || ""
+        };
+        consoleRef.statusText = `✏️ API 키 편집 시작: ${name || target.keyId}`;
+        consoleRef.render();
+    } else {
+        document.getElementById("modalApiKeyName").value = name;
+        document.getElementById("modalApiKey").value = existingKey;
+        document.getElementById("modalApiProvider").value = target.provider || "";
+        document.getElementById("modalApiBaseUrl").value = baseURL || "";
+        document.getElementById("modalApiModel").dataset.selectedModel = target.model || "";
+        void bindEvents();
+    }
+}
+
 async function startEditingKey(keyId) {
     if (profileActionBusy) return false;
     try {
@@ -827,28 +939,7 @@ async function startEditingKey(keyId) {
             return false;
         }
 
-        editingKeyId = target.keyId;
-        const name = target.name || target.keyName || "";
-        if (consoleRef && typeof consoleRef.render === "function") {
-            consoleRef.modalMode = "apiKey";
-            consoleRef.modalData = {
-                keyId: target.keyId,
-                name,
-                apiKey: target.apiKey || "",
-                provider: target.provider || "",
-                baseURL: target.baseURL || "",
-                model: target.model || ""
-            };
-            consoleRef.statusText = `✏️ API 키 편집 시작: ${name || target.keyId}`;
-            consoleRef.render();
-        } else {
-            document.getElementById("modalApiKeyName").value = name;
-            document.getElementById("modalApiKey").value = target.apiKey || "";
-            document.getElementById("modalApiProvider").value = target.provider || "";
-            document.getElementById("modalApiBaseUrl").value = target.baseURL || "";
-            document.getElementById("modalApiModel").dataset.selectedModel = target.model || "";
-            await bindEvents();
-        }
+        showProfileForm(target);
         return true;
     } catch (error) {
         if (await notifyConnectionFailure(error)) return false;
@@ -879,7 +970,8 @@ async function bindEvents() {
     // Restore an edited profile's model synchronously. Remote model discovery
     // may take longer than the user needs to submit the form.
     const initialModel = modelSelect.dataset.selectedModel || modelSelect.value || "";
-    if (providerSelect.value) {
+    const manualModel = modelSelect.tagName === "INPUT";
+    if (!manualModel && providerSelect.value) {
         modelSelect.innerHTML = buildModelOptionsFallback(providerSelect.value, initialModel);
         if (initialModel) modelSelect.value = initialModel;
     }
@@ -916,6 +1008,8 @@ async function bindEvents() {
         const renderedList = savedKeysList;
         savedListUpdate = renderSavedKeysList().then(html => {
             if (document.getElementById("savedKeysList") === renderedList) renderedList.innerHTML = html;
+        }).catch(() => {
+            if (document.getElementById("savedKeysList") === renderedList) renderedList.textContent = '기존 설정 목록을 읽지 못했어요.';
         });
     }
 
@@ -926,7 +1020,8 @@ async function bindEvents() {
     function clearConnectionSelection() {
         apiKeyInput.value = "";
         modelSelect.dataset.selectedModel = "";
-        modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
+        if (manualModel) modelSelect.value = "";
+        else modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
     }
 
     function updateKeyHint() {
@@ -934,7 +1029,7 @@ async function bindEvents() {
         const label = document.getElementById("modalApiKeyLabel");
         const hint = document.getElementById("modalApiKeyHint");
         if (label) label.textContent = local ? "API 키 (선택사항)" : "API 키";
-        if (hint) hint.textContent = local ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "실제 API 인증 키를 입력하세요.";
+        if (hint) hint.textContent = local ? "인증을 설정한 로컬 서버에서만 키를 입력하세요." : "키는 연결된 내 컴퓨터의 실행 프로그램에 저장해요.";
     }
 
     function connectionSnapshot() {
@@ -945,6 +1040,7 @@ async function bindEvents() {
     async function refreshModelOptions(requestVersion, snapshot = connectionSnapshot()) {
         const { provider, selectedModel: currentModel } = snapshot;
         if (document.getElementById("modalApiModel") !== modelSelect) return;
+        if (manualModel || isSetupOnlyRuntime()) return;
 
         if (!provider) {
             modelSelect.innerHTML = '<option value="">모델을 선택하세요</option>';
@@ -990,6 +1086,7 @@ async function bindEvents() {
     }
 
     function scheduleModelRefresh() {
+        if (manualModel || isSetupOnlyRuntime()) return;
         const requestVersion = ++modelRequestVersion;
         const snapshot = connectionSnapshot();
         if (modelRefreshTimer !== null) clearTimeout(modelRefreshTimer);
@@ -1003,11 +1100,19 @@ async function bindEvents() {
         }, 300);
     }
 
+    function updateModelSuggestions() {
+        const list = document.getElementById("modalModelSuggestions");
+        if (!list) return;
+        const models = providerSelect.value === "custom" ? [] : PROVIDER_MODEL_MAP[providerSelect.value] || [];
+        list.innerHTML = models.filter(id => id !== "custom-model")
+            .map(id => `<option value="${escapeAttr(id)}"></option>`).join("");
+    }
     providerSelect.addEventListener("change", () => {
         clearConnectionSelection();
         baseUrlInput.value = getDefaultBaseUrl(providerSelect.value);
         previousBaseUrl = baseUrlInput.value.trim();
         updateKeyHint();
+        updateModelSuggestions();
         scheduleModelRefresh();
     });
     apiKeyInput.addEventListener("input", scheduleModelRefresh);
@@ -1016,7 +1121,7 @@ async function bindEvents() {
         previousBaseUrl = baseUrlInput.value.trim();
         scheduleModelRefresh();
     });
-    modelSelect.addEventListener("change", () => {
+    modelSelect.addEventListener(manualModel ? "input" : "change", () => {
         modelSelect.dataset.selectedModel = modelSelect.value || "";
     });
     document.getElementById("modalRefreshModels")?.addEventListener("click", () => {
@@ -1024,7 +1129,9 @@ async function bindEvents() {
     });
 
     updateKeyHint();
-    if (isLocalProvider(providerSelect.value) || apiKeyInput.value.trim()) {
+    if (manualModel) {
+        updateModelSuggestions();
+    } else if (isLocalProvider(providerSelect.value) || apiKeyInput.value.trim()) {
         scheduleModelRefresh();
     } else {
         const requestVersion = ++modelRequestVersion;
@@ -1039,6 +1146,7 @@ async function bindEvents() {
 // =========================================================
 return {
     setConsole,
+    safeBaseUrl,
     renderApiKeyModalContent,
     saveApiKeyModal,
     switchToKey,
