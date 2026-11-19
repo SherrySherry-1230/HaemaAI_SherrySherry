@@ -4,6 +4,12 @@ const tag = 'console-installers';
 const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag;
 const downloadBase = 'https://github.com/' + repository + '/releases/download/' + tag + '/';
 const platforms = ['windows', 'macos'];
+// Use these fixed hrefs on a user gesture. The registered Windows app confirms the target folder.
+export const windowsLauncherHandles = Object.freeze({
+    aiStart: 'haema-ai://ai-start',
+    start: 'haema-ai://start',
+    stop: 'haema-ai://stop',
+});
 const windowsTester = Object.freeze({
     url: 'https://drive.google.com/uc?export=download&id=1qLzS2410dYJuPD3Bw28BvNXtE3Xnp_9W',
     restricted: true,

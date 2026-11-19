@@ -1,3 +1,4 @@
+/* @editedBy YAONG1230 2026-11-19: Figma launcher buttons in the header. */
 @font-face {
   font-family: "Haema CookieRun";
   src: url("../Resources/haema-design/fonts/CookieRunWebBlack.woff2") format("woff2");
@@ -167,4 +168,158 @@
     flex-basis: 300px;
     width: 300px;
   }
+}
+
+.header-launcher {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+.launcher-key {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 54px;
+  height: 52px;
+  padding: 0;
+  border: 0;
+  border-radius: 45%;
+  background: transparent;
+  color: var(--haema-white);
+  font: 400 12px/1 "CookieRun Regular", sans-serif;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 1.45px #624f52;
+  text-shadow: 0 -1px .65px #4e4043, 0 1px 1px rgb(74 53 56 / 64%);
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.launcher-key-start {
+  --shape: url("../Resources/haema-design/header-launcher/start.svg");
+  --fill: #ffe895;
+}
+
+.launcher-key-ai-start {
+  --shape: url("../Resources/haema-design/header-launcher/ai-start.svg");
+  --fill: #a2ed99;
+}
+
+.launcher-key-stop {
+  --shape: url("../Resources/haema-design/header-launcher/stop.svg");
+  --fill: #ffa5b7;
+}
+
+/* The mask clips only the enamel. Its soft shadow falls outside the vector. */
+.launcher-key-face {
+  display: grid;
+  position: relative;
+  isolation: isolate;
+  place-items: center;
+  width: 48.2773px;
+  height: 48.3271px;
+  filter: drop-shadow(0 2px 2px rgb(63 44 46 / 19%));
+  transition: transform 130ms ease, filter 130ms ease;
+}
+
+.launcher-key-start .launcher-key-face { height: 47.9743px; }
+
+.header-launcher-hint {
+  position: absolute;
+  z-index: 4;
+  top: calc(50% + 30px);
+  left: 10px;
+  display: none;
+  width: min(290px, calc(100vw - 34px));
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: var(--haema-white);
+  box-shadow: 0 2px 8px rgb(63 44 46 / 14%);
+  color: var(--ink);
+  font: 400 12px/1.5 "Haema Guide Gowun Dodum", sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.header-launcher:is(:focus-within, :hover) .header-launcher-hint:not(:empty) { display: block; }
+
+.launcher-key-face::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(ellipse at 28% 19%, rgb(255 250 222 / 80%), transparent 43%),
+    linear-gradient(to top, rgb(81 53 49 / 23%), transparent 14%),
+    var(--fill);
+  mask: var(--shape) center / 100% 100% no-repeat;
+}
+
+@media (hover: hover) {
+  .launcher-key[href]:hover .launcher-key-face {
+    transform: translateY(-2px);
+    filter: drop-shadow(0 -1px 0 #fffade) drop-shadow(0 1px 0 #fffade) drop-shadow(0 4px 3px rgb(63 44 46 / 22%));
+  }
+}
+
+.launcher-key[href]:active .launcher-key-face {
+  transform: translateY(2px);
+  filter: drop-shadow(0 1px 1px rgb(63 44 46 / 16%));
+}
+
+.launcher-key[href]:active .launcher-key-face::before {
+  background:
+    radial-gradient(ellipse at 27% 25%, rgb(255 250 222 / 40%), transparent 44%),
+    linear-gradient(to bottom, rgb(73 47 45 / 32%), transparent 18%),
+    color-mix(in srgb, var(--fill), #62453d 10%);
+}
+
+.launcher-key:focus-visible {
+  outline: 2px solid #675077;
+  outline-offset: 2px;
+}
+
+.launcher-key[aria-disabled="true"] { cursor: not-allowed; }
+.launcher-key[aria-disabled="true"] .launcher-key-face {
+  filter: drop-shadow(0 1px 1px rgb(63 44 46 / 11%));
+}
+.launcher-key[aria-disabled="true"] .launcher-key-face::before {
+  filter: saturate(.48) opacity(.77);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launcher-key .launcher-key-face { transition: none; }
+  .launcher-key[href]:is(:active, :hover) .launcher-key-face { transform: none; }
+}
+
+@media (min-width: 821px) {
+  .header-launcher {
+    /* The 96vw header starts at 2vw. The slot starts at x=1117 at 1728px. */
+    position: absolute;
+    top: 22px;
+    left: min(62.6412vw, calc(100% - 338px));
+    width: min(464px, 26.852vw);
+    height: 97px;
+    pointer-events: none;
+  }
+  .header-launcher :is(.launcher-key, .header-launcher-hint) { pointer-events: auto; }
+}
+
+@media (max-width: 820px) {
+  .header-right {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    align-items: center;
+    justify-items: end;
+    gap: 2px 8px;
+  }
+  .header-launcher { grid-area: 1 / 1 / span 2; padding: 0; }
+  .header-launcher-hint { left: 0; }
+  .header-right .status-bar { max-width: 100%; }
 }

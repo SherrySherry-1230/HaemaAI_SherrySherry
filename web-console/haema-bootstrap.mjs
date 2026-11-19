@@ -1,7 +1,8 @@
+// @editedBy YAONG1230 2026-11-19: refresh header launcher assets
 // @editedBy SherrySherry 2026-11-19
 import { connection } from './haema-local-connection.mjs?v=20261119-recovery';
-import { detectDownloadPlatform, loadDownloads } from './storage-downloads.mjs?v=20261119-recovery';
-globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads });
+import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261119-launcher-handles';
+globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
 const connectionStarted = connection.start();
 const setupMessage = '쩜통 버튼에서 이 컴퓨터에 맞는 쩜통을 다운로드해 주세요. 압축을 풀고 시작 파일을 한 번 열면 실행부와 쩜통을 준비하고 웹콘솔에 연결해요. 이미 준비했다면 같은 시작 파일을 다시 열어 주세요.';
 const resettable = new Set(['REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
@@ -32,7 +33,7 @@ globalThis.HAEMA_RECONNECT_LOCAL = () => {
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261119-saved-profile", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261119-intro-memory", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-intro-memory", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-windows-controls"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261119-saved-profile", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261119-intro-memory", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261119-launcher-handles", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-launcher-handles"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');

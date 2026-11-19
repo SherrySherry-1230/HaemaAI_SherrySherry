@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-11-19: storage precedes API in the toolbar
+// @editedBy YAONG1230 2026-11-19: header launcher and storage before API in the toolbar
 // @editedBy SherrySherry 2026-11-18
 // @editedBy YAONG1230 2026-11-10: separate toolbar states and calendar status presentation
 // @editedBy SherrySherry 2026-11-09: shared connection rendering; stored values preserved
@@ -289,6 +289,7 @@ HAEMA_CONSOLE.renderHeader = function() {
         '<div class="haema-brand-copy"><h1 class="haema-brand-title">해마.ai</h1><p class="haema-brand-tagline">     당신의 기억을 보존하고,&#10;    필요한 순간 다시 연결합니다.&#10;&#10;   인공지능의 인공 해마.&#10;당신을 기억하게 하세요.</p></div>',
         '</div>',
         '<div class="header-right">',
+        globalThis.HAEMA_STORAGE_MODAL?.renderHeaderLauncher?.() || '',
         '<a class="repo-link" href="https://github.com/SherrySherry-1230/HaemaAI_SherrySherry" target="_blank" rel="noreferrer">GitHub 저장소</a>',
         '<div class="status-bar"><img class="status-art" src="Resources/haema-design/button-raster-4x/17-haema-status-pill.png" width="161.83" height="26" alt=""><span class="status-emojis">' + emojis + '</span><span class="status-text">' + this.escapeHtml(this.statusText) + '</span></div>',
         '</div>',
@@ -1084,6 +1085,7 @@ HAEMA_CONSOLE.observeSeonLayout = function() {
 
 // ===== 이벤트 리스너 =====
 HAEMA_CONSOLE.attachEventListeners = function(liveModal) {
+    globalThis.HAEMA_STORAGE_MODAL?.bindHeaderLauncher?.(document.getElementById('headerLauncher'));
     const sendBtn = document.getElementById("sendBtn");
     const clearBtn = document.getElementById("clearBtn");
     const createBtn = document.getElementById("createJJumBtn");
