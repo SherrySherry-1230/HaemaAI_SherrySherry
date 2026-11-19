@@ -1,3 +1,4 @@
+/* @editedBy YAONG1230 2026-11-19: storage precedes API on narrow screens */
 /* @editedBy YAONG1230 2026-11-17: high-resolution original artwork on small controls. */
 @media (max-width: 820px) {
     .mobile-tabs {
@@ -214,8 +215,8 @@
         justify-self: end;
         max-width: 100%;
     }
-    .conversation-toolbar #storageBtn { grid-area: 1 / 2; }
-    .conversation-toolbar #apiKeyBtn { grid-area: 1 / 1; }
+    .conversation-toolbar #storageBtn { grid-area: 1 / 1; }
+    .conversation-toolbar #apiKeyBtn { grid-area: 1 / 2; }
 }
 
 @media (max-width: 820px) and (hover: hover) {
