@@ -17,15 +17,22 @@ async function run() {
   assert.equal(process.platform, 'win32');
   assert.equal(process.arch, 'x64');
   assert.equal(await realpath(process.execPath), await realpath(join(source,'.haema','node','win-x64','node.exe')));
-  const powershell = join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
-  const elevated = execFileSync(powershell, ['-NoProfile','-NonInteractive','-Command',
-    '([Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent())).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)'],
-    {encoding:'utf8',windowsHide:true}).trim();
-  assert.equal(elevated,'False');
-  assert.match(process.env.USERNAME ?? '', /^hm[0-9a-f]{12}$/i);
-  assert.equal(basename(process.env.USERPROFILE).toLowerCase(),process.env.USERNAME.toLowerCase());
-
-  const parent = join(process.env.LOCALAPPDATA, 'Temp');
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+  const powershell = join(systemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe');
+  const account = JSON.parse(execFileSync(powershell, ['-NoProfile','-NonInteractive','-Command', `
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $admin = ([Security.Principal.WindowsPrincipal]::new($id)).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $key = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\' + $id.User.Value
+    @{admin=$admin; name=$id.Name.Split('\\')[-1]; profile=[Environment]::ExpandEnvironmentVariables((Get-ItemProperty $key).ProfileImagePath)} | ConvertTo-Json -Compress
+  `], {encoding:'utf8',windowsHide:true}));
+  assert.equal(account.admin,false);
+  assert.match(account.name, /^hm[0-9a-f]{12}$/i);
+  assert.equal(basename(account.profile).toLowerCase(),account.name.toLowerCase());
+  // -UseNewEnvironment starts from machine variables. Build only the ordinary
+  // per-user paths for the actual token from Windows' loaded profile record.
+  const parent = join(account.profile,'AppData','Local','Temp');
+  Object.assign(process.env, {SystemRoot:systemRoot,WINDIR:systemRoot,USERNAME:account.name,USERPROFILE:account.profile,
+    LOCALAPPDATA:dirname(parent),APPDATA:join(account.profile,'AppData','Roaming'),TEMP:parent,TMP:parent});
   await mkdir(parent,{recursive:true});
   const temp = await mkdtemp(join(parent,'해마 확인 '));
   const root = join(temp,basename(source));
@@ -103,17 +110,25 @@ async function run() {
     await fullRun;
     assert.equal((await entry.inspectWebControlTarget(root)).running,null);
     controls = null;
+  } catch (error) {
+    await reportFailure(error);
+    throw error;
   } finally {
-    if (controls) await controls('stop').catch(() => {});
-    await Promise.allSettled([setupRun,fullRun]);
+    const cleanup = async () => {
+      if (controls) await controls('stop').catch(() => {});
+      await Promise.allSettled([setupRun,fullRun]);
+    };
+    let timer;
+    try {
+      await Promise.race([cleanup(), new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error('CLEANUP_TIMEOUT')),8000);
+      })]);
+    } finally { clearTimeout(timer); }
     await rm(temp,{recursive:true,force:true,maxRetries:3,retryDelay:300});
   }
 }
 
-try {
-  await run();
-  await writeFile(statusFile,'PASS STOPPED');
-} catch (error) {
+async function reportFailure(error) {
   // Only report fixed classifications from the shipped launcher.
   const known = new Set(['PUBLIC_SERVICE_UNAVAILABLE','CONNECTION_SETTINGS_INVALID','STATE_PERMISSIONS_UNAVAILABLE',
     'STATE_PERMISSIONS_READ_FAILED','STATE_PERMISSIONS_WRITE_FAILED','STATE_PERMISSIONS_VERIFY_FAILED',
@@ -121,5 +136,12 @@ try {
     'LOCAL_PORT_START_FAILED','RUNTIME_START_FAILED','RUNTIME_READY_TIMEOUT','PAYLOAD_FILE_CHANGED']);
   const detail = known.has(error?.message) ? '_' + error.message : '';
   await writeFile(statusFile,'FAIL ' + phase + detail);
+}
+
+try {
+  await run();
+  await writeFile(statusFile,'PASS STOPPED');
+} catch (error) {
+  await reportFailure(error);
   process.exitCode = 1;
 }
