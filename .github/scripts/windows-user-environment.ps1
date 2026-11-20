@@ -62,7 +62,14 @@ public static class SmokeEnvironment {
     $info.Arguments = '"{0}" "{1}" "{2}" standard' -f (Join-Path $PSScriptRoot 'smoke.mjs'),$Source,$Report
     $child = [Diagnostics.Process]::Start($info)
     $child.WaitForExit()
-    exit $child.ExitCode
+    $exitCode = $child.ExitCode
+    $child.Dispose()
+    if ($null -eq $exitCode -or $exitCode -ne 0 -or
+        [IO.File]::ReadAllText($Report).Trim() -cne 'PASS STOPPED') {
+        throw 'Child did not complete the release check.'
+    }
+    [IO.File]::WriteAllText($Report, 'PASS STANDARD_PROCESS_EXITED')
+    exit 0
 } catch {
     [IO.File]::WriteAllText($Report, "FAIL $phase")
     exit 1

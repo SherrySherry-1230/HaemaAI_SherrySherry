@@ -73,8 +73,12 @@ try {
             $last = $status
         }
         if ($process.HasExited) {
-            Write-Host "Native smoke process exit code: $($process.ExitCode)"
-            if ($process.ExitCode -eq 0 -and $status -ceq 'PASS STOPPED') { return }
+            $status = [IO.File]::ReadAllText($report).Trim()
+            $exitCode = $process.ExitCode
+            if ($null -ne $exitCode -and $exitCode -ne 0) { throw "Test process exited with code $exitCode." }
+            # The wrapper reads the child exit code under its own Windows identity.
+            if ($env:SMOKE_PROFILE -eq 'standard' -and $status -ceq 'PASS STANDARD_PROCESS_EXITED') { return }
+            if ($env:SMOKE_PROFILE -eq 'runner' -and $exitCode -eq 0 -and $status -ceq 'PASS STOPPED') { return }
             throw 'Windows smoke process ended without passing.'
         }
         if ($status -match '\AFAIL ') { [void]$process.WaitForExit(10000); throw 'Windows smoke failed during the reported phase.' }
