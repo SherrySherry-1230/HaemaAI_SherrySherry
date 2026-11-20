@@ -1,4 +1,4 @@
-// @editedBy SherrySherry 2026-11-19
+// @editedBy SherrySherry 2026-11-20
 const repository = 'SherrySherry-1230/HaemaAI_SherrySherry';
 const tag = 'console-installers';
 const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag;
@@ -10,9 +10,9 @@ export const windowsLauncherHandles = Object.freeze({
     start: 'haema-ai://start',
     stop: 'haema-ai://stop',
 });
-const windowsTester = Object.freeze({
-    url: 'https://drive.google.com/uc?export=download&id=1qLzS2410dYJuPD3Bw28BvNXtE3Xnp_9W',
-    restricted: true,
+const windowsDownload = Object.freeze({
+    url: downloadBase + 'haema-ai-windows.zip',
+    fileName: 'haema-ai-windows.zip',
 });
 
 export function detectDownloadPlatform(navigator = globalThis.navigator) {
@@ -40,16 +40,15 @@ export function parseInstallerRelease(release) {
 }
 
 export async function loadDownloads(fetcher = globalThis.fetch) {
-    let release = { state: 'unavailable', downloads: {} };
     try {
         const response = await fetcher(releaseApi, {
             credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
             headers: { Accept: 'application/vnd.github+json' },
             signal: AbortSignal.timeout(8000),
         });
-        if (response.status === 404) release.state = 'unpublished';
-        else if (response.ok) release = parseInstallerRelease(await response.json());
-    } catch { /* The console remains available while downloads cannot be checked. */ }
-    release.downloads.windows ??= windowsTester;
-    return release;
+        if (response.status === 404) return { state: 'unpublished', downloads: {} };
+        if (response.ok) return parseInstallerRelease(await response.json());
+    } catch { /* The published Windows asset also has a stable download URL. */ }
+    // GitHub limits anonymous metadata requests independently of release downloads.
+    return { state: 'unavailable', downloads: { windows: windowsDownload } };
 }
