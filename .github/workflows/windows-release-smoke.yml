@@ -1,0 +1,32 @@
+name: Windows installer smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha256:
+        description: SHA-256 of the approved haema-ai-windows.zip
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Windows ${{ matrix.profile }} profile
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [runner, standard]
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check the downloaded Windows release
+        shell: powershell
+        env:
+          SMOKE_PROFILE: ${{ matrix.profile }}
+          RELEASE_SHA256: ${{ inputs.sha256 }}
+        run: .\.github\scripts\windows-release-smoke.ps1
