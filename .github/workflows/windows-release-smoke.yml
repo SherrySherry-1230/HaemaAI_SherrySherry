@@ -13,15 +13,20 @@ permissions:
 
 jobs:
   verify:
-    if: github.ref == 'refs/heads/main'
+    name: Windows ${{ matrix.profile }} profile
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [runner, standard]
     runs-on: windows-latest
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Check the release under a fresh standard Windows user
+      - name: Check the downloaded Windows release
         shell: powershell
         env:
+          SMOKE_PROFILE: ${{ matrix.profile }}
           RELEASE_SHA256: ${{ inputs.sha256 }}
         run: .\.github\scripts\windows-release-smoke.ps1
