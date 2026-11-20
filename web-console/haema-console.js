@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-21: paint thin connections above thick ones while keeping their original lanes.
 // @editedBy YAONG1230 2026-11-20: reconcile the open API form when the runtime mode changes.
 // @editedBy YAONG1230 2026-11-19: header launcher and storage before API in the toolbar
 // @editedBy SherrySherry 2026-11-18
@@ -991,13 +992,18 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
                 (isExpanded ? '' : summaryHtml) + '</button>' + detailsHtml + '</div>' +
             '<button class="jjum-expand" type="button" data-action="toggle" aria-expanded="' + isExpanded + '" aria-label="' + escape(name) + (isExpanded ? ' 접기' : ' 펼치기') + '"><img src="Resources/haema-design/card-toggle/' + (isExpanded ? 'collapse-' : 'expand-') + state + '.svg" width="29.3827" height="17.0097" alt=""></button></article>';
     }).join('');
-    const connectorsHtml = sortedJJums.flatMap(jjum => (Array.isArray(jjum.seons) ? jjum.seons : []).map(relation => {
-        if (!relation || typeof relation !== 'object') return '';
-        if (relation.targetId === jjum.jjumId || !sortedJJums.some(item => item.jjumId === relation.targetId)) return '';
+    const connectors = [];
+    sortedJJums.forEach(jjum => (Array.isArray(jjum.seons) ? jjum.seons : []).forEach(relation => {
+        if (!relation || typeof relation !== 'object') return;
+        if (relation.targetId === jjum.jjumId || !visibleIds.has(relation.targetId)) return;
         const display = this.seonDisplay(relation.weight);
-        if (display.state === 'inactive') return '';
-        return '<path class="seon-curve" data-source-id="' + escape(jjum.jjumId) + '" data-target-id="' + escape(relation.targetId) + '" data-seon-level="' + (display.level ?? 'unknown') + '" vector-effect="non-scaling-stroke"></path>';
-    })).join('');
+        if (display.state === 'inactive') return;
+        // The unconfirmed line is drawn with a 2px dashed stroke.
+        connectors.push({ width: display.level ?? 2, html: '<path class="seon-curve" data-lane-order="' + connectors.length +
+            '" data-source-id="' + escape(jjum.jjumId) + '" data-target-id="' + escape(relation.targetId) +
+            '" data-seon-level="' + (display.level ?? 'unknown') + '" vector-effect="non-scaling-stroke"></path>' });
+    }));
+    const connectorsHtml = connectors.sort((a, b) => b.width - a.width).map(connector => connector.html).join('');
     return '<div class="jjum-list-section"><div class="jjum-list">' + (connectorsHtml ? '<svg class="seon-connections" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">' + connectorsHtml + '</svg>' : '') + accordionHtml + '</div></div>';
 };
 
@@ -1037,7 +1043,7 @@ HAEMA_CONSOLE.updateSeonLayout = function() {
     });
     if (!routes.length) return;
     // Ordinal distance stays fixed when a card opens, unlike its measured height.
-    routes.sort((a, b) => a.distance - b.distance);
+    routes.sort((a, b) => a.distance - b.distance || Number(a.path.dataset.laneOrder) - Number(b.path.dataset.laneOrder));
     const groups = [];
     routes.forEach(route => {
         const previous = groups[groups.length - 1];
