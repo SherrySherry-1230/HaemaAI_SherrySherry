@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const [source, statusFile] = process.argv.slice(2);
+const [source, statusFile, profile] = process.argv.slice(2);
 const load = file => import(pathToFileURL(file).href);
 let phase = 'WINDOWS_STANDARD_USER';
 async function step(name) {
@@ -13,7 +13,8 @@ async function step(name) {
 }
 
 async function run() {
-  await step('WINDOWS_STANDARD_USER');
+  assert.ok(['runner','standard'].includes(profile));
+  await step(profile === 'runner' ? 'WINDOWS_HOSTED_RUNNER' : 'WINDOWS_STANDARD_USER');
   assert.equal(process.platform, 'win32');
   assert.equal(process.arch, 'x64');
   assert.equal(await realpath(process.execPath), await realpath(join(source,'.haema','node','win-x64','node.exe')));
@@ -25,11 +26,12 @@ async function run() {
     $key = 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\ProfileList\\' + $id.User.Value
     @{admin=$admin; name=$id.Name.Split('\\')[-1]; profile=[Environment]::ExpandEnvironmentVariables((Get-ItemProperty $key).ProfileImagePath)} | ConvertTo-Json -Compress
   `], {encoding:'utf8',windowsHide:true}));
-  assert.equal(account.admin,false);
-  assert.match(account.name, /^hm[0-9a-f]{12}$/i);
-  assert.equal(basename(account.profile).toLowerCase(),account.name.toLowerCase());
-  // -UseNewEnvironment starts from machine variables. Build only the ordinary
-  // per-user paths for the actual token from Windows' loaded profile record.
+  if (profile === 'standard') {
+    assert.equal(account.admin,false);
+    assert.match(account.name, /^hm[0-9a-f]{12}$/i);
+    assert.equal(basename(account.profile).toLowerCase(),account.name.toLowerCase());
+  }
+  // Install into a fresh temporary directory of the actual Windows account.
   const parent = join(account.profile,'AppData','Local','Temp');
   Object.assign(process.env, {SystemRoot:systemRoot,WINDIR:systemRoot,USERNAME:account.name,USERPROFILE:account.profile,
     LOCALAPPDATA:dirname(parent),APPDATA:join(account.profile,'AppData','Roaming'),TEMP:parent,TMP:parent});

@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+if ($env:SMOKE_PROFILE -notin 'runner','standard') { throw 'Unexpected Windows smoke profile.' }
 if ($env:RELEASE_SHA256 -notmatch '\A[0-9a-fA-F]{64}\z') { throw 'A 64-digit release SHA-256 is required.' }
 
 $url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows.zip'
@@ -24,35 +25,44 @@ try {
     $script = Join-Path $stage 'smoke.mjs'
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-release-smoke.mjs') -Destination $script
 
-    # The hosted runner is elevated. Use a new local account with a non-elevated
-    # token and its own HKCU, profile and TEMP for installation and native actions.
-    $password = ConvertTo-SecureString ('aA1!' + [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
-    $user = New-LocalUser -Name $account -Password $password
-    $users = Get-LocalGroup -SID 'S-1-5-32-545'
-    if (-not (Get-LocalGroupMember -Group $users.Name | Where-Object SID -eq $user.SID)) {
-        Add-LocalGroupMember -Group $users.Name -Member $user
-    }
+    Write-Host 'STEP HOSTED_RUNNER_BUNDLED_CSPRNG'
+    & $node -e "require('node:crypto').randomBytes(16)"
+    if ($LASTEXITCODE -ne 0) { throw "Bundled Node RNG failed in the hosted runner profile (exit $LASTEXITCODE)." }
+    Write-Host 'PASS HOSTED_RUNNER_BUNDLED_CSPRNG'
     $report = Join-Path $stage 'status.txt'
     [IO.File]::WriteAllText($report, 'WAITING')
-    $sid = '*' + $user.SID.Value
-    & icacls.exe $stage /grant ("${sid}:(OI)(CI)RX") | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not grant read access to test inputs.' }
-    & icacls.exe $report /grant ("${sid}:M") | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Could not grant write access to the test report.' }
-
-    $credential = [pscredential]::new("$env:COMPUTERNAME\$account", $password)
-    $arguments = '"{0}" "{1}" "{2}"' -f $script, $stores[0].FullName, $report
-    Write-Host 'STEP LAUNCH_STANDARD_USER'
-    Start-Service -Name seclogon
-    try {
-        $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $stage -Credential $credential -LoadUserProfile -UseNewEnvironment -PassThru
-    } catch {
-        $cause = $_.Exception
-        while ($cause.InnerException) { $cause = $cause.InnerException }
-        if ($cause -is [ComponentModel.Win32Exception]) { Write-Host "Standard-user launch Win32 code: $($cause.NativeErrorCode)" }
-        throw 'Could not start node.exe under the standard Windows user.'
+    if ($env:SMOKE_PROFILE -eq 'runner') {
+        $arguments = '"{0}" "{1}" "{2}" runner' -f $script, $stores[0].FullName, $report
+        $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $stage -PassThru
+    } else {
+        $nativeScript = Join-Path $stage 'user-env.ps1'
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-user-environment.ps1') -Destination $nativeScript
+        $password = ConvertTo-SecureString ('aA1!' + [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
+        $user = New-LocalUser -Name $account -Password $password
+        $users = Get-LocalGroup -SID 'S-1-5-32-545'
+        if (-not (Get-LocalGroupMember -Group $users.Name | Where-Object SID -eq $user.SID)) {
+            Add-LocalGroupMember -Group $users.Name -Member $user
+        }
+        $sid = '*' + $user.SID.Value
+        & icacls.exe $stage /grant ("${sid}:(OI)(CI)RX") | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Could not grant read access to test inputs.' }
+        & icacls.exe $report /grant ("${sid}:M") | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Could not grant write access to the test report.' }
+        $credential = [pscredential]::new("$env:COMPUTERNAME\$account", $password)
+        $arguments = '-NoProfile -NonInteractive -File "{0}" "{1}" "{2}"' -f $nativeScript,$stores[0].FullName,$report
+        $powershell = Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'
+        Write-Host 'STEP LAUNCH_STANDARD_POWERSHELL'
+        Start-Service -Name seclogon
+        try {
+            $process = Start-Process -FilePath $powershell -ArgumentList $arguments -WorkingDirectory $stage -Credential $credential -LoadUserProfile -PassThru
+        } catch {
+            $cause = $_.Exception
+            while ($cause.InnerException) { $cause = $cause.InnerException }
+            if ($cause -is [ComponentModel.Win32Exception]) { Write-Host "Standard-user launch Win32 code: $($cause.NativeErrorCode)" }
+            throw 'Could not launch the standard Windows profile.'
+        }
     }
-    Write-Host "Started standard-user process $($process.Id)."
+    Write-Host "Started $($env:SMOKE_PROFILE) test process $($process.Id)."
     $started = [datetime]::UtcNow
     $last = ''
     do {
@@ -63,8 +73,12 @@ try {
             $last = $status
         }
         if ($process.HasExited) {
-            Write-Host "Standard-user process exit code: $($process.ExitCode)"
-            if ($process.ExitCode -eq 0 -and $status -ceq 'PASS STOPPED') { return }
+            $status = [IO.File]::ReadAllText($report).Trim()
+            $exitCode = $process.ExitCode
+            if ($null -ne $exitCode -and $exitCode -ne 0) { throw "Test process exited with code $exitCode." }
+            # The wrapper reads the child exit code under its own Windows identity.
+            if ($env:SMOKE_PROFILE -eq 'standard' -and $status -ceq 'PASS STANDARD_PROCESS_EXITED') { return }
+            if ($env:SMOKE_PROFILE -eq 'runner' -and $exitCode -eq 0 -and $status -ceq 'PASS STOPPED') { return }
             throw 'Windows smoke process ended without passing.'
         }
         if ($status -match '\AFAIL ') { [void]$process.WaitForExit(10000); throw 'Windows smoke failed during the reported phase.' }
