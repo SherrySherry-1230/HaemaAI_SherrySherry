@@ -6,9 +6,8 @@ $url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/downl
 $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $stage = Join-Path $env:ProgramData "hm-$id"
 $account = "hm$id"
-$task = "HaemaSmoke-$id"
 $user = $null
-$registered = $false
+$process = $null
 try {
     New-Item -ItemType Directory -Path $stage | Out-Null
     $zip = Join-Path $stage 'windows.zip'
@@ -27,8 +26,8 @@ try {
 
     # The hosted runner is elevated. Use a new local account with a non-elevated
     # token and its own HKCU, profile and TEMP for installation and native actions.
-    $password = 'aA1!' + [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')
-    $user = New-LocalUser -Name $account -Password (ConvertTo-SecureString $password -AsPlainText -Force)
+    $password = ConvertTo-SecureString ('aA1!' + [guid]::NewGuid().ToString('N') + [guid]::NewGuid().ToString('N')) -AsPlainText -Force
+    $user = New-LocalUser -Name $account -Password $password
     $users = Get-LocalGroup -SID 'S-1-5-32-545'
     if (-not (Get-LocalGroupMember -Group $users.Name | Where-Object SID -eq $user.SID)) {
         Add-LocalGroupMember -Group $users.Name -Member $user
@@ -41,35 +40,42 @@ try {
     & icacls.exe $report /grant ("${sid}:M") | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant write access to the test report.' }
 
-    # Paths come from the fixed digest-verified archive and this ephemeral staging area.
-    $action = New-ScheduledTaskAction -Execute $node -Argument ('"{0}" "{1}" "{2}"' -f $script, $stores[0].FullName, $report) -WorkingDirectory $stage
-    $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Minutes 8)
-    Register-ScheduledTask -TaskName $task -User "$env:COMPUTERNAME\$account" -Password $password -RunLevel Limited -Action $action -Settings $settings | Out-Null
-    $registered = $true
-    $password = $null
-    Start-ScheduledTask -TaskName $task
-    $finish = [datetime]::UtcNow.AddMinutes(8)
+    $credential = [pscredential]::new("$env:COMPUTERNAME\$account", $password)
+    $arguments = '"{0}" "{1}" "{2}"' -f $script, $stores[0].FullName, $report
+    Write-Host 'STEP LAUNCH_STANDARD_USER'
+    Start-Service -Name seclogon
+    try {
+        $process = Start-Process -FilePath $node -ArgumentList $arguments -WorkingDirectory $stage -Credential $credential -LoadUserProfile -UseNewEnvironment -PassThru
+    } catch {
+        $cause = $_.Exception
+        while ($cause.InnerException) { $cause = $cause.InnerException }
+        if ($cause -is [ComponentModel.Win32Exception]) { Write-Host "Standard-user launch Win32 code: $($cause.NativeErrorCode)" }
+        throw 'Could not start node.exe under the standard Windows user.'
+    }
+    Write-Host "Started standard-user process $($process.Id)."
+    $started = [datetime]::UtcNow
     $last = ''
     do {
-        Start-Sleep -Seconds 3
+        $process.Refresh()
         $status = [IO.File]::ReadAllText($report).Trim()
-        if ($status -match '\A(?:STEP|FAIL|PASS) [A-Z0-9_]{1,64}\z' -and $status -ne $last) {
+        if ($status -match '\A(?:STEP|FAIL|PASS) [A-Z0-9_]{1,96}\z' -and $status -ne $last) {
             Write-Host $status
             $last = $status
         }
-        if ($status -ceq 'PASS STOPPED') { return }
-        if ($status -match '\AFAIL ') { throw 'Windows release smoke failed. See the last reported phase.' }
-        $info = Get-ScheduledTaskInfo -TaskName $task
-        if ($info.LastRunTime.Year -gt 2000 -and (Get-ScheduledTask -TaskName $task).State -eq 'Ready') {
-            if ([IO.File]::ReadAllText($report).Trim() -ceq 'PASS STOPPED') { Write-Host 'PASS STOPPED'; return }
-            throw "Test process exited without success (Windows result $($info.LastTaskResult))."
+        if ($process.HasExited) {
+            Write-Host "Standard-user process exit code: $($process.ExitCode)"
+            if ($process.ExitCode -eq 0 -and $status -ceq 'PASS STOPPED') { return }
+            throw 'Windows smoke process ended without passing.'
         }
-    } while ([datetime]::UtcNow -lt $finish)
-    throw 'Timed out waiting for the standard-user smoke test.'
+        if ($status -match '\AFAIL ') { [void]$process.WaitForExit(10000); throw 'Windows smoke failed during the reported phase.' }
+        if (-not $last -and ([datetime]::UtcNow - $started).TotalSeconds -gt 45) { throw 'The launched process did not report its first phase.' }
+        Start-Sleep -Seconds 2
+    } while (([datetime]::UtcNow - $started).TotalMinutes -lt 8)
+    throw 'Timed out during the last reported Windows smoke phase.'
 } finally {
-    if ($registered) {
-        Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
-        Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
+    if ($null -ne $process) {
+        if (-not $process.HasExited) { & taskkill.exe /PID $process.Id /T /F | Out-Null }
+        $process.Dispose()
     }
     if ($null -ne $user) { Remove-LocalUser -SID $user.SID -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
