@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-22: preserve host draft revisions and native clicks that commit an IME composition.
 // @editedBy YAONG1230 2026-11-21: paint thin connections above thick ones while keeping their original lanes.
 // @editedBy YAONG1230 2026-11-20: reconcile the open API form when the runtime mode changes.
 // @editedBy YAONG1230 2026-11-19: header launcher and storage before API in the toolbar
@@ -145,8 +146,31 @@ HAEMA_CONSOLE.replaceViewPreservingInput = function(app, html, input, liveModal 
     }
 };
 
+HAEMA_CONSOLE.holdCompositionClick = function(event) {
+    const app = HAEMA_CONSOLE;
+    if (!app.isComposing || app.compositionPointer || !event.isPrimary || event.button !== 0 ||
+        !event.target.closest?.('#app :is(button:enabled, a[href], [role="option"]):not([aria-disabled="true"])')) return;
+
+    // Blurring the editor commits the IME before Chrome dispatches click. Keep the pressed control mounted.
+    const gesture = new AbortController();
+    app.compositionPointer = gesture;
+    const release = () => {
+        if (gesture.signal.aborted) return;
+        gesture.abort();
+        app.compositionPointer = null;
+        setTimeout(() => { if (app.deferredCompositionRender) app.render(); }, 0);
+    };
+    const afterPointer = end => { if (end.pointerId === event.pointerId) setTimeout(release, 0); };
+    const options = { capture: true, signal: gesture.signal };
+    window.addEventListener('click', release, options);
+    window.addEventListener('pointerup', afterPointer, options);
+    window.addEventListener('pointercancel', afterPointer, options);
+    window.addEventListener('keydown', release, options);
+    window.addEventListener('blur', release, { signal: gesture.signal });
+};
+
 HAEMA_CONSOLE.render = function() {
-    if (this.isComposing) { this.deferredCompositionRender = true; return; }
+    if (this.isComposing || this.compositionPointer) { this.deferredCompositionRender = true; return; }
     this.deferredCompositionRender = false;
     const app = document.getElementById("app");
     // allJJums가 초기화되지 않았으면 빈 배열로 초기화
@@ -551,8 +575,9 @@ HAEMA_CONSOLE.switchChatHost = function(value) {
         this.lastInputValue = input?.value || '';
         this.haemaModeDraftScope = memoryKey;
         if (memoryKey) try { sessionStorage.setItem(memoryKey, this.lastInputValue); } catch {}
+    } else if (input && input.value !== globalThis.HAEMA_TEST_HOST.state.draft) {
+        globalThis.HAEMA_TEST_HOST.setDraft(input.value);
     }
-    else globalThis.HAEMA_TEST_HOST.setDraft(input?.value || '');
     if (memoryKey) try { memoryDraft = sessionStorage.getItem(memoryKey) ?? memoryDraft; } catch {}
     this.selectedTestHost = globalThis.HAEMA_TEST_HOST.hosts.some(host => host.id === value) ? value : '';
     try {
@@ -2939,6 +2964,7 @@ HAEMA_CONSOLE.findMentionedJJums = function(inputValue) {
 
 
 HAEMA_CONSOLE.mount = async function() {
+    document.addEventListener('pointerdown', this.holdCompositionClick, true);
     // API 키 모달 분리 파일에 콘솔 참조를 전달한다.
     // 분리 파일에서 저장 완료 후 상태 텍스트 갱신이나 render() 호출 시 사용한다.
     if (typeof HAEMA_API_KEY_MODAL !== "undefined" && typeof HAEMA_API_KEY_MODAL.setConsole === "function") {
