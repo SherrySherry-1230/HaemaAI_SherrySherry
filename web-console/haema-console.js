@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-23: refresh launcher controls during composition.
 // @editedBy YAONG1230 2026-11-22: preserve host draft revisions and native clicks that commit an IME composition.
 // @editedBy YAONG1230 2026-11-21: paint thin connections above thick ones while keeping their original lanes.
 // @editedBy YAONG1230 2026-11-20: reconcile the open API form when the runtime mode changes.
@@ -170,6 +171,8 @@ HAEMA_CONSOLE.holdCompositionClick = function(event) {
 };
 
 HAEMA_CONSOLE.render = function() {
+    // Launcher targets must also change in preserved modals and while IME input defers rendering.
+    globalThis.HAEMA_STORAGE_MODAL?.refreshLauncherControls?.();
     if (this.isComposing || this.compositionPointer) { this.deferredCompositionRender = true; return; }
     this.deferredCompositionRender = false;
     const app = document.getElementById("app");

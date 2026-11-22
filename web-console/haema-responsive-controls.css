@@ -1,3 +1,4 @@
+/* @editedBy YAONG1230 2026-11-23: match unavailable links to disabled storage buttons. */
 /* @editedBy YAONG1230 2026-11-19: storage precedes API on narrow screens */
 /* @editedBy YAONG1230 2026-11-17: high-resolution original artwork on small controls. */
 @media (max-width: 820px) {
@@ -67,7 +68,7 @@
     .modal .btn-primary,
     .modal .btn-create,
     .haema-dialog-actions .btn-primary,
-    :is(.mobile-tab, .modal .btn, .conversation-retry, .card-action):not(:disabled):active {
+    :is(.mobile-tab, .modal .btn, .conversation-retry, .card-action):not(:disabled, [aria-disabled="true"]):active {
         --responsive-control-art: url("../Resources/haema-design/button-raster-4x/17-haema-status-pill-selected.png");
         background: transparent;
         color: var(--ink, #26292e);
@@ -221,7 +222,7 @@
 
 @media (max-width: 820px) and (hover: hover) {
     .mobile-tab:not(:disabled):hover,
-    .modal :is(.btn, .btn-primary, .btn-secondary):not(:disabled):hover,
+    .modal :is(.btn, .btn-primary, .btn-secondary):not(:disabled, [aria-disabled="true"]):hover,
     .haema-dialog-actions .btn:not(:disabled):hover,
     .conversation-retry:not(:disabled):hover,
     .card-action:not(:disabled):hover,
@@ -289,12 +290,12 @@
 }
 
 @media (hover: hover) {
-    :is(#storageModal, #existingStorageModal) .btn:not(:disabled):hover {
+    :is(#storageModal, #existingStorageModal) .btn:not(:disabled, [aria-disabled="true"]):hover {
         --storage-control-opacity: .65;
     }
 }
 
-:is(#storageModal, #existingStorageModal) .btn:not(:disabled):active {
+:is(#storageModal, #existingStorageModal) .btn:not(:disabled, [aria-disabled="true"]):active {
     --storage-control-opacity: 1;
 }
 
@@ -303,7 +304,7 @@
     outline-offset: 2px;
 }
 
-:is(#storageModal, #existingStorageModal) .btn:disabled {
+:is(#storageModal, #existingStorageModal) .btn:is(:disabled, [aria-disabled="true"]) {
     opacity: .55;
     cursor: not-allowed;
 }

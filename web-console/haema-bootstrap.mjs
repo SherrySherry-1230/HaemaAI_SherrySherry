@@ -1,7 +1,7 @@
-// @editedBy YAONG1230 2026-11-22: load the Connect controls and current chat inputs
+// @editedBy YAONG1230 2026-11-23: load current launcher and chat controls
 // @editedBy SherrySherry 2026-11-22
-import { connection } from './haema-local-connection.mjs?v=20261122-connect-buttons';
-import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261122-auto-connect';
+import { connection } from './haema-local-connection.mjs?v=20261122-store-location-r3';
+import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261122-recover-r4';
 globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
 const connectionStarted = connection.start();
 const setupMessage = detectDownloadPlatform() === 'windows'
@@ -35,7 +35,7 @@ globalThis.HAEMA_RECONNECT_LOCAL = () => {
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261120-api-runtime-mode", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261122-service-notice", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261122-host-draft", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261122-connect-buttons"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261120-api-runtime-mode", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261122-service-notice", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261123-launcher-input", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261122-store-location-r3"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');
