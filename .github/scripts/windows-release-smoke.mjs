@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import childProcess, { execFileSync } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { verifyPublicConsole } from './windows-console-browser.mjs';
 
 const [source, statusFile, profile] = process.argv.slice(2);
 const load = file => import(pathToFileURL(file).href);
@@ -10,6 +13,27 @@ let phase = 'WINDOWS_STANDARD_USER';
 async function step(name) {
   phase = name;
   await writeFile(statusFile, 'STEP ' + phase);
+}
+
+async function readyWithConsole(ready, opened, running) {
+  let timer;
+  try {
+    const [info, args] = await Promise.race([
+      Promise.all([ready.promise, opened.promise]),
+      running.then(() => { throw new Error('START_ENDED'); }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('CONSOLE_OPEN_TIMEOUT')), 90000); }),
+    ]);
+    assert.equal(args.length, 2);
+    assert.equal(args[0], 'url.dll,FileProtocolHandler');
+    // Do not include the connection fragment in assertion messages or CI output.
+    assert.ok(args[1] === info.webUrl);
+    const url = new URL(args[1]);
+    assert.equal(url.origin + url.pathname, 'https://sherrysherry-1230.github.io/HaemaAI_SherrySherry/');
+    assert.equal(url.search, '');
+    assert.ok(url.hash.startsWith('#local-connection='));
+    assert.equal(info.descriptor.baseUrl, 'http://127.0.0.1:' + info.port);
+    return {port:info.port,webUrl:args[1]};
+  } finally { clearTimeout(timer); }
 }
 
 async function run() {
@@ -41,33 +65,38 @@ async function run() {
   let controls;
   let setupRun;
   let fullRun;
+  const spawn = childProcess.spawn;
   try {
     await step('INSTALL_STORAGE');
     await cp(source, root, {recursive:true});
     const entry = await load(join(root,'.haema','start.mjs'));
     const registration = await load(join(root,'.haema','register-web-controls.mjs'));
-    const installed = await entry.prepareStorage({bundleRoot:root},{
-      pickStorageParent:async () => ({cancelled:false,storageRoot:root}),
-    });
-    assert.equal(installed.layout.memoryRoot, root);
-    await step('REGISTER_WINDOWS_PROTOCOL');
-    assert.equal(await registration.registerWebControls({source:root,confirm:async () => true}),true);
-    await registration.assertWebControlRegistration(root);
-
-    const native = await load(installed.layout.launcher);
+    const native = await load(join(root,'.haema','launcher','launcher.mjs'));
     const { handleBrowserLaunch } = await load(join(root,'.haema','browser-launch.mjs'));
     const setup = Promise.withResolvers();
     const full = Promise.withResolvers();
+    const setupOpened = Promise.withResolvers();
+    const fullOpened = Promise.withResolvers();
+    const browserOpens = [setupOpened, fullOpened];
+    let openCount = 0;
     let prepares = 0;
-    // The dialogs and opening a desktop browser are replaced with an explicit
-    // test choice. The protocol registration, launcher, child processes, local
-    // control calls, HTTPS preflight and cleanup use the downloaded release.
+    // Capture only the final Windows desktop browser invocation. Keep the
+    // shipped launcher's openBrowser setting and all runtime child processes.
+    childProcess.spawn = function (command, args, ...rest) {
+      if (command !== 'rundll32.exe') return spawn.call(this, command, args, ...rest);
+      browserOpens[openCount++]?.resolve(args);
+      const opener = new EventEmitter();
+      opener.unref = () => {};
+      return opener;
+    };
+    syncBuiltinESMExports();
     const launcher = {
       ...native,
       start(options) {
         assert.equal('serviceCode' in options,false);
         const wait = options.setupOnly ? setup : full;
-        return native.start({...options,openBrowser:false,onReady:() => wait.resolve(),
+        assert.equal(options.openBrowser,true);
+        return native.start({...options,onReady:info => { options.onReady?.(info); wait.resolve(info); },
           onError:code => { options.onError?.(code); wait.reject(new Error(code)); }});
       },
     };
@@ -90,20 +119,49 @@ async function run() {
       },
     };
     controls = action => handleBrowserLaunch(['haema-ai://' + action],deps);
-    await step('START_SETUP');
-    setupRun = controls('start');
-    await Promise.race([setup.promise,setupRun.then(() => { throw new Error('SETUP_ENDED'); })]);
+    await step('REGISTER_AND_CONNECT');
+    let picked = 0;
+    let confirmedTarget = false;
+    let registeredTarget;
+    setupRun = registration.registerAndConnect({
+      source:root,
+      confirm:async message => {
+        if (message.includes(root)) confirmedTarget = true;
+        return true;
+      },
+      prepare:options => entry.prepareStorage(options, {
+        pickStorageParent:async () => { picked++; return {cancelled:false,storageRoot:root}; },
+      }),
+      onRegistered:target => {
+        assert.ok(confirmedTarget);
+        registeredTarget = target;
+      },
+      inspect:deps.inspect,
+    });
+    const started = await readyWithConsole(setup,setupOpened,setupRun);
+    assert.equal(picked,1);
+    assert.equal(registeredTarget,root);
+    await registration.assertWebControlRegistration(root);
     const first = await entry.inspectWebControlTarget(root);
     assert.equal(first.running.status.mode,'setup');
+    assert.equal(first.running.status.ready,true);
+    assert.equal(first.running.status.port,started.port);
+    assert.equal(openCount,1);
     assert.equal(prepares,0);
+    if (profile === 'runner') {
+      await step('CONNECT_PUBLIC_CONSOLE_IN_CHROME');
+      await verifyPublicConsole(started.webUrl,root,first.storageId);
+    }
 
     await step('PREPARE_PUBLIC_AI_AND_START');
     fullRun = controls('ai-start');
-    await Promise.race([full.promise,fullRun.then(() => { throw new Error('AI_ENDED'); })]);
-    await setupRun;
+    const fullConsole = await readyWithConsole(full,fullOpened,fullRun);
+    assert.equal(await setupRun,true);
     const second = await entry.inspectWebControlTarget(root);
     assert.equal(second.running.status.mode,'full');
     assert.equal(second.running.status.ready,true);
+    assert.equal(second.running.status.port,fullConsole.port);
+    assert.equal(openCount,2);
     assert.notEqual(first.running.state.scope,second.running.state.scope);
     assert.equal(prepares,1);
 
@@ -125,7 +183,11 @@ async function run() {
       await Promise.race([cleanup(), new Promise((_, reject) => {
         timer = setTimeout(() => reject(new Error('CLEANUP_TIMEOUT')),8000);
       })]);
-    } finally { clearTimeout(timer); }
+    } finally {
+      clearTimeout(timer);
+      childProcess.spawn = spawn;
+      syncBuiltinESMExports();
+    }
     await rm(temp,{recursive:true,force:true,maxRetries:3,retryDelay:300});
   }
 }
@@ -135,7 +197,10 @@ async function reportFailure(error) {
   const known = new Set(['PUBLIC_SERVICE_UNAVAILABLE','CONNECTION_SETTINGS_INVALID','STATE_PERMISSIONS_UNAVAILABLE',
     'STATE_PERMISSIONS_READ_FAILED','STATE_PERMISSIONS_WRITE_FAILED','STATE_PERMISSIONS_VERIFY_FAILED',
     'WEB_CONTROL_WINDOWS_UNAVAILABLE','WEB_CONTROL_REGISTRATION_FAILED','WEB_CONTROL_CHANGED','RUNTIME_STOPPED',
-    'LOCAL_PORT_START_FAILED','RUNTIME_START_FAILED','RUNTIME_READY_TIMEOUT','PAYLOAD_FILE_CHANGED']);
+    'LOCAL_PORT_START_FAILED','RUNTIME_START_FAILED','RUNTIME_READY_TIMEOUT','PAYLOAD_FILE_CHANGED',
+    'CONSOLE_OPEN_TIMEOUT','WINDOWS_CHROMEDRIVER_EXITED','WINDOWS_CHROMEDRIVER_TIMEOUT','WINDOWS_BROWSER_COMMAND_FAILED',
+    'WINDOWS_CONSOLE_NOT_CONNECTED','WINDOWS_CONSOLE_PERMISSION_DENIED','WINDOWS_CONSOLE_CONNECTION_ERROR',
+    'WINDOWS_CONSOLE_EVENTS_ERROR','WINDOWS_CONSOLE_WRONG_MODE','WINDOWS_CONSOLE_WRONG_STORE']);
   const detail = known.has(error?.message) ? '_' + error.message : '';
   await writeFile(statusFile,'FAIL ' + phase + detail);
 }
