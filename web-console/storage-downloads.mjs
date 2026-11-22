@@ -1,9 +1,12 @@
-// @editedBy SherrySherry 2026-11-20
+// @editedBy SherrySherry 2026-11-22
 const repository = 'SherrySherry-1230/HaemaAI_SherrySherry';
 const tag = 'console-installers';
 const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag;
 const downloadBase = 'https://github.com/' + repository + '/releases/download/' + tag + '/';
-const platforms = ['windows', 'macos'];
+const installerNames = Object.freeze({
+    windows: 'haema-ai-windows-20261122.zip',
+    macos: 'haema-ai-macos.zip',
+});
 // Use these fixed hrefs on a user gesture. The registered Windows app confirms the target folder.
 export const windowsLauncherHandles = Object.freeze({
     aiStart: 'haema-ai://ai-start',
@@ -11,8 +14,8 @@ export const windowsLauncherHandles = Object.freeze({
     stop: 'haema-ai://stop',
 });
 const windowsDownload = Object.freeze({
-    url: downloadBase + 'haema-ai-windows.zip',
-    fileName: 'haema-ai-windows.zip',
+    url: downloadBase + installerNames.windows,
+    fileName: installerNames.windows,
 });
 
 export function detectDownloadPlatform(navigator = globalThis.navigator) {
@@ -27,8 +30,7 @@ export function parseInstallerRelease(release) {
     if (!release || release.tag_name !== tag || release.draft !== false || release.prerelease !== false ||
         !Array.isArray(release.assets)) return { state: 'unavailable', downloads };
 
-    for (const platform of platforms) {
-        const fileName = 'haema-ai-' + platform + '.zip';
+    for (const [platform, fileName] of Object.entries(installerNames)) {
         const matches = release.assets.filter(asset => asset?.name === fileName);
         if (matches.length !== 1) continue;
         const [asset] = matches;
