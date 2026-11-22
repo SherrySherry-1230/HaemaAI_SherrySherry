@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import childProcess, { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyPublicConsole } from './windows-console-browser.mjs';
-import { verifyWindowsCmdEntryPoints } from './windows-cmd-smoke.mjs';
+import { recordEndedRunner, verifyWindowsCmdEntryPoints } from './windows-cmd-smoke.mjs';
 
 const [source, statusFile, profile] = process.argv.slice(2);
 const load = file => import(pathToFileURL(file).href);
@@ -106,7 +106,7 @@ async function run() {
       },
     };
     const deps = {
-      inspect:() => entry.inspectWebControlTarget(root,{launcher}),
+      inspect:(_root, options) => entry.inspectWebControlTarget(root,{launcher,...options}),
       assertRegistered:registration.assertWebControlRegistration,
       fetchImpl:async (url, init) => {
         const official = new URL(native.PUBLIC_SERVICE_URL);
@@ -211,7 +211,21 @@ async function run() {
       assert.equal(stopped.storageRoot,secondRoot);
       assert.equal(stopped.storageId,changed.storageId);
 
+      await step('REFUSE_TO_RECOVER_A_LIVE_RUNNER');
+      const liveLock = await recordEndedRunner(root, process.pid);
+      await assert.rejects(controls('start'), {code:'RUNNER_RECOVERY_ACTIVE'});
+      assert.equal(await readFile(liveLock.path,'utf8'),liveLock.record);
+      await rm(liveLock.lock,{recursive:true});
+
       await step('RESTART_SCOPED_SETUP_WITH_SELECTED_STORE');
+      const endedLock = await recordEndedRunner(root);
+      const skip = await controls('start',{confirm:text => {
+        checkConfirmation(text);
+        assert.match(text,/이전 실행/);
+        return false;
+      }});
+      assert.equal(skip.cancelled,true);
+      assert.equal(await readFile(endedLock.path,'utf8'),endedLock.record);
       restartedRun = controls('start');
       const reopened = await readyWithConsole(restarted,restartedOpened,restartedRun);
       const again = await entry.inspectWebControlTarget(root);
@@ -273,7 +287,7 @@ async function reportFailure(error) {
     'CONSOLE_OPEN_TIMEOUT','WINDOWS_CHROMEDRIVER_EXITED','WINDOWS_CHROMEDRIVER_TIMEOUT','WINDOWS_BROWSER_COMMAND_FAILED',
     'WINDOWS_CONSOLE_NOT_CONNECTED','WINDOWS_CONSOLE_PERMISSION_DENIED','WINDOWS_CONSOLE_CONNECTION_ERROR',
     'WINDOWS_CONSOLE_EVENTS_ERROR','WINDOWS_CONSOLE_WRONG_MODE','WINDOWS_CONSOLE_WRONG_STORE',
-    'WINDOWS_CONSOLE_SWITCH_FAILED','WINDOWS_CONSOLE_WRONG_CONTROLS']);
+    'WINDOWS_CONSOLE_SWITCH_FAILED','WINDOWS_CONSOLE_WRONG_CONTROLS','RUNNER_RECOVERY_ACTIVE','RUNNER_RECOVERY_UNCONFIRMED']);
   const detail = known.has(error?.message) ? '_' + error.message : '';
   await writeFile(statusFile,'FAIL ' + phase + detail);
 }
