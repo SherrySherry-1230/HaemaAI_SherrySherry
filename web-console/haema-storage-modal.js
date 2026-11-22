@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-11-19: shared Windows launcher links and registration help
+// @editedBy YAONG1230 2026-11-22: show Connect before AI Start in both launcher groups
 // @editedBy SherrySherry 2026-11-22
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
