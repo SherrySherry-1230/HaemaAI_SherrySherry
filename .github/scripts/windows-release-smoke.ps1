@@ -3,7 +3,7 @@ $ProgressPreference = 'SilentlyContinue'
 if ($env:SMOKE_PROFILE -notin 'runner','standard') { throw 'Unexpected Windows smoke profile.' }
 if ($env:RELEASE_SHA256 -notmatch '\A[0-9a-fA-F]{64}\z') { throw 'A 64-digit release SHA-256 is required.' }
 
-$url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows-20261122.zip'
+$url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows-20261122-r2.zip'
 $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $stage = Join-Path $env:ProgramData "hm-$id"
 $account = "hm$id"

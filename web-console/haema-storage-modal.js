@@ -150,7 +150,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 typeof status.storageId === "string" && status.storageId.length > 0 &&
                 status.storageId.length <= 512 && status.storageId.trim() === status.storageId;
             consoleRef.storageIdentity = hasIdentity
-                ? { storageRoot: status.storageRoot, storageId: status.storageId }
+                ? { storageRoot: status.storageRoot, storageId: status.storageId, launcherId: status.launcherId }
                 : null;
             if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
             consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
@@ -247,9 +247,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
             }
         })();
         const pending = operation.finally(function() {
-            if (pendingInit === pending) pendingInit = null;
+            if (pendingInit === pending) {
+                pendingInit = null;
+                refreshLauncherControls();
+            }
         });
         pendingInit = pending;
+        refreshLauncherControls();
         return pending;
     }
 
@@ -272,7 +276,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 if (platform.value === "windows") {
                     notice.textContent = (asset.restricted ? "공유받은 Google 계정으로 다운로드해 주세요. " : "") +
                         "ZIP의 압축을 모두 풀고 RegisterWebControls.cmd를 여세요. 쩜통 폴더를 등록하면 해마.ai가 준비 모드로 시작되고 웹콘솔이 자동으로 열려요. " +
-                        "기존 실행기에서 연결용 TXT 파일을 고르라는 창이 뜨면 취소해 주세요. 실행 중이면 스탑을 누른 뒤 새 ZIP을 기존 쩜통 밖에 풀고, 새 RegisterWebControls.cmd에서 기존 쩜통을 선택해 주세요.";
+                        "이미 사용 중이면 기존 실행기 폴더의 Stop.cmd로 종료하고 새 ZIP을 별도 폴더에 풀어 주세요. 새 RegisterWebControls.cmd에서 기존 실행기 폴더를 선택해 업데이트하세요. 저장 위치를 따로 바꾼 경우에도 여기서는 실행기 폴더를 선택해 주세요.";
                 } else {
                     notice.textContent = "압축을 풀고 Start.command 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
                 }
@@ -302,11 +306,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
-        { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작", file: "StartAI.cmd" },
-        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
-        { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료", file: "Stop.cmd" },
+        { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작" },
+        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작" },
+        { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료" },
     ];
-    const registrationHint = "등록한 쩜통을 사용해요. AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
+    const registrationHint = "AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. Windows 확인 창에서 사용할 쩜통 위치를 확인해 주세요.";
+    const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 기존 실행기 폴더의 Stop.cmd로 종료하고 ‘쩜통 설치 파일 다운로드’에서 새 Windows ZIP을 받아 별도 폴더에 풀어 주세요. 새 RegisterWebControls.cmd에서 Stop.cmd가 있던 기존 실행기 폴더를 선택해 업데이트하세요.";
+    const checkingHint = "실행기와 쩜통 위치를 확인하고 있어요. 연결을 확인한 뒤 다시 눌러 주세요.";
     const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const onWindows = () => globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === "windows";
@@ -320,22 +326,75 @@ window.HAEMA_STORAGE_MODAL = (function () {
     globalThis.addEventListener?.("focus", recheckAfterLauncher);
     globalThis.document?.addEventListener?.("visibilitychange", recheckAfterLauncher);
 
+    function validFileId(value) {
+        return typeof value === "string" && value.length === 69 && /^file:[0-9a-f]{64}$/.test(value);
+    }
+
+    function launcherTarget() {
+        if (!onWindows()) return { hint: platformHint };
+        const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+        if (pendingInit) return { hint: checkingHint };
+        if (state?.connection === "setup-required" && !state.remembered && !state.firstFailure && !state.rememberNoticeCode) {
+            return { suffix: "", hint: registrationHint };
+        }
+        const identity = consoleRef?.storageIdentity;
+        // A stopped runner may be restarted with this tab's last authenticated pair.
+        const restarting = state?.connection === "disconnected" && state.remembered && identity;
+        if (!restarting && (state?.connection !== "connected" || consoleRef?.storageStatusUnconfirmed)) {
+            return { hint: checkingHint };
+        }
+        if ((!restarting && !consoleRef?.storageConnected) || !validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) {
+            return { hint: updateHint };
+        }
+        return { suffix: "?store=" + identity.storageId.slice(5) + "&runner=" + identity.launcherId.slice(5), hint: registrationHint };
+    }
+
+    function launcherHref(action, target) {
+        const handle = globalThis.HAEMA_STORAGE_DOWNLOADS?.windowsLauncherHandles?.[action.handle];
+        return handle && target.suffix !== undefined ? handle + target.suffix : "";
+    }
+
     function renderLauncherKeys(inHeader) {
-        const windows = onWindows();
-        const handles = globalThis.HAEMA_STORAGE_DOWNLOADS?.windowsLauncherHandles;
+        const target = launcherTarget();
         return launcherActions.map(action => {
-            const href = windows && handles?.[action.handle];
-            const help = !windows ? platformHint : href ? "Windows 실행기에 " + action.name + " 요청" :
-                "실행 주소를 사용할 수 없어요. 설치 폴더의 " + action.file + "를 열어 주세요.";
+            const href = launcherHref(action, target);
+            const help = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
             const id = inHeader ? "header-launcher-" + action.key : action.modalId;
             const classes = inHeader ? "launcher-key launcher-key-" + action.key : "btn";
             const description = inHeader ? "" : ' aria-describedby="storageWindowsHint"';
-            const attributes = 'id="' + id + '" class="' + classes + '" title="' + help + '"' + description;
             const face = inHeader ? '<span class="launcher-key-face">' + action.label + '</span>' : action.label;
-            return href
-                ? '<a ' + attributes + ' href="' + href + '">' + face + '</a>'
-                : '<button type="button" ' + attributes + ' aria-disabled="true"' + (inHeader ? '' : ' disabled') + '>' + face + '</button>';
+            const link = href ? 'href="' + href.replace("&", "&amp;") + '"' : 'aria-disabled="true" role="link" tabindex="0"';
+            return '<a id="' + id + '" class="' + classes + '" data-launcher="' + action.handle + '" title="' + help + '"' +
+                description + ' ' + link + '>' + face + '</a>';
         }).join("");
+    }
+
+    function refreshLauncherControls() {
+        const target = launcherTarget();
+        for (const action of launcherActions) {
+            const href = launcherHref(action, target);
+            for (const id of [action.modalId, "header-launcher-" + action.key]) {
+                const link = document.getElementById(id);
+                if (!link) continue;
+                if (href) {
+                    link.setAttribute("href", href);
+                    link.removeAttribute("aria-disabled");
+                    link.removeAttribute("role");
+                    link.removeAttribute("tabindex");
+                } else {
+                    link.removeAttribute("href");
+                    link.setAttribute("aria-disabled", "true");
+                    link.setAttribute("role", "link");
+                    link.tabIndex = 0;
+                }
+                link.title = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
+            }
+        }
+        const hint = document.getElementById("storageWindowsHint");
+        if (hint && hint.dataset.launcherHint !== target.hint) {
+            hint.dataset.launcherHint = target.hint;
+            hint.textContent = target.hint;
+        }
     }
 
     function renderHeaderLauncher() {
@@ -344,16 +403,22 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     function bindLauncherClick(group, hint) {
-        group.addEventListener("click", event => {
-            const key = event.target.closest("a, button");
+        function checkActivation(event) {
+            const key = event.target.closest("[data-launcher]");
             if (!key) return;
-            if (key.hasAttribute("href")) {
+            const action = launcherActions.find(item => item.handle === key.dataset.launcher);
+            const target = launcherTarget();
+            const href = launcherHref(action, target);
+            if (!href || key.getAttribute("href") !== href) {
+                event.preventDefault();
+                refreshLauncherControls();
+                hint.textContent = target.hint;
+            } else if (event.type !== "contextmenu") {
                 hint.textContent = confirmationHint;
                 checkOnLauncherReturn = true;
-            } else {
-                hint.textContent = key.title;
             }
-        });
+        }
+        for (const type of ["click", "auxclick", "contextmenu"]) group.addEventListener(type, checkActivation);
     }
 
     function bindHeaderLauncher(group) {
@@ -373,7 +438,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return '<div class="form-group" id="storageWindowsControls">' +
             '<div class="input-group" role="group" aria-label="Windows의 해마.ai 실행 제어">' + renderLauncherKeys(false) + '</div>' +
             '<p class="form-hint" id="storageRuntimeState" role="status">' + (consoleRef?.runtimeReadinessLabel?.() || "") + '</p>' +
-            '<p class="form-hint" id="storageWindowsHint" role="status">' + registrationHint + '</p></div>';
+            '<p class="form-hint" id="storageWindowsHint" role="status">' + launcherTarget().hint + '</p></div>';
     }
 
     function openModal(previous) {
@@ -781,6 +846,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     return {
         renderHeaderLauncher,
         bindHeaderLauncher,
+        refreshLauncherControls,
         setConsole: setConsole,
         open: openModal,
         getPath: getStoredPath,

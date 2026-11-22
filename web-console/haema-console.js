@@ -144,6 +144,8 @@ HAEMA_CONSOLE.replaceViewPreservingInput = function(app, html, input, liveModal 
 };
 
 HAEMA_CONSOLE.render = function() {
+    // Launcher targets must also change in preserved modals and while IME input defers rendering.
+    globalThis.HAEMA_STORAGE_MODAL?.refreshLauncherControls?.();
     if (this.isComposing) { this.deferredCompositionRender = true; return; }
     this.deferredCompositionRender = false;
     const app = document.getElementById("app");
