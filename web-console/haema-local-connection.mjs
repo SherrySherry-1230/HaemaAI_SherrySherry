@@ -74,10 +74,29 @@ export function createConsoleConnection(options = {}) {
     stopTimer(); streamController?.abort(); streamController = null; calendarNavigations.clear();
     // Recovery does not close another already-dispatched operation or response.
     // Only explicit disconnect, a new official fragment, and close() own cancellation.
-    if (setup) blocked = true;
+    if (setup) {
+      blocked = true;
+      clearLauncherCache();
+    }
     publish({ connection: setup ? 'setup-required' : 'disconnected', events: 'disconnected', runtimeMode: 'unknown',
       apiConfigured: false, aiReady: false, recovering: false, noticeCode: setup ? 'CONNECTION_SETUP_REQUIRED' : first.code });
     return first;
+  }
+  // Only public identity fields participate. Re-enrollment with a new browser key gets a separate cache.
+  function launcherStorageKey() {
+    const pin = binding?.descriptor.serverIdentity;
+    if (!pin || !binding.publicKey) return null;
+    return ['haema.windows-launcher.v1', pin.serverId, pin.publicKey.x, pin.publicKey.y,
+      binding.publicKey.x, binding.publicKey.y].join('.');
+  }
+  function rememberedLauncherScope() {
+    return !closed && !blocked && state.remembered && binding?.expiresAt > now() ? launcherStorageKey() : null;
+  }
+  function clearLauncherCache() {
+    const key = launcherStorageKey();
+    if (key) {
+      try { globalThis.localStorage?.removeItem(key); } catch { /* The binding itself still controls access. */ }
+    }
   }
   function getStore() {
     if (!store) store = options.rememberedStore ?? createRememberedConnectionStore({ ...(options.storeOptions ?? {}), currentOrigin: location?.origin, now });
@@ -436,6 +455,7 @@ export function createConsoleConnection(options = {}) {
     return state;
   }
   async function disconnect() {
+    clearLauncherCache();
     const selected = client, selectedBinding = binding, selectedObservation = storeObservation;
     const grantId = selectedBinding?.grantId ?? (enrollmentGrant?.generation === generation ? enrollmentGrant.grantId : null);
     generation++; starting = null; recovering = null; stopTimer(); streamController?.abort(); streamController = null;
@@ -509,7 +529,7 @@ export function createConsoleConnection(options = {}) {
     else if (state.connection === 'disconnected' && binding && !blocked) void recover('visibility');
   };
   document?.addEventListener?.('visibilitychange', onVisibility);
-  return Object.freeze({ start, connect, request, recheck, disconnect, describeFailure,
+  return Object.freeze({ start, connect, request, recheck, disconnect, describeFailure, rememberedLauncherScope,
     acceptsLocalNavigation: value => calendarNavigations.has(value) && isCurrentRuntimeUrl(value),
     status: () => state,
     diagnostics: () => Object.freeze(diagnosticEntries.slice()),
