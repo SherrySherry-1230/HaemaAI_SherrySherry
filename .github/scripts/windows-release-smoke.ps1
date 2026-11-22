@@ -3,7 +3,7 @@ $ProgressPreference = 'SilentlyContinue'
 if ($env:SMOKE_PROFILE -notin 'runner','standard') { throw 'Unexpected Windows smoke profile.' }
 if ($env:RELEASE_SHA256 -notmatch '\A[0-9a-fA-F]{64}\z') { throw 'A 64-digit release SHA-256 is required.' }
 
-$url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows.zip'
+$url = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows-20261122.zip'
 $id = [guid]::NewGuid().ToString('N').Substring(0, 12)
 $stage = Join-Path $env:ProgramData "hm-$id"
 $account = "hm$id"
@@ -24,6 +24,7 @@ try {
     $node = Join-Path $stores[0].FullName '.haema\node\win-x64\node.exe'
     $script = Join-Path $stage 'smoke.mjs'
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-release-smoke.mjs') -Destination $script
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-console-browser.mjs') -Destination $stage
 
     Write-Host 'STEP HOSTED_RUNNER_BUNDLED_CSPRNG'
     & $node -e "require('node:crypto').randomBytes(16)"
