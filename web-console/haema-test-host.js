@@ -30,7 +30,7 @@ window.HAEMA_TEST_HOST = (() => {
         UNAVAILABLE: '호스트 대화 준비를 확인하지 못했어요. 연결 상태를 다시 확인해 주세요.',
         SERVICE_PREPARATION_UNAVAILABLE: globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === 'windows'
             ? '대화 서비스에 연결하지 못했어요. 상단 AI Start를 누르고 Windows에서 쩜통을 확인한 뒤 다시 시도해 주세요.'
-            : '대화 서비스에 연결하지 못했어요. 이 컴퓨터의 해마 실행 프로그램에서 대화 모드를 확인한 뒤 다시 시도해 주세요.',
+            : '대화 서비스에 연결하지 못했어요. 이 컴퓨터의 해마.ai 실행 프로그램에서 대화 모드를 확인한 뒤 다시 시도해 주세요.',
         HOST_MEMORY_PROCESSING_FAILED: '이 메시지의 기억 처리를 완료하지 못했어요. 대화 기록은 쩜통에 남아 있어요.',
         MEMORY_RESPONSE_INVALID: '기억 추출 결과의 형식이 맞지 않아 답변을 만들지 못했어요. 메시지는 쩜통에 남아 있어요.',
         MODEL_ACCESS_DENIED: '모델 요청 권한을 확인하지 못했어요. API 키의 모델 사용 권한과 실행 프로그램의 서비스 연결을 확인해 주세요.',

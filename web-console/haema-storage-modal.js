@@ -1,5 +1,5 @@
-// @editedBy YAONG1230 2026-11-19: shared Windows launcher links and registration help
-// @editedBy SherrySherry 2026-11-19
+// @editedBy YAONG1230 2026-11-22: show Connect before AI Start in both launcher groups
+// @editedBy SherrySherry 2026-11-22
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
 // @editedBy YAONG1230 2026-10-28: 저장소 모달 키보드와 초점 복원
@@ -271,8 +271,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 if (!asset.restricted) link.download = asset.fileName;
                 if (platform.value === "windows") {
                     notice.textContent = (asset.restricted ? "공유받은 Google 계정으로 다운로드해 주세요. " : "") +
-                        "새 ZIP의 압축을 모두 푼 뒤 RegisterWebControls.cmd를 열어 쩜통 폴더를 한 번 선택하고 Windows에서 등록을 확인해 주세요. " +
-                        "기존 쩜통을 갱신할 때는 기존 Stop.cmd로 종료하고, 새 ZIP을 별도 위치에 풀어 기존 쩜통 폴더를 등록해 주세요.";
+                        "ZIP의 압축을 모두 풀고 RegisterWebControls.cmd를 여세요. 쩜통 폴더를 등록하면 해마.ai가 준비 모드로 시작되고 웹콘솔이 자동으로 열려요. " +
+                        "기존 실행기에서 연결용 TXT 파일을 고르라는 창이 뜨면 취소해 주세요. 실행 중이면 스탑을 누른 뒤 새 ZIP을 기존 쩜통 밖에 풀고, 새 RegisterWebControls.cmd에서 기존 쩜통을 선택해 주세요.";
                 } else {
                     notice.textContent = "압축을 풀고 Start.command 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
                 }
@@ -302,11 +302,11 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
+        { key: "start", handle: "start", label: "Connect", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작", file: "StartAI.cmd" },
-        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료", file: "Stop.cmd" },
     ];
-    const registrationHint = "등록한 쩜통을 사용해요. AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
+    const registrationHint = "등록한 쩜통을 사용해요. Connect로 준비 모드, AI Start로 대화 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
     const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const onWindows = () => globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === "windows";

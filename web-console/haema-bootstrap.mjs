@@ -1,11 +1,11 @@
-// @editedBy YAONG1230 2026-11-22: refresh host guidance and chat drafts
-// @editedBy SherrySherry 2026-11-19
-import { connection } from './haema-local-connection.mjs?v=20261119-r6-readiness';
-import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261120-public-installer';
+// @editedBy YAONG1230 2026-11-22: load the Connect controls and current chat inputs
+// @editedBy SherrySherry 2026-11-22
+import { connection } from './haema-local-connection.mjs?v=20261122-connect-buttons';
+import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261122-auto-connect';
 globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
 const connectionStarted = connection.start();
 const setupMessage = detectDownloadPlatform() === 'windows'
-    ? '쩜통 버튼에서 Windows 설치 ZIP을 내려받아 압축을 모두 푼 뒤 RegisterWebControls.cmd로 쩜통 폴더를 한 번 등록해 주세요. 등록 후 Start로 준비 모드를 열어 API 키와 모델을 설정하고, AI Start로 대화 모드를 열 수 있어요.'
+    ? '쩜통 버튼에서 Windows 설치 ZIP을 내려받아 압축을 모두 풀고 RegisterWebControls.cmd를 여세요. 사용할 쩜통 폴더를 등록하면 준비 모드로 연결된 웹콘솔이 자동으로 열려요.'
     : '쩜통 버튼에서 이 컴퓨터에 맞는 설치본을 내려받아 안내에 따라 시작 파일을 열어 주세요.';
 const resettable = new Set(['REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
     'REMEMBERED_CONNECTION_GRANT_EXPIRED', 'REMEMBERED_CONNECTION_KEY_INVALID', 'REMEMBERED_CONNECTION_INVALID']);
@@ -35,7 +35,7 @@ globalThis.HAEMA_RECONNECT_LOCAL = () => {
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261120-api-runtime-mode", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261122-service-notice", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261122-host-draft", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261119-r6-readiness"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261120-api-runtime-mode", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261122-service-notice", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261122-host-draft", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261122-connect-buttons"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');

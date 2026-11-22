@@ -1,4 +1,4 @@
-/* @editedBy YAONG1230 2026-11-19: Figma launcher buttons in the header. */
+/* @editedBy YAONG1230 2026-11-22: launcher button colors. */
 @font-face {
   font-family: "Haema CookieRun";
   src: url("../Resources/haema-design/fonts/CookieRunWebBlack.woff2") format("woff2");
@@ -203,12 +203,14 @@
 
 .launcher-key-start {
   --shape: url("../Resources/haema-design/header-launcher/start.svg");
-  --fill: #ffe895;
+  --fill: #a2ed99;
+  font-size: 11px;
+  letter-spacing: -0.2px;
 }
 
 .launcher-key-ai-start {
   --shape: url("../Resources/haema-design/header-launcher/ai-start.svg");
-  --fill: #a2ed99;
+  --fill: #ffe895;
 }
 
 .launcher-key-stop {
