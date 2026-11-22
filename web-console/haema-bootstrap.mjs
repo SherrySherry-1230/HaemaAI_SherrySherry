@@ -1,7 +1,7 @@
 // @editedBy YAONG1230 2026-11-19: refresh header launcher assets
 // @editedBy SherrySherry 2026-11-22
 import { connection } from './haema-local-connection.mjs?v=20261122-store-location-r3';
-import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261122-store-location-r3';
+import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261122-recover-r4';
 globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
 const connectionStarted = connection.start();
 const setupMessage = detectDownloadPlatform() === 'windows'

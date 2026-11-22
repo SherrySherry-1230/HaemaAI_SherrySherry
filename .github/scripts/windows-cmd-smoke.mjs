@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import childProcess, { execFile } from 'node:child_process';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { appendFileSync } from 'node:fs';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
@@ -32,6 +32,24 @@ async function withTimeout(promise, ms) {
       timer = setTimeout(() => reject(new Error('WINDOWS_CMD_TIMEOUT')),ms);
     })]);
   } finally { clearTimeout(timer); }
+}
+
+// Exercise the same stale record as a Windows process that exited without cleanup.
+export async function recordEndedRunner(root, ownerPid) {
+  if (ownerPid === undefined) {
+    const exited = childProcess.spawn(process.execPath, ['-e',''], {windowsHide:true, stdio:'ignore'});
+    assert.deepEqual(await once(exited,'close'),[0,null]);
+    ownerPid = exited.pid;
+  }
+  const lock = join(root,'.haema','state','run.lock');
+  await mkdir(lock);
+  const path = join(lock,'owner.json');
+  const record = JSON.stringify({
+    application:'haema-local-run-lock', version:1, ownerPid, childPid:null,
+    nonce:'a'.repeat(43), startedAt:new Date().toISOString(), phase:'preparing',
+  });
+  await writeFile(path,record,{flag:'wx'});
+  return {lock,path,record};
 }
 
 export async function verifyWindowsCmdEntryPoints({root, temp, expectedStorage, entry, registration, step}) {
@@ -73,6 +91,10 @@ export async function verifyWindowsCmdEntryPoints({root, temp, expectedStorage, 
       await step(index === 0 ? 'CONNECT_CMD_COLD_START_AND_LEGACY_REOPEN' : 'LEGACY_CMD_COLD_START_AND_CONNECT_REOPEN');
       assert.equal((await entry.inspectWebControlTarget(root)).running,null);
       await writeFile(report,'');
+      if (index === 0) {
+        await step('CONNECT_CMD_RECOVERS_ENDED_RUNNER');
+        await recordEndedRunner(root);
+      }
       const owner = launch(name);
       await expectOpens(1,owner.child);
       const first = await entry.inspectWebControlTarget(root);

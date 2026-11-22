@@ -4,7 +4,7 @@ const tag = 'console-installers';
 const releaseApi = 'https://api.github.com/repos/' + repository + '/releases/tags/' + tag;
 const downloadBase = 'https://github.com/' + repository + '/releases/download/' + tag + '/';
 const installerNames = Object.freeze({
-    windows: 'haema-ai-windows-20261122-r3.zip',
+    windows: 'haema-ai-windows-20261122-r4.zip',
     macos: 'haema-ai-macos.zip',
 });
 // Unpaired setup uses these handles. Paired controls also pin the active store and launcher.
