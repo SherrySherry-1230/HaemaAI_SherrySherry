@@ -493,7 +493,7 @@ export function createConsoleConnection(options = {}) {
     if (!selected) return null;
     const message = rememberedMessage(selected.code);
     if (message) return message;
-    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '쩜통 버튼에서 이 컴퓨터에 맞는 설치·연결 안내를 확인해 주세요. 이미 등록한 Windows 쩜통은 웹콘솔의 Start로 준비 모드를 열 수 있어요.';
+    if (selected.code === 'CONNECTION_SETUP_REQUIRED' || terminalFailures.has(selected.code)) return '쩜통 버튼에서 이 컴퓨터에 맞는 설치·연결 안내를 확인해 주세요. 이미 등록한 Windows 쩜통은 웹콘솔의 Connect로 준비 모드를 열 수 있어요.';
     if (selected.code === 'CONNECTION_PERMISSION_DENIED') return 'Chrome 주소창의 사이트 설정에서 로컬 네트워크 접근을 허용한 뒤 연결 버튼을 눌러 주세요.';
     if (selected.code === 'CONNECTION_PERMISSION_REQUIRED') return '연결 버튼을 눌러 주세요. Chrome이 로컬 네트워크 접근을 물으면 허용해 주세요.';
     if (selected.code === 'CONNECTION_EXPIRED') return '내 컴퓨터 연결의 인증 시간이 끝났어요. 연결 버튼을 눌러 다시 연결해 주세요.';

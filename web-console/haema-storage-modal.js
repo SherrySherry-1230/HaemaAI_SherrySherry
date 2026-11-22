@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-11-19: shared Windows launcher links and registration help
+// @editedBy YAONG1230 2026-11-22: show Connect before AI Start in both launcher groups
 // @editedBy SherrySherry 2026-11-22
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
@@ -302,11 +302,11 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
+        { key: "start", handle: "start", label: "Connect", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작", file: "StartAI.cmd" },
-        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작", file: "Start.cmd" },
         { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료", file: "Stop.cmd" },
     ];
-    const registrationHint = "등록한 쩜통을 사용해요. AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
+    const registrationHint = "등록한 쩜통을 사용해요. Connect로 준비 모드, AI Start로 대화 모드를 열고 Stop으로 종료해요. 쩜통 폴더를 옮기거나 바꾸면 RegisterWebControls.cmd로 다시 등록해 주세요.";
     const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const onWindows = () => globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === "windows";
