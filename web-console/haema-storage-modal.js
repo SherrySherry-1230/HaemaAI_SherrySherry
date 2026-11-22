@@ -152,6 +152,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             consoleRef.storageIdentity = hasIdentity
                 ? { storageRoot: status.storageRoot, storageId: status.storageId, launcherId: status.launcherId }
                 : null;
+            saveOfflineLauncherTarget(consoleRef.storageIdentity);
             if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
             consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
         }
@@ -306,12 +307,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
+        { key: "start", handle: "start", label: "Connect", modalId: "storageStartHaema", name: "준비 모드 연결" },
         { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작" },
-        { key: "start", handle: "start", label: "Start", modalId: "storageStartHaema", name: "준비 모드 시작" },
         { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료" },
     ];
-    const registrationHint = "AI Start로 대화 모드, Start로 준비 모드를 열고 Stop으로 종료해요. Windows 확인 창에서 사용할 쩜통 위치를 확인해 주세요.";
+    const registrationHint = "Connect로 준비 모드, AI Start로 대화 모드를 열고 Stop으로 종료해요. Windows 확인 창에서 사용할 쩜통 위치를 확인해 주세요.";
     const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 기존 실행기 폴더의 Stop.cmd로 종료하고 ‘쩜통 설치 파일 다운로드’에서 새 Windows ZIP을 받아 별도 폴더에 풀어 주세요. 새 RegisterWebControls.cmd에서 Stop.cmd가 있던 기존 실행기 폴더를 선택해 업데이트하세요.";
+    const offlineHint = "이 브라우저에서 실행기와 쩜통 위치를 다시 확인해야 해요. 기존 실행기 폴더의 Connect.cmd를 열어 준비 모드로 연결해 주세요. Connect.cmd가 없으면 새 Windows ZIP을 별도 폴더에 풀고 RegisterWebControls.cmd에서 기존 실행기 폴더를 선택해 업데이트하세요.";
     const checkingHint = "실행기와 쩜통 위치를 확인하고 있어요. 연결을 확인한 뒤 다시 눌러 주세요.";
     const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
@@ -330,6 +332,32 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return typeof value === "string" && value.length === 69 && /^file:[0-9a-f]{64}$/.test(value);
     }
 
+    function saveOfflineLauncherTarget(identity) {
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+        if (!onWindows() || connection?.status?.().connection !== "connected") return;
+        const scope = connection.rememberedLauncherScope?.();
+        if (!scope) return;
+        try {
+            if (validFileId(identity?.storageId) && validFileId(identity?.launcherId)) {
+                localStorage.setItem(scope, JSON.stringify({ storageId: identity.storageId, launcherId: identity.launcherId }));
+            } else {
+                localStorage.removeItem(scope);
+            }
+        } catch { /* Online controls still use the live authenticated response. */ }
+    }
+
+    function offlineLauncherTarget() {
+        const scope = globalThis.HAEMA_LOCAL_CONNECTION?.rememberedLauncherScope?.();
+        if (!scope) return null;
+        try { return JSON.parse(localStorage.getItem(scope)); } catch { return null; }
+    }
+
+    globalThis.addEventListener?.("storage", event => {
+        if (event.key === null || event.key === globalThis.HAEMA_LOCAL_CONNECTION?.rememberedLauncherScope?.()) {
+            refreshLauncherControls();
+        }
+    });
+
     function launcherTarget() {
         if (!onWindows()) return { hint: platformHint };
         const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
@@ -337,14 +365,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (state?.connection === "setup-required" && !state.remembered && !state.firstFailure && !state.rememberNoticeCode) {
             return { suffix: "", hint: registrationHint };
         }
-        const identity = consoleRef?.storageIdentity;
-        // A stopped runner may be restarted with this tab's last authenticated pair.
-        const restarting = state?.connection === "disconnected" && state.remembered && identity;
-        if (!restarting && (state?.connection !== "connected" || consoleRef?.storageStatusUnconfirmed)) {
-            return { hint: checkingHint };
-        }
-        if ((!restarting && !consoleRef?.storageConnected) || !validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) {
-            return { hint: updateHint };
+        let identity;
+        if (state?.connection === "connected") {
+            if (consoleRef?.storageStatusUnconfirmed) return { hint: checkingHint };
+            if (consoleRef?.storageConnected) identity = consoleRef.storageIdentity;
+            if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: updateHint };
+        } else if (state?.remembered && ["disconnected", "awaiting-permission"].includes(state.connection)) {
+            identity = offlineLauncherTarget();
+            if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: offlineHint };
+        } else {
+            return { hint: state?.connection === "connecting" || state?.connection === "reconnecting" ? checkingHint : offlineHint };
         }
         return { suffix: "?store=" + identity.storageId.slice(5) + "&runner=" + identity.launcherId.slice(5), hint: registrationHint };
     }

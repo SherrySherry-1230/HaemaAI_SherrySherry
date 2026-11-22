@@ -6,6 +6,7 @@ import { syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyPublicConsole } from './windows-console-browser.mjs';
+import { verifyWindowsCmdEntryPoints } from './windows-cmd-smoke.mjs';
 
 const [source, statusFile, profile] = process.argv.slice(2);
 const load = file => import(pathToFileURL(file).href);
@@ -239,6 +240,7 @@ async function run() {
     await fullRun;
     if (restartedRun) await restartedRun;
     assert.equal((await entry.inspectWebControlTarget(root)).running,null);
+    await verifyWindowsCmdEntryPoints({ root, temp, expectedStorage:effectiveRoot, entry, registration, step });
     controls = null;
   } catch (error) {
     await reportFailure(error);
