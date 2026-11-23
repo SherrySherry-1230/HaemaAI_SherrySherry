@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-23
 import assert from 'node:assert/strict';
 import childProcess, { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
@@ -35,6 +36,32 @@ async function readyWithConsole(ready, opened, running) {
     assert.equal(info.descriptor.baseUrl, 'http://127.0.0.1:' + info.port);
     return {port:info.port,webUrl:args[1]};
   } finally { clearTimeout(timer); }
+}
+
+async function verifyPreviousUpgrade(temp, entry) {
+  const installed = join(temp,'upgrade-check',basename(source));
+  const previous = join(dirname(dirname(source)),'previous',basename(source));
+  await cp(previous,installed,{recursive:true});
+  const old = await load(join(installed,'.haema','start.mjs'));
+  const selected = await old.prepareStorage({bundleRoot:installed}, {
+    pickStorageParent:async()=>({cancelled:false,storageRoot:installed}),
+  });
+  const records = [
+    [join(selected.layout.state,'config','.env'),'SYNTHETIC_SETTING=kept'],
+    [join(installed,entry.MEMORY_DIRECTORIES[0],'synthetic.jj'),'temporary test data'],
+  ];
+  for (const [path,data] of records) {
+    await mkdir(dirname(path),{recursive:true});
+    await writeFile(path,data,{flag:'wx'});
+  }
+  const app = await load(join(source,'.haema','install-payload.mjs'));
+  const newName='쩜통_연결.cmd';
+  assert.equal((await readFile(join(installed,'RegisterWebControls.cmd'))).length > 0,true);
+  await assert.rejects(readFile(join(installed,newName)),{code:'ENOENT'});
+  await app.ensureInstalledBundle({memoryRoot:source},installed);
+  assert.deepEqual(await readFile(join(installed,newName)),await readFile(join(installed,'RegisterWebControls.cmd')));
+  assert.equal(await entry.resolveWebControlTarget(installed),installed);
+  for (const [path,data] of records) assert.equal(await readFile(path,'utf8'),data);
 }
 
 async function run() {
@@ -255,6 +282,8 @@ async function run() {
     if (restartedRun) await restartedRun;
     assert.equal((await entry.inspectWebControlTarget(root)).running,null);
     await verifyWindowsCmdEntryPoints({ root, temp, expectedStorage:effectiveRoot, entry, registration, step });
+    await step('UPGRADE_PREVIOUS_WINDOWS_INSTALLATION');
+    await verifyPreviousUpgrade(temp,entry);
     controls = null;
   } catch (error) {
     await reportFailure(error);

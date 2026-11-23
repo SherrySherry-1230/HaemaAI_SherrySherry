@@ -19,6 +19,15 @@ try {
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = Join-Path $stage 'archive'
     [System.IO.Compression.ZipFile]::ExtractToDirectory($zip, $archive)
+    $previousZip = Join-Path $stage 'previous.zip'
+    $previousUrl = 'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-windows-20261122-r4.zip'
+    Invoke-WebRequest -UseBasicParsing -Uri $previousUrl -OutFile $previousZip
+    $previousHash = (Get-FileHash -LiteralPath $previousZip -Algorithm SHA256).Hash
+    if ($previousHash -ine '0235e9de28d6919f94fd67fbed1137f2968c9de15a98421c475b7c55ad68f91c') {
+        throw 'Previous Windows installer hash differs.'
+    }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($previousZip, (Join-Path $stage 'previous'))
+
     $stores = @(Get-ChildItem -LiteralPath $archive -Directory)
     if ($stores.Count -ne 1) { throw 'Unexpected archive layout.' }
     $node = Join-Path $stores[0].FullName '.haema\node\win-x64\node.exe'
