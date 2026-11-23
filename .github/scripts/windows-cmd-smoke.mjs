@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-23
 import assert from 'node:assert/strict';
 import childProcess, { execFile } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
@@ -22,6 +23,20 @@ if (process.env.HAEMA_SMOKE_DESKTOP_OPENS) {
     opener.unref = () => {};
     return opener;
   };
+  if (process.env.HAEMA_SMOKE_REGISTRATION_DIALOG === 'approve') {
+    // Answer the Windows prompt in the disposable CI profile. The Registry
+    // readback, installation verification and server startup run normally.
+    const execute = childProcess.execFile;
+    const real = execute[promisify.custom];
+    const withConsent = (...args) => execute(...args);
+    withConsent[promisify.custom] = (executable, args, options) => {
+      if (options?.env?.HAEMA_DIALOG_TEXT && /powershell\.exe$/i.test(executable)) {
+        return Promise.resolve({stdout:'YES\n',stderr:''});
+      }
+      return real(executable, args, options);
+    };
+    childProcess.execFile = withConsent;
+  }
   syncBuiltinESMExports();
 }
 
@@ -58,13 +73,18 @@ export async function verifyWindowsCmdEntryPoints({root, temp, expectedStorage, 
   const children = new Set();
   const names = ['Connect.cmd','Start.cmd'];
 
-  function launch(name, cwd = root) {
+  function launch(name, cwd = root, registrationOutput) {
     // Only constant batch filenames reach cmd. The Unicode store path is its
     // working directory, never command text.
     const child = childProcess.spawn(join(system,'cmd.exe'), ['/d','/c',name], {
-      cwd, windowsHide:true, stdio:'ignore',
-      env:{...process.env, NODE_OPTIONS:'--import=' + import.meta.url, HAEMA_SMOKE_DESKTOP_OPENS:report},
+      cwd, windowsHide:true, stdio:registrationOutput ? ['ignore','pipe','ignore'] : 'ignore',
+      env:{...process.env, NODE_OPTIONS:'--import=' + import.meta.url, HAEMA_SMOKE_DESKTOP_OPENS:report,
+        ...(registrationOutput ? { HAEMA_SMOKE_REGISTRATION_DIALOG:'approve' } : {})},
     });
+    if (registrationOutput) {
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data',registrationOutput);
+    }
     children.add(child);
     const exited = new Promise(resolve => {
       child.once('error', () => resolve(null));
@@ -116,6 +136,30 @@ export async function verifyWindowsCmdEntryPoints({root, temp, expectedStorage, 
       assert.equal(await withTimeout(owner.exited,20000),0);
       assert.equal((await entry.inspectWebControlTarget(root)).running,null);
       await registration.assertWebControlRegistration(root);
+    }
+
+    for (const [file, phase] of [
+      ['쩜통_연결.cmd','NAMED_REGISTRATION_OPENS_WEB_CONSOLE'],
+      ['RegisterWebControls.cmd','LEGACY_REGISTRATION_OPENS_WEB_CONSOLE'],
+    ]) {
+      await step(phase);
+      await writeFile(report,'');
+      const ready = '해마.ai가 준비됐어요. 공식 웹콘솔을 열어요. 이 창은 실행 중에 열어 두세요.';
+      let stdout = '';
+      const completed = Promise.withResolvers();
+      const owner = launch(file,root,plainText => {
+        stdout = (stdout + plainText).slice(-2048);
+        if (stdout.split(/\r?\n/).includes(ready)) completed.resolve();
+      });
+      await Promise.all([expectOpens(1,owner.child),withTimeout(completed.promise,45000)]);
+      const current = await entry.inspectWebControlTarget(root);
+      assert.equal(current.storageRoot,expectedStorage);
+      assert.equal(current.running.status.mode,'setup');
+      assert.equal(current.running.status.ready,true);
+      await registration.assertWebControlRegistration(root);
+      assert.equal(await withTimeout(launch('Stop.cmd').exited,20000),0);
+      assert.equal(await withTimeout(owner.exited,20000),0);
+      assert.equal((await entry.inspectWebControlTarget(root)).running,null);
     }
 
     await step('CMD_REJECT_INCOMPLETE_EXTRACTION');
