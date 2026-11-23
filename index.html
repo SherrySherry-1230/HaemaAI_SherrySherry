@@ -26,7 +26,7 @@
             document.addEventListener("DOMContentLoaded", () => {
                 const entry = document.createElement("script");
                 entry.type = "module";
-                entry.src = "./web-console/haema-bootstrap.mjs?v=20261123-first-use";
+                entry.src = "./web-console/haema-bootstrap.mjs?v=20261123-locked-controls";
                 document.body.append(entry);
             }, { once: true });
         })();
@@ -208,13 +208,15 @@
         .user-input::placeholder { color: #D3CEB5; opacity: 1; }
         .user-input:disabled { color: var(--ink); cursor: not-allowed; }
         .user-input[readonly] { cursor: pointer; }
+        .user-input[readonly]::placeholder { color: #77747A; }
+        .user-input:focus-visible { outline: 2px solid #7B687C; outline-offset: -2px; border-radius: 8px; }
         .send-button { position: relative; width: 61px; height: 45px; flex: 0 0 auto; display: grid; place-items: center; padding: 0; border: 0; background: transparent; cursor: pointer; }
         .send-button img { display: block; width: 61px; height: 45px; object-fit: contain; }
         .send-button span { position: absolute; inset: 0; display: grid; place-items: center; color: var(--haema-white); font: 700 22px/1 Pretendard, sans-serif; pointer-events: none; }
-        .send-button:hover { filter: brightness(.96); }
-        .send-button:active:not(:disabled), .send-button.is-pressed { transform: translateY(2px); filter: brightness(.94); }
-        .send-button:disabled { opacity: .62; cursor: progress; }
-        .send-button.is-pressed:disabled { opacity: 1; }
+        .send-button:enabled:hover { filter: brightness(.96); }
+        .send-button:enabled:active, .send-button.is-pressed:enabled { transform: translateY(2px); filter: brightness(.94); }
+        .send-button:disabled { cursor: not-allowed; }
+        .send-button:disabled img { filter: grayscale(1); }
         .input-disabled-overlay { position: absolute; inset: 0; z-index: 1; border-radius: inherit; cursor: pointer; }
         .input-area-disabled .user-input { pointer-events: none; }
         .panel-heading { height: 32px; min-height: 32px; padding: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex: 0 0 auto; }
@@ -799,8 +801,8 @@
             .haema-preview-controls :is(.token-meter-unit, .token-meter-value, .token-meter-value.is-long) { font-size: 8px; line-height: 10px; }
         }
     </style>
-    <link rel="stylesheet" href="web-console/haema-toolbar.css?v=20261123-first-use">
-    <link rel="stylesheet" href="web-console/haema-brand.css?v=20261122-connect-buttons">
+    <link rel="stylesheet" href="web-console/haema-toolbar.css?v=20261123-locked-controls">
+    <link rel="stylesheet" href="web-console/haema-brand.css?v=20261123-locked-controls">
     <link rel="stylesheet" href="web-console/haema-seon.css?v=2">
     <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261123-first-use">
 </head>

@@ -165,7 +165,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 consoleRef.apiKeyName = "";
             }
             readSettings = hasIdentity && (refreshSettings || !sameStore || !wasReady);
-            saveOfflineLauncherTarget(consoleRef.storageIdentity);
             if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
             consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
         }
@@ -424,13 +423,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     const launcherActions = [
-        { key: "start", handle: "start", label: "Connect", modalId: "storageStartHaema", name: "준비 모드 연결" },
-        { key: "ai-start", handle: "aiStart", label: "AI Start", modalId: "storageStartAIHaema", name: "AI 대화 시작" },
-        { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료" },
+        { id: "storageStartHaema", handle: "start", label: "Connect", name: "준비 모드 연결" },
+        { id: "header-launcher-ai-start", handle: "aiStart", label: "AI Start", name: "AI 대화 시작" },
+        { id: "header-launcher-stop", handle: "stop", label: "Stop", name: "해마.ai 종료" },
     ];
-    const registrationHint = "Connect로 준비 모드, AI Start로 대화 모드를 열고 Stop으로 종료해요. Windows 확인 창에서 사용할 쩜통 위치를 확인해 주세요.";
+    const registrationHint = "현재 쩜통의 준비 모드를 열어요. Windows 확인 창에서 쩜통 위치를 확인해 주세요.";
     const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 쩜통 설치 안내에 따라 실행기를 업데이트해 주세요.";
-    const offlineHint = "이 브라우저에서 실행기와 쩜통 위치를 다시 확인해야 해요. 기존 실행기 폴더의 Connect.cmd를 열어 주세요. 파일이 없으면 쩜통 설치 안내에 따라 업데이트해 주세요.";
+    const storageHint = "① 쩜통 연결과 ② API 연결을 마치면 실행할 수 있어요.";
+    const apiHint = "② API 연결에서 이 쩜통의 설정을 확인하면 실행할 수 있어요.";
     const checkingHint = "실행기와 쩜통 위치를 확인하고 있어요. 연결을 확인한 뒤 다시 눌러 주세요.";
     const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 쩜통 설치 안내에서 등록 파일을 확인해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
@@ -449,50 +449,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return typeof value === "string" && value.length === 69 && /^file:[0-9a-f]{64}$/.test(value);
     }
 
-    function saveOfflineLauncherTarget(identity) {
-        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
-        if (!onWindows() || connection?.status?.().connection !== "connected") return;
-        const scope = connection.rememberedLauncherScope?.();
-        if (!scope) return;
-        try {
-            if (validFileId(identity?.storageId) && validFileId(identity?.launcherId)) {
-                localStorage.setItem(scope, JSON.stringify({ storageId: identity.storageId, launcherId: identity.launcherId }));
-            } else {
-                localStorage.removeItem(scope);
-            }
-        } catch { /* Online controls still use the live authenticated response. */ }
-    }
-
-    function offlineLauncherTarget() {
-        const scope = globalThis.HAEMA_LOCAL_CONNECTION?.rememberedLauncherScope?.();
-        if (!scope) return null;
-        try { return JSON.parse(localStorage.getItem(scope)); } catch { return null; }
-    }
-
-    globalThis.addEventListener?.("storage", event => {
-        if (event.key === null || event.key === globalThis.HAEMA_LOCAL_CONNECTION?.rememberedLauncherScope?.()) {
-            refreshLauncherControls();
-        }
-    });
-
     function launcherTarget() {
         if (!onWindows()) return { hint: platformHint };
         const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
-        if (pendingInit) return { hint: checkingHint };
-        if (state?.connection === "setup-required" && !state.remembered && !state.firstFailure && !state.rememberNoticeCode) {
-            return { suffix: "", hint: registrationHint };
-        }
-        let identity;
-        if (state?.connection === "connected") {
-            if (consoleRef?.storageStatusUnconfirmed) return { hint: checkingHint };
-            if (consoleRef?.storageConnected) identity = consoleRef.storageIdentity;
-            if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: updateHint };
-        } else if (state?.remembered && ["disconnected", "awaiting-permission"].includes(state.connection)) {
-            identity = offlineLauncherTarget();
-            if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: offlineHint };
-        } else {
-            return { hint: state?.connection === "connecting" || state?.connection === "reconnecting" ? checkingHint : offlineHint };
-        }
+        if (pendingInit || state?.recovering || ["connecting", "reconnecting"].includes(state?.connection)) return { hint: checkingHint };
+        if (!consoleRef?.isStorageReady?.() || state?.connection !== "connected") return { hint: storageHint };
+        // A confirmed profile can start AI from setup mode, before the runtime can accept messages.
+        if (!state.apiConfigured || !HAEMA_API_KEY_MODAL.confirmedProfile() ||
+            (state.runtimeMode !== "setup-only" && !state.aiReady)) return { hint: apiHint };
+        const identity = consoleRef.storageIdentity;
+        if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: updateHint };
         return { suffix: "?store=" + identity.storageId.slice(5) + "&runner=" + identity.launcherId.slice(5), hint: registrationHint };
     }
 
@@ -503,39 +469,28 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function renderLauncherKeys(inHeader) {
         const target = launcherTarget();
-        return launcherActions.filter(action => !inHeader || action.key !== "start").map(action => {
+        return launcherActions.filter(action => inHeader === (action.handle !== "start")).map(action => {
             const href = launcherHref(action, target);
             const help = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
-            const id = inHeader ? "header-launcher-" + action.key : action.modalId;
-            const classes = inHeader ? "launcher-key launcher-key-" + action.key : "btn";
+            const classes = inHeader ? "launcher-key" : "btn storage-connect";
             const description = inHeader ? "" : ' aria-describedby="storageWindowsHint"';
             const face = inHeader ? '<span class="launcher-key-face">' + action.label + '</span>' : action.label;
-            const link = href ? 'href="' + href.replace("&", "&amp;") + '"' : 'aria-disabled="true" role="link" tabindex="0"';
-            return '<a id="' + id + '" class="' + classes + '" data-launcher="' + action.handle + '" title="' + help + '"' +
-                description + ' ' + link + '>' + face + '</a>';
+            const targetAttribute = href ? 'data-target="' + href.replace("&", "&amp;") + '"' : 'disabled';
+            return '<button type="button" id="' + action.id + '" class="' + classes + '" data-launcher="' + action.handle +
+                '" title="' + help + '"' + description + ' ' + targetAttribute + '>' + face + '</button>';
         }).join("");
     }
 
     function refreshLauncherControls() {
         const target = launcherTarget();
         for (const action of launcherActions) {
+            const button = document.getElementById(action.id);
+            if (!button) continue;
             const href = launcherHref(action, target);
-            for (const id of [action.modalId, "header-launcher-" + action.key]) {
-                const link = document.getElementById(id);
-                if (!link) continue;
-                if (href) {
-                    link.setAttribute("href", href);
-                    link.removeAttribute("aria-disabled");
-                    link.removeAttribute("role");
-                    link.removeAttribute("tabindex");
-                } else {
-                    link.removeAttribute("href");
-                    link.setAttribute("aria-disabled", "true");
-                    link.setAttribute("role", "link");
-                    link.tabIndex = 0;
-                }
-                link.title = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
-            }
+            button.disabled = !href;
+            if (href) button.dataset.target = href;
+            else delete button.dataset.target;
+            button.title = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
         }
         const hint = document.getElementById("storageWindowsHint");
         if (hint && hint.dataset.launcherHint !== target.hint) {
@@ -550,30 +505,27 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     function bindLauncherClick(group, hint) {
-        function checkActivation(event) {
+        group.addEventListener("click", event => {
             const key = event.target.closest("[data-launcher]");
-            if (!key) return;
+            if (!key || key.disabled) return;
             const action = launcherActions.find(item => item.handle === key.dataset.launcher);
             const target = launcherTarget();
             const href = launcherHref(action, target);
-            if (!href || key.getAttribute("href") !== href) {
-                event.preventDefault();
+            if (!href || key.dataset.target !== href) {
                 refreshLauncherControls();
-                hint.textContent = target.hint;
-            } else if (event.type !== "contextmenu") {
-                hint.textContent = confirmationHint;
-                checkOnLauncherReturn = true;
+                return;
             }
-        }
-        for (const type of ["click", "auxclick", "contextmenu"]) group.addEventListener(type, checkActivation);
+            hint.textContent = confirmationHint;
+            checkOnLauncherReturn = true;
+            globalThis.location.assign(href);
+        });
     }
 
     function bindHeaderLauncher(group) {
         if (!group) return;
         const hint = group.querySelector(".header-launcher-hint");
         group.addEventListener("focusin", event => {
-            const key = event.target.closest(".launcher-key");
-            if (key) hint.textContent = key.hasAttribute("href") ? "" : key.title;
+            if (event.target.closest(".launcher-key")) hint.textContent = "";
         });
         bindLauncherClick(group, hint);
         group.addEventListener("keydown", event => {
@@ -583,7 +535,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function renderWindowsControls() {
         return '<div class="form-group" id="storageWindowsControls">' +
-            '<div class="input-group" role="group" aria-label="Windows의 해마.ai 실행 제어">' + renderLauncherKeys(false) + '</div>' +
+            '<div class="storage-connect-row">' + renderLauncherKeys(false) +
+            '<span class="form-label">준비 모드 연결</span></div>' +
             '<p class="form-hint" id="storageRuntimeState" role="status">' + (consoleRef?.runtimeReadinessLabel?.() || "") + '</p>' +
             '<p class="form-hint" id="storageWindowsHint" role="status">' + launcherTarget().hint + '</p></div>';
     }

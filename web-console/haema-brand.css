@@ -1,4 +1,4 @@
-/* @editedBy YAONG1230 2026-11-22: launcher button colors. */
+/* @editedBy YAONG1230 2026-11-23: launcher controls and storage connection action. */
 @font-face {
   font-family: "Haema CookieRun";
   src: url("../Resources/haema-design/fonts/CookieRunWebBlack.woff2") format("woff2");
@@ -201,19 +201,12 @@
   touch-action: manipulation;
 }
 
-.launcher-key-start {
-  --shape: url("../Resources/haema-design/header-launcher/start.svg");
-  --fill: #a2ed99;
-  font-size: 11px;
-  letter-spacing: -0.2px;
-}
-
-.launcher-key-ai-start {
+#header-launcher-ai-start {
   --shape: url("../Resources/haema-design/header-launcher/ai-start.svg");
-  --fill: #ffe895;
+  --fill: #a2ed99;
 }
 
-.launcher-key-stop {
+#header-launcher-stop {
   --shape: url("../Resources/haema-design/header-launcher/stop.svg");
   --fill: #ffa5b7;
 }
@@ -229,8 +222,6 @@
   filter: drop-shadow(0 2px 2px rgb(63 44 46 / 19%));
   transition: transform 130ms ease, filter 130ms ease;
 }
-
-.launcher-key-start .launcher-key-face { height: 47.9743px; }
 
 .header-launcher-hint {
   position: absolute;
@@ -264,18 +255,18 @@
 }
 
 @media (hover: hover) {
-  .launcher-key[href]:hover .launcher-key-face {
+  .launcher-key:enabled:hover .launcher-key-face {
     transform: translateY(-2px);
     filter: drop-shadow(0 -1px 0 #fffade) drop-shadow(0 1px 0 #fffade) drop-shadow(0 4px 3px rgb(63 44 46 / 22%));
   }
 }
 
-.launcher-key[href]:active .launcher-key-face {
+.launcher-key:enabled:active .launcher-key-face {
   transform: translateY(2px);
   filter: drop-shadow(0 1px 1px rgb(63 44 46 / 16%));
 }
 
-.launcher-key[href]:active .launcher-key-face::before {
+.launcher-key:enabled:active .launcher-key-face::before {
   background:
     radial-gradient(ellipse at 27% 25%, rgb(255 250 222 / 40%), transparent 44%),
     linear-gradient(to bottom, rgb(73 47 45 / 32%), transparent 18%),
@@ -287,17 +278,45 @@
   outline-offset: 2px;
 }
 
-.launcher-key[aria-disabled="true"] { cursor: not-allowed; }
-.launcher-key[aria-disabled="true"] .launcher-key-face {
-  filter: drop-shadow(0 1px 1px rgb(63 44 46 / 11%));
+.launcher-key:disabled { cursor: not-allowed; }
+.launcher-key:disabled .launcher-key-face {
+  filter: grayscale(1) drop-shadow(0 1px 1px rgb(63 44 46 / 11%));
 }
-.launcher-key[aria-disabled="true"] .launcher-key-face::before {
-  filter: saturate(.48) opacity(.77);
+.launcher-key:disabled .launcher-key-face::before {
+  background: linear-gradient(155deg, #ebe9e5, #c5c2be);
 }
+
+#storageWindowsControls .storage-connect-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+#storageWindowsControls .storage-connect-row .form-label { margin: 0; }
+#storageModal .btn.storage-connect {
+  --storage-control-art: url("../Resources/haema-design/button-raster-4x/storage-default.png");
+  min-width: 112px;
+  color: var(--haema-white);
+  font-family: "Haema CookieRun", sans-serif;
+  font-weight: 900;
+  text-decoration: none;
+}
+#storageModal .btn.storage-connect::before {
+  background: none;
+  border-image-slice: 48 120 48 120 fill;
+  border-image-width: 12px 30px;
+  opacity: 1;
+}
+#storageModal .btn.storage-connect:enabled:hover::before,
+#storageModal .btn.storage-connect:enabled:active::before {
+  filter: brightness(1.12);
+}
+#storageModal .btn.storage-connect:disabled { opacity: 1; }
+#storageModal .btn.storage-connect:disabled::before { filter: grayscale(1); }
 
 @media (prefers-reduced-motion: reduce) {
   .launcher-key .launcher-key-face { transition: none; }
-  .launcher-key[href]:is(:active, :hover) .launcher-key-face { transform: none; }
+  .launcher-key:enabled:is(:active, :hover) .launcher-key-face { transform: none; }
 }
 
 @media (min-width: 821px) {

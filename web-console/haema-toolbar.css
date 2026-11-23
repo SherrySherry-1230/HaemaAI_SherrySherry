@@ -30,8 +30,6 @@
     max-width: 100%;
     padding-inline: 9px;
 }
-#chatSetupGuide p { margin: 4px 0 8px; }
-.conversation-history:has(#chatSetupGuide) .conversation-empty { display: none; }
 /* @editedBy YAONG1230 2026-10-28
    Use four-pixel-per-CSS-pixel exports of the original colored artwork.
    Fixed source/output corners leave only the middle strips to accommodate labels.

@@ -1482,6 +1482,7 @@ return {
     setConsole,
     safeBaseUrl,
     displayMaskedKey,
+    confirmedProfile,
     captureAiConnection,
     confirmAiConnection,
     invalidateAiConnection,

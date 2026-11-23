@@ -51,7 +51,7 @@ HAEMA_CONSOLE = {
     cardShapeHistory: new Map(),
     streamingJJums: new Set(),
     selectedJJumId: null,
-    onboardingHintVisible: false,
+    inputSetupPromptOpen: false,
     storageConnected: false,
     storageIdentity: null,
     apiConfigured: false,
@@ -175,7 +175,11 @@ HAEMA_CONSOLE.holdCompositionClick = function(event) {
 HAEMA_CONSOLE.render = function() {
     // Launcher targets must also change in preserved modals and while IME input defers rendering.
     globalThis.HAEMA_STORAGE_MODAL?.refreshLauncherControls?.();
-    if (this.isComposing || this.compositionPointer) { this.deferredCompositionRender = true; return; }
+    if (this.isComposing || this.compositionPointer) {
+        this.deferredCompositionRender = true;
+        this.updateInputAvailability();
+        return;
+    }
     this.deferredCompositionRender = false;
     const app = document.getElementById("app");
     // allJJums가 초기화되지 않았으면 빈 배열로 초기화
@@ -616,7 +620,7 @@ HAEMA_CONSOLE.switchChatHost = function(value) {
         this.incrementalController?.sample(memoryDraft);
         if (memoryKey) try { sessionStorage.setItem(memoryKey, memoryDraft); } catch {}
     }
-    document.getElementById('userInput')?.focus({ preventScroll: true });
+    document.getElementById(this.isConversationReady() ? 'userInput' : 'hostPickerTrigger')?.focus({ preventScroll: true });
 };
 
 HAEMA_CONSOLE.sendTestHostMessage = async function() {
@@ -1234,12 +1238,7 @@ HAEMA_CONSOLE.attachEventListeners = function(liveModal) {
         if (modalSave) modalSave.addEventListener("click", () => this.saveModal());
     }
 
-    document.getElementById('chatSetupAction')?.addEventListener('click', () => {
-        if (!this.isStorageReady()) HAEMA_STORAGE_MODAL.open();
-        else this.openApiKeyModal();
-    });
-
-    // A locked editor stays focusable and offers its next step in the conversation.
+    // Keep the locked editor reachable so keyboard and pointer users can open its setup prompt.
     if (inputArea && !this.boundInputElements.has(inputArea)) {
         this.boundInputElements.add(inputArea);
         inputArea.addEventListener("click", (e) => {
@@ -1304,7 +1303,7 @@ HAEMA_CONSOLE.isStorageReady = function() {
 };
 
 HAEMA_CONSOLE.isApiKeyReady = function() {
-    return this.apiConfigured === true && !this.apiStatusUnconfirmed && globalThis.HAEMA_LOCAL_CONNECTION?.status().aiReady === true;
+    return !!HAEMA_API_KEY_MODAL.captureAiConnection();
 };
 
 HAEMA_CONSOLE.runtimeReadinessLabel = function() {
@@ -1410,29 +1409,43 @@ HAEMA_CONSOLE.updateInputAvailability = function() {
 };
 
 // ===== input-area 클릭 시 처리 =====
-HAEMA_CONSOLE.handleInputAreaClick = function() {
-    if (this.isConversationReady() || this.onboardingHintVisible) return;
-    this.onboardingHintVisible = true;
-    this.pendingConversationScroll = true;
-    this.render();
+HAEMA_CONSOLE.chatSetupStep = function() {
+    if (!this.isStorageReady()) return 'storage';
+    if (this.isApiKeyReady()) return null;
+    if (this.localConnectionState?.runtimeMode === 'setup-only' && HAEMA_API_KEY_MODAL.confirmedProfile()) return 'start';
+    return 'api';
 };
 
-HAEMA_CONSOLE.renderOnboardingHint = function() {
-    if (!this.onboardingHintVisible) return '';
-    const storage = this.isStorageReady();
-    const label = storage ? '② API 연결' : '① 쩜통 연결';
-    const message = !storage ? '대화를 시작하려면 먼저 기억을 담을 쩜통을 연결해 주세요.' :
-        this.apiConfigured && this.localConnectionState?.runtimeMode === 'setup-only' ? this.setupModeNotice() :
-        '대화를 시작하려면 현재 쩜통의 API 연결을 확인해 주세요.';
-    return '<div class="message-row haema" id="chatSetupGuide"><div class="message-bubble">' +
-        '<strong>해마.ai</strong><p>' + this.escapeHtml(message) + '</p>' +
-        '<button type="button" id="chatSetupAction" class="btn btn-secondary">' + label + '</button></div></div>';
+HAEMA_CONSOLE.handleInputAreaClick = async function() {
+    if (this.inputSetupPromptOpen || document.querySelector('dialog[open], .modal-overlay.active')) return;
+    const step = this.chatSetupStep();
+    if (!step) return;
+    this.inputSetupPromptOpen = true;
+    try {
+        if (step === 'start') {
+            await HAEMA_DIALOG.alert(this.setupModeNotice(), { title: 'AI 대화를 시작해 주세요' });
+            return;
+        }
+        const storage = step === 'storage';
+        const confirmed = await HAEMA_DIALOG.confirm(
+            storage ? '대화를 시작하려면 쩜통을 먼저 연결해 주세요.' : '대화를 시작하려면 이 쩜통의 API를 연결해 주세요.',
+            { title: storage ? '쩜통을 연결할까요?' : 'API를 연결할까요?',
+                cancelText: '나중에', confirmText: storage ? '① 쩜통 연결' : '② API 연결' }
+        );
+        if (!confirmed || step !== this.chatSetupStep()) return;
+        // Returning from setup should focus its toolbar button without opening another prompt.
+        document.getElementById(storage ? 'storageBtn' : 'apiKeyBtn')?.focus({ preventScroll: true });
+        if (storage) HAEMA_STORAGE_MODAL.open();
+        else this.openApiKeyModal();
+    } finally {
+        this.inputSetupPromptOpen = false;
+    }
 };
 
 // Enter와 클릭 모두 같은 버튼 눌림 상태를 사용하며 화면 재생성 후에도 유지한다.
 HAEMA_CONSOLE.activateSend = function() {
     const button = document.getElementById("sendBtn");
-    if (!button || button.disabled) return;
+    if (!button || button.disabled || !this.isConversationReady()) return;
     this.sendPressed = true;
     button.classList.add("is-pressed");
     clearTimeout(this.sendPressTimer);
@@ -2673,7 +2686,6 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
     const editor = this.escapeHtml(this.chatEditorKey());
     const placeholder = test ? '선택한 호스트에게 메시지를 입력하세요.' : '챗봇AI와 대화하는 것처럼 입력해주세요.';
     const isInputDisabled = !this.isConversationReady();
-    if (!isInputDisabled) this.onboardingHintVisible = false;
     const apiReady = this.isApiKeyReady();
     const setupOnly = this.apiConfigured && !apiReady;
     const storageTitle = '① 쩜통 연결 · ' + (this.isStorageReady() ? '연결됨' : this.storageStatusUnconfirmed ? '확인 필요' : '미연결');
@@ -2686,7 +2698,7 @@ HAEMA_CONSOLE.renderLeftPanel = function() {
         '<div class="panel-viewport chat-panel-viewport"><div class="chat-panel-layout">' +
         (test ? this.renderTestHostControls() : '') +
         '<div class="conversation-history" data-scroll-key="' + (test ? 'host-history-' + this.selectedTestHost : 'history') + '" aria-live="polite">' +
-        (test ? this.renderTestHostHistory() : this.renderHaemaHistory()) + this.renderOnboardingHint() + '</div>' +
+        (test ? this.renderTestHostHistory() : this.renderHaemaHistory()) + '</div>' +
         '<div class="typing-indicator" id="typingIndicator" aria-live="polite"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span>입력 중</span></div>' +
         '<div class="input-area"><span class="user-avatar-frame" title="테스터"><img class="user-avatar" src="Resources/haema-design/12-user-avatar.png" width="82" height="88" alt="테스터 프로필"></span><img class="user-bubble-art" src="Resources/haema-design/15-user-bubble-shape.svg" width="646" height="47.37" alt="" aria-hidden="true"><textarea class="user-input" id="userInput" rows="1" data-editor="' + editor + '" placeholder="' + placeholder + '" aria-label="메시지 입력"' + (isInputDisabled ? ' readonly' : '') + '>' + this.escapeHtml(inputValue) + '</textarea>' +
         '<button class="send-button' + (this.sendPressed ? ' is-pressed' : '') + '" id="sendBtn" type="button" aria-label="보내기" ' + (isInputDisabled || this.sending ? 'disabled' : '') + '><img src="Resources/haema-design/08-send-button.svg" width="61" height="45" alt=""><span aria-hidden="true">↵</span></button></div></div></div></section>';
