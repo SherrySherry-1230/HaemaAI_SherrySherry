@@ -8,6 +8,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#F7F3EA">
     <meta name="referrer" content="no-referrer">
+    <script>
+        (() => {
+            const MOBILE_CONSOLE_ENABLED = false;
+            const isMobileDevice = navigator.userAgentData?.mobile === true ||
+                /Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent) ||
+                (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
+            if (!MOBILE_CONSOLE_ENABLED && isMobileDevice) {
+                document.documentElement.style.visibility = "hidden";
+                location.replace("./mobile-notice.html");
+                return;
+            }
+
+            if (!isMobileDevice) document.documentElement.classList.add("desktop-device");
+            // Load the console only after the entry decision and its mount point are ready.
+            document.addEventListener("DOMContentLoaded", () => {
+                const entry = document.createElement("script");
+                entry.type = "module";
+                entry.src = "./web-console/haema-bootstrap.mjs?v=20261123-mobile-release";
+                document.body.append(entry);
+            }, { once: true });
+        })();
+    </script>
     <title>해마.ai | 기억 관리 웹 콘솔</title>
     <meta name="description" content="해마.ai 웹 콘솔. AI의 기억을 저장하고 연결하며 필요한 순간 회상하는 기억 관리 도구입니다.">
     <link rel="icon" href="Resources/favicon.ico?v=20261005" sizes="16x16 32x32 48x48 64x64">
@@ -47,6 +70,30 @@
         html, body { width: 100%; min-width: 320px; height: 100%; margin: 0; }
         body { min-height: 100dvh; display: flex; flex-direction: column; overflow: hidden; background: var(--paper); color: var(--ink); }
         #app { height: 100%; min-height: 0; display: flex; flex: 1 1 auto; flex-direction: column; }
+        .desktop-width-notice { display: none; }
+        @media (max-width: 820px) {
+            .desktop-device .desktop-width-notice {
+                display: flex;
+                flex: 0 0 auto;
+                align-items: center;
+                justify-content: center;
+                gap: 6px;
+                margin: 6px 12px 0;
+                padding: 3px 10px;
+                border: 1px solid #edd4dc;
+                border-radius: 999px;
+                background: #fceaf0;
+                color: #533842;
+                font: 400 13px/1.4 "CookieRun Regular", sans-serif;
+                text-align: center;
+            }
+            .desktop-width-notice::before {
+                content: "";
+                flex: 0 0 21px;
+                height: 21px;
+                background: url("Resources/haema-emoji/haema-default.svg") center / contain no-repeat;
+            }
+        }
         button, textarea, input, select { font: inherit; }
         button { color: inherit; }
         button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid rgba(184,169,201,.8); outline-offset: 2px; }
@@ -758,7 +805,7 @@
     <link rel="stylesheet" href="web-console/haema-responsive-controls.css?v=20261123-launcher-controls">
 </head>
 <body>
+    <p class="desktop-width-notice">창을 조금만 넓혀 주세요!</p>
     <div id="app"></div>
-    <script type="module" src="web-console/haema-bootstrap.mjs?v=20261123-launcher-input"></script>
 </body>
 </html>

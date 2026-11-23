@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import childProcess, { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { basename, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { verifyPublicConsole } from './windows-console-browser.mjs';
+import { recordEndedRunner, verifyWindowsCmdEntryPoints } from './windows-cmd-smoke.mjs';
 
 const [source, statusFile, profile] = process.argv.slice(2);
 const load = file => import(pathToFileURL(file).href);
@@ -64,6 +65,7 @@ async function run() {
   const root = join(temp,basename(source));
   let controls;
   let setupRun;
+  let restartedRun;
   let fullRun;
   const spawn = childProcess.spawn;
   try {
@@ -74,11 +76,14 @@ async function run() {
     const native = await load(join(root,'.haema','launcher','launcher.mjs'));
     const { handleBrowserLaunch } = await load(join(root,'.haema','browser-launch.mjs'));
     const setup = Promise.withResolvers();
+    const restarted = Promise.withResolvers();
     const full = Promise.withResolvers();
     const setupOpened = Promise.withResolvers();
+    const restartedOpened = Promise.withResolvers();
     const fullOpened = Promise.withResolvers();
-    const browserOpens = [setupOpened, fullOpened];
+    const browserOpens = profile === 'runner' ? [setupOpened, restartedOpened, fullOpened] : [setupOpened, fullOpened];
     let openCount = 0;
+    let setupStarts = 0;
     let prepares = 0;
     // Capture only the final Windows desktop browser invocation. Keep the
     // shipped launcher's openBrowser setting and all runtime child processes.
@@ -94,15 +99,14 @@ async function run() {
       ...native,
       start(options) {
         assert.equal('serviceCode' in options,false);
-        const wait = options.setupOnly ? setup : full;
+        const wait = options.setupOnly ? (++setupStarts === 1 ? setup : restarted) : full;
         assert.equal(options.openBrowser,true);
         return native.start({...options,onReady:info => { options.onReady?.(info); wait.resolve(info); },
           onError:code => { options.onError?.(code); wait.reject(new Error(code)); }});
       },
     };
     const deps = {
-      inspect:() => entry.inspectWebControlTarget(root,{launcher}),
-      confirm:async text => { assert.ok(text.includes(root)); return true; },
+      inspect:(_root, options) => entry.inspectWebControlTarget(root,{launcher,...options}),
       assertRegistered:registration.assertWebControlRegistration,
       fetchImpl:async (url, init) => {
         const official = new URL(native.PUBLIC_SERVICE_URL);
@@ -118,7 +122,19 @@ async function run() {
         return fetch(url,init);
       },
     };
-    controls = action => handleBrowserLaunch(['haema-ai://' + action],deps);
+    let effectiveRoot = root;
+    let scope;
+    function checkConfirmation(text) {
+      // Inspect the real handler's confirmation text, then supply a scripted
+      // answer instead of driving an interactive Windows MessageBox from CI.
+      assert.ok(text.includes(effectiveRoot));
+      if (root !== effectiveRoot) assert.ok(text.indexOf(root) > text.indexOf(effectiveRoot));
+    }
+    controls = (action, {target = scope, confirm = text => { checkConfirmation(text); return true; }} = {}) => {
+      const base = 'haema-ai://' + action;
+      const uri = target ? base + '?store=' + target.storageId.slice(5) + '&runner=' + target.launcherId.slice(5) : base;
+      return handleBrowserLaunch([uri], {...deps,confirm});
+    };
     await step('REGISTER_AND_CONNECT');
     let picked = 0;
     let confirmedTarget = false;
@@ -146,11 +162,77 @@ async function run() {
     assert.equal(first.running.status.mode,'setup');
     assert.equal(first.running.status.ready,true);
     assert.equal(first.running.status.port,started.port);
+    assert.match(first.storageId,/^file:[a-f0-9]{64}$/);
+    assert.equal(first.launcherId,first.storageId);
+    scope = first;
     assert.equal(openCount,1);
     assert.equal(prepares,0);
     if (profile === 'runner') {
-      await step('CONNECT_PUBLIC_CONSOLE_IN_CHROME');
-      await verifyPublicConsole(started.webUrl,root,first.storageId);
+      const published = process.env.CHECK_PUBLISHED_CONTROLS === 'true';
+      await step(published ? 'CHECK_PUBLISHED_CHROME_STORE_CONTROLS' : 'SWITCH_PUBLIC_CONSOLE_STORE_IN_CHROME');
+      const secondRoot = join(temp,'선택한 기억',basename(source) + '_2');
+      const selected = await verifyPublicConsole(started.webUrl,root,first.storageId,{
+        switchTo:secondRoot, launcherId:first.launcherId, checkPublished:published,
+      });
+      const changed = await entry.inspectWebControlTarget(root);
+      assert.equal(changed.storageRoot,selected.storageRoot);
+      assert.equal(changed.storageId,selected.storageId);
+      assert.equal(changed.launcherId,first.launcherId);
+      assert.equal(changed.running.state.scope,first.running.state.scope);
+      effectiveRoot = secondRoot;
+      scope = changed;
+
+      await step('REJECT_STALE_STORE_AND_OTHER_INSTALLATION');
+      // Each test changes one binding only. No confirmation or mode transition
+      // may occur, even for Stop, which otherwise closes a running setup server.
+      const foreignLauncher = {storageId:changed.storageId,launcherId:changed.storageId};
+      for (const target of [first, foreignLauncher]) {
+        for (const action of ['start','ai-start','stop']) {
+          await assert.rejects(controls(action,{target,confirm:() => assert.fail('Stale target offered for confirmation')}),
+            {message:'WEB_CONTROL_TARGET_MISMATCH'});
+        }
+      }
+      assert.equal((await entry.inspectWebControlTarget(root)).running.state.scope,first.running.state.scope);
+      assert.equal(prepares,0);
+      await step('CANCEL_AND_CONFIRM_SCOPED_NATIVE_STOP');
+      let prompted = 0;
+      const cancelStop = await controls('stop',{confirm:text => {
+        checkConfirmation(text);
+        prompted++;
+        return false;
+      }});
+      assert.equal(prompted,1);
+      assert.equal(cancelStop.cancelled,true);
+      assert.equal((await entry.inspectWebControlTarget(root)).running.state.scope,first.running.state.scope);
+      assert.equal((await controls('stop')).stopped,true);
+      assert.equal(await setupRun,true);
+      const stopped = await entry.inspectWebControlTarget(root);
+      assert.equal(stopped.running,null);
+      assert.equal(stopped.storageRoot,secondRoot);
+      assert.equal(stopped.storageId,changed.storageId);
+
+      await step('REFUSE_TO_RECOVER_A_LIVE_RUNNER');
+      const liveLock = await recordEndedRunner(root, process.pid);
+      await assert.rejects(controls('start'), {code:'RUNNER_RECOVERY_ACTIVE'});
+      assert.equal(await readFile(liveLock.path,'utf8'),liveLock.record);
+      await rm(liveLock.lock,{recursive:true});
+
+      await step('RESTART_SCOPED_SETUP_WITH_SELECTED_STORE');
+      const endedLock = await recordEndedRunner(root);
+      const skip = await controls('start',{confirm:text => {
+        checkConfirmation(text);
+        assert.match(text,/이전 실행/);
+        return false;
+      }});
+      assert.equal(skip.cancelled,true);
+      assert.equal(await readFile(endedLock.path,'utf8'),endedLock.record);
+      restartedRun = controls('start');
+      const reopened = await readyWithConsole(restarted,restartedOpened,restartedRun);
+      const again = await entry.inspectWebControlTarget(root);
+      assert.equal(again.running.status.mode,'setup');
+      assert.notEqual(again.running.state.scope,first.running.state.scope);
+      assert.equal(again.storageId,changed.storageId);
+      await verifyPublicConsole(reopened.webUrl,secondRoot,changed.storageId,{launcherId:changed.launcherId});
     }
 
     await step('PREPARE_PUBLIC_AI_AND_START');
@@ -161,22 +243,26 @@ async function run() {
     assert.equal(second.running.status.mode,'full');
     assert.equal(second.running.status.ready,true);
     assert.equal(second.running.status.port,fullConsole.port);
-    assert.equal(openCount,2);
+    assert.equal(openCount,profile === 'runner' ? 3 : 2);
+    assert.equal(second.storageRoot,effectiveRoot);
+    assert.equal(second.storageId,scope.storageId);
     assert.notEqual(first.running.state.scope,second.running.state.scope);
     assert.equal(prepares,1);
 
     await step('STOP');
     assert.equal((await controls('stop')).stopped,true);
     await fullRun;
+    if (restartedRun) await restartedRun;
     assert.equal((await entry.inspectWebControlTarget(root)).running,null);
+    await verifyWindowsCmdEntryPoints({ root, temp, expectedStorage:effectiveRoot, entry, registration, step });
     controls = null;
   } catch (error) {
     await reportFailure(error);
     throw error;
   } finally {
     const cleanup = async () => {
-      if (controls) await controls('stop').catch(() => {});
-      await Promise.allSettled([setupRun,fullRun]);
+      if (controls) await controls('stop',{target:null,confirm:() => true}).catch(() => {});
+      await Promise.allSettled([setupRun,restartedRun,fullRun]);
     };
     let timer;
     try {
@@ -200,7 +286,8 @@ async function reportFailure(error) {
     'LOCAL_PORT_START_FAILED','RUNTIME_START_FAILED','RUNTIME_READY_TIMEOUT','PAYLOAD_FILE_CHANGED',
     'CONSOLE_OPEN_TIMEOUT','WINDOWS_CHROMEDRIVER_EXITED','WINDOWS_CHROMEDRIVER_TIMEOUT','WINDOWS_BROWSER_COMMAND_FAILED',
     'WINDOWS_CONSOLE_NOT_CONNECTED','WINDOWS_CONSOLE_PERMISSION_DENIED','WINDOWS_CONSOLE_CONNECTION_ERROR',
-    'WINDOWS_CONSOLE_EVENTS_ERROR','WINDOWS_CONSOLE_WRONG_MODE','WINDOWS_CONSOLE_WRONG_STORE']);
+    'WINDOWS_CONSOLE_EVENTS_ERROR','WINDOWS_CONSOLE_WRONG_MODE','WINDOWS_CONSOLE_WRONG_STORE',
+    'WINDOWS_CONSOLE_SWITCH_FAILED','WINDOWS_CONSOLE_WRONG_CONTROLS','RUNNER_RECOVERY_ACTIVE','RUNNER_RECOVERY_UNCONFIRMED']);
   const detail = known.has(error?.message) ? '_' + error.message : '';
   await writeFile(statusFile,'FAIL ' + phase + detail);
 }

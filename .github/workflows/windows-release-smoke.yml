@@ -4,9 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       sha256:
-        description: SHA-256 of the approved haema-ai-windows.zip
+        description: SHA-256 of the approved Windows installer ZIP
         required: true
         type: string
+      published:
+        description: Also require the scoped launcher buttons on the deployed GitHub Pages site
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,4 +33,5 @@ jobs:
         env:
           SMOKE_PROFILE: ${{ matrix.profile }}
           RELEASE_SHA256: ${{ inputs.sha256 }}
+          CHECK_PUBLISHED_CONTROLS: ${{ inputs.published }}
         run: .\.github\scripts\windows-release-smoke.ps1
