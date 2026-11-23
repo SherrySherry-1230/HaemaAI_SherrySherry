@@ -30,61 +30,63 @@
             min-height: 100svh;
             margin: 0;
             display: grid;
+            grid-template-columns: minmax(0, 1fr);
             place-items: center;
-            padding: max(24px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right))
-                     max(24px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+            padding: max(12px, env(safe-area-inset-top)) env(safe-area-inset-right)
+                     max(12px, env(safe-area-inset-bottom)) env(safe-area-inset-left);
             background: #F7F3EA;
             color: #26292E;
             font-family: "CookieRun", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
         }
         main {
-            --haema-width: clamp(120px, 44vw, 180px);
-            --bubble-width: clamp(142px, 39vw, 164px);
-            --bubble-height: clamp(144px, 38vw, 156px);
-            --belly-gap: 8px;
-            --bubble-offset: calc(var(--haema-width) * 0.77 + var(--belly-gap));
+            /* One unit in the 393px-wide mobile artwork. */
+            --unit: calc(100cqi / 393);
+            container-type: inline-size;
             display: grid;
             grid-template-columns: minmax(0, 1fr);
-            width: min(100%, calc(var(--bubble-offset) + var(--bubble-width)));
+            width: min(100%, 410px);
         }
         .haema, .speech-bubble {
             grid-area: 1 / 1;
-            align-self: start;
+            place-self: start;
         }
         .haema {
             display: block;
-            width: var(--haema-width);
+            width: calc(172.91 * var(--unit));
             height: auto;
+            margin-inline-start: calc(49.3 * var(--unit));
+            /* The artwork sits slightly above the frame's vertical center. */
+            margin-block-end: calc(10.55 * var(--unit));
         }
         .speech-bubble {
-            display: grid;
-            align-content: center;
-            min-height: var(--bubble-height);
+            width: calc(156 * var(--unit));
+            min-height: calc(149.33 * var(--unit));
             margin: 0;
-            /* The tail lines up with the chin; the left edge follows the belly. */
-            margin-block-start: calc(var(--haema-width) * 0.9);
-            margin-inline-start: var(--bubble-offset);
-            padding: 18px 10px 16px;
+            margin-block-start: calc(141.98 * var(--unit));
+            margin-inline-start: calc(198 * var(--unit));
+            padding: calc(25 * var(--unit)) calc(10 * var(--unit))
+                     calc(17 * var(--unit)) calc(8 * var(--unit));
             border: 0 solid transparent;
             border-image: url("Resources/haema-design/mobile-notice-bubble.svg")
-                52 94 52 96 fill / 26px 47px 26px 48px / 0 stretch;
-            font-size: clamp(13px, 3.6vw, 15px);
+                26 60 26.672 48 fill / calc(26 * var(--unit)) calc(60 * var(--unit))
+                calc(26 * var(--unit)) calc(48 * var(--unit)) / 0 stretch;
+            font-size: calc(14.15 * var(--unit));
             font-weight: 400;
             line-height: 1.55;
             text-align: center;
             word-break: keep-all;
         }
         .speech-bubble strong {
-            margin-bottom: 4px;
+            display: block;
+            width: calc(136 * var(--unit));
+            margin-bottom: calc(4 * var(--unit));
             color: #8A3150;
-            font-size: 1.35em;
+            font-size: calc(19.1 * var(--unit));
             font-weight: 900;
+            line-height: calc(29 * var(--unit));
         }
         @media (orientation: landscape) and (max-height: 500px) {
-            body {
-                padding-block: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-bottom));
-            }
-            main { --haema-width: min(144px, 35vh); }
+            main { width: min(100%, 410px, 115svh); }
         }
     </style>
 </head>
@@ -93,8 +95,7 @@
         <img class="haema" src="Resources/haema-design/crying-haema.png" alt="">
         <h1 class="speech-bubble">
             <strong>죄송해요!</strong>
-            <span>아직, 해마.ai 테스트는</span>
-            <span>PC나 맥에서만 가능해요.</span>
+            <span>아직, 해마.ai 테스트는<br>PC나 맥에서만<br>가능해요.</span>
         </h1>
     </main>
 </body>
