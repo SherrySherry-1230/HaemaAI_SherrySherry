@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-24
 // @editedBy YAONG1230 2026-11-23: guide installation and confirm the current storage before API setup
 // @editedBy SherrySherry 2026-11-22
 // @editedBy SherrySherry 2026-09-24
@@ -166,7 +167,16 @@ window.HAEMA_STORAGE_MODAL = (function () {
             }
             readSettings = hasIdentity && (refreshSettings || !sameStore || !wasReady);
             if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
-            consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
+            if (!sameStore) consoleRef.selectedJJumId = null;
+            if (hasIdentity && Array.isArray(status.jjums)) {
+                consoleRef.updateJJumList(status.jjums);
+            } else {
+                if (!hasIdentity || !sameStore) consoleRef.updateJJumList(null);
+                if (hasIdentity) {
+                    // A connected store can omit the list. Its separate read reports its own status.
+                    void consoleRef.loadLocalServerData().catch(() => {});
+                }
+            }
         }
         const overlay = document.getElementById("storageModalOverlay");
         if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(status);
@@ -553,7 +563,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (existing) existing.remove();
         const returnFocus = previous?.returnFocus || focusReference(document.activeElement);
         const connected = globalThis.HAEMA_LOCAL_CONNECTION?.status?.().connection === 'connected';
-        const showWindowsControls = onWindows();
+        const platform = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.();
+        const showWindowsControls = platform === "windows";
+        const pathPlaceholder = { windows: "C:\\Users\\yourname\\Documents\\해마", macos: "/Users/yourname/Documents/해마" }[platform] || "저장할 폴더의 전체 경로";
         const downloadControls = [
             '        <h3 class="form-label" id="storageInstallTitle" tabindex="-1"></h3>',
             '        <div id="storageDownloadChoice">',
@@ -586,7 +598,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '      <div class="form-group">',
             '        <label class="form-label" for="storagePathInput">저장소 경로</label>',
             '        <div class="input-group">',
-            '          <input type="text" class="form-input" id="storagePathInput" placeholder="/Users/yourname/Documents/해마" />',
+            '          <input type="text" class="form-input" id="storagePathInput" placeholder="' + pathPlaceholder + '" />',
             '          <button class="btn" id="storageFolderSelectBtn" type="button">',
             '            📁 폴더 선택',
             '          </button>',
@@ -774,7 +786,6 @@ window.HAEMA_STORAGE_MODAL = (function () {
         // [✏️ 직접 입력] 버튼 클릭
         directInputBtn.addEventListener("click", function() {
             pathInput.disabled = false;
-            pathInput.placeholder = "/Users/yourname/Documents/해마";
             pathInput.focus();
             folderHint.textContent = "실제 절대 경로를 직접 입력해주세요.";
             folderHint.style.color = "";

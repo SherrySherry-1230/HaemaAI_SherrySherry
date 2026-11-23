@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-24
 // @editedBy YAONG1230 2026-11-23: guide first use from storage through API settings.
 // @editedBy YAONG1230 2026-11-23: refresh launcher controls during composition.
 // @editedBy YAONG1230 2026-11-22: preserve host draft revisions and native clicks that commit an IME composition.
@@ -48,6 +49,8 @@ HAEMA_CONSOLE = {
     recallShapeHistory: new Map(),
     previewState: 'idle',
     allJJums: [],
+    memoryListStatus: 'unread',
+    memoryListReadId: 0,
     cardShapeHistory: new Map(),
     streamingJJums: new Set(),
     selectedJJumId: null,
@@ -350,10 +353,16 @@ HAEMA_CONSOLE.renderMainContainer = function() {
 
 HAEMA_CONSOLE.renderRightPanel = function() {
     const host = this.selectedTestHost && globalThis.HAEMA_TEST_HOST.state;
-    const listStatus = host?.memoryRefreshing ? ' · 갱신 중' : host?.memoryNotice ? ' · 마지막 조회' : '';
+    const knownCount = this.memoryListStatus === 'ready' || this.allJJums.length > 0;
+    const count = knownCount ? this.allJJums.length : '확인 전';
+    const refreshing = this.memoryListStatus === 'loading' || host?.memoryRefreshing;
+    const lastRead = this.storageStatusUnconfirmed || this.memoryListStatus !== 'ready' || host?.memoryNotice;
+    let listStatus = '';
+    if (knownCount && refreshing) listStatus = ' · 갱신 중';
+    else if (knownCount && lastRead) listStatus = ' · 마지막 조회';
     return '<section class="panel panel-right" aria-label="해마 기억 목록"><div class="right-panel-art" aria-hidden="true"><span class="panel-art-slices"></span></div>' + this.renderTransmissionStatus() + '<div class="panel-heading">' +
         '<div><h1 class="panel-title">해마의 기억</h1><div class="panel-caption">저장된 쩜과 연결을 확인해요</div></div>' +
-        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + (this.storageStatusUnconfirmed && !this.storageIdentity ? '확인 필요' : (this.allJJums || []).length) + listStatus + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
+        '<div class="jjum-list-tools"><span class="jjum-list-count" title="최근 저장순">모든 쩜 ' + count + listStatus + '</span><div class="create-btn-wrapper"><button class="btn btn-create" id="createJJumBtn">+ 새 쩜(JJum) 만들기</button></div></div>' +
         '</div><div class="panel-viewport haema-panel-viewport"><div class="haema-panel-scroll" data-scroll-key="haema-panel">' +
         '<div class="haema-scroll" data-scroll-key="haema">' + this.renderHostPreview() + this.renderJJumListSection() + '</div></div></div></section>';
 };
@@ -955,7 +964,9 @@ HAEMA_CONSOLE.renderJJumListSection = function() {
         return new Date(b.firstSeen) - new Date(a.firstSeen);
     });
     if (!sortedJJums.length) {
-        return '<div class="jjum-list-section"><div class="empty-state"><img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마"><div class="empty-text">쩜이 없어요</div></div></div>';
+        const label = { ready: '쩜이 없어요', loading: '쩜을 불러오는 중이에요', unavailable: '쩜을 불러오지 못했어요' }[this.memoryListStatus]
+            || '쩜통을 연결하면 쩜을 볼 수 있어요';
+        return '<div class="jjum-list-section"><div class="empty-state"><img class="empty-haema" src="Resources/haema-design/crying-haema.png" alt="우는 해마"><div class="empty-text" role="status">' + label + '</div></div></div>';
     }
     const escape = value => this.escapeHtml(String(value ?? ''));
     const states = {
@@ -2850,27 +2861,35 @@ HAEMA_CONSOLE.init = async function() {
 // 선택한 서버 저장소의 쩜을 읽고, 완료 후 다음 처리를 진행한다.
 HAEMA_CONSOLE.loadLocalServerData = async function() {
     const scope = this.getConversationScope();
-    const epoch = this.conversationScopeEpoch;
     if (!scope) throw new Error('연결된 저장소를 확인해 주세요.');
-    const readId = (this.memoryListReadId || 0) + 1;
-    this.memoryListReadId = readId;
-    await this.verifyConversationScope(scope);
-    const response = await HAEMA_LOCAL_CONNECTION.request('memory.list', { ownerId: scope.ownerId });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || '저장소를 읽을 수 없습니다.');
-    await this.verifyConversationScope(scope);
-    if (epoch !== this.conversationScopeEpoch || !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 이전 목록은 적용하지 않았어요.');
-    if (!Array.isArray(data.jjums)) throw new Error('기억 목록을 확인하지 못했어요.');
-    if (readId < (this.appliedMemoryListReadId || 0)) return this.allJJums;
-    this.appliedMemoryListReadId = readId;
-    this.allJJums = data.jjums;
+    const epoch = this.conversationScopeEpoch;
+    const readId = ++this.memoryListReadId;
+    this.memoryListStatus = 'loading';
     this.render();
-    return this.allJJums;
+    try {
+        await this.verifyConversationScope(scope);
+        const response = await HAEMA_LOCAL_CONNECTION.request('memory.list', { ownerId: scope.ownerId });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || '저장소를 읽을 수 없습니다.');
+        if (!Array.isArray(data?.jjums)) throw new Error('기억 목록을 확인하지 못했어요.');
+        await this.verifyConversationScope(scope);
+        if (epoch !== this.conversationScopeEpoch || !HAEMA_CONVERSATION_SESSION.sameScope(scope, this.getConversationScope())) throw new Error('저장소가 바뀌어 이전 목록은 적용하지 않았어요.');
+        if (readId === this.memoryListReadId) this.updateJJumList(data.jjums);
+        return this.allJJums;
+    } catch (error) {
+        if (readId === this.memoryListReadId) {
+            this.memoryListStatus = 'unavailable';
+            this.render();
+        }
+        throw error;
+    }
 };
 
 // 쩜 목록 업데이트 함수
 HAEMA_CONSOLE.updateJJumList = function(jjums) {
-    this.allJJums = jjums || [];
+    this.memoryListReadId += 1;
+    this.memoryListStatus = Array.isArray(jjums) ? 'ready' : 'unread';
+    this.allJJums = jjums ?? [];
     this.render();
 };
 
@@ -2937,9 +2956,12 @@ HAEMA_CONSOLE.mount = async function() {
             // A forgotten, rejected or replaced binding no longer identifies the visible store.
             this.storageIdentity = null;
             this.allJJums = [];
+            this.memoryListStatus = 'unread';
             this.selectedJJumId = null;
         }
         if (lost) {
+            this.memoryListReadId += 1;
+            this.memoryListStatus = 'unread';
             HAEMA_API_KEY_MODAL.invalidateAiConnection();
             this.storageConnected = false;
             this.confirmedApiProfile = null;
