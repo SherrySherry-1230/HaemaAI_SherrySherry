@@ -1,4 +1,4 @@
-// @editedBy YAONG1230 2026-11-22: show Connect before AI Start in both launcher groups
+// @editedBy YAONG1230 2026-11-23: guide installation and confirm the current storage before API setup
 // @editedBy SherrySherry 2026-11-22
 // @editedBy SherrySherry 2026-09-24
 // @editedBy YAONG1230 2026-10-18
@@ -66,8 +66,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
     function focusInside(overlay) {
         if (!isOpen(overlay) || document.querySelector("dialog[open]")) return;
         const options = overlay.querySelector("#storageManageOptions");
-        const preferred = options && !options.open ? overlay.querySelector("#storageManageSummary") :
-            overlay.querySelector("#storageDownloadPlatform, #storagePathInput:not(:disabled), #storageDirectInputBtn, #existingStorageConnectBtn");
+        const preferred = [...overlay.querySelectorAll("#storageNextApi, #storageInstallNext, #storageCheckConnection, #storageDownloadPlatform, #storagePathInput:not(:disabled), #storageDirectInputBtn, #existingStorageConnectBtn")]
+            .find(availableControl) || (options && !options.open ? overlay.querySelector("#storageManageSummary") : null);
         const target = availableControl(preferred) ? preferred : overlay.querySelector("button:not(:disabled)");
         if (availableControl(target)) target.focus({ preventScroll: true });
     }
@@ -129,9 +129,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     // 서버가 확인한 저장소 상태만 연결 상태로 사용한다.
-    function applyStorageStatus(status) {
+    async function applyStorageStatus(status, refreshSettings = false) {
         const connected = status.connected === true;
         const previousPath = getStoredPath();
+        let readSettings = false;
         try {
             if (connected) {
                 localStorage.setItem(STORAGE_PATH_KEY, status.storageRoot);
@@ -144,6 +145,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         } catch { /* A browser preference failure does not change the authenticated runtime state. */ }
         if (consoleRef) {
             const sameStore = consoleRef.storageIdentity?.storageId === status.storageId && consoleRef.storageIdentity?.storageRoot === status.storageRoot;
+            const wasReady = consoleRef.storageConnected && !consoleRef.storageStatusUnconfirmed;
             consoleRef.storageStatusUnconfirmed = false;
             consoleRef.storageConnected = connected;
             const hasIdentity = connected && typeof status.storageRoot === "string" && status.storageRoot.length > 0 &&
@@ -152,15 +154,27 @@ window.HAEMA_STORAGE_MODAL = (function () {
             consoleRef.storageIdentity = hasIdentity
                 ? { storageRoot: status.storageRoot, storageId: status.storageId, launcherId: status.launcherId }
                 : null;
+            if (!sameStore || !wasReady || !hasIdentity) {
+                // A provider or a late status response from another store cannot unlock this one.
+                if (typeof HAEMA_API_KEY_MODAL !== "undefined") HAEMA_API_KEY_MODAL.invalidateAiConnection();
+                consoleRef.apiStatusRequest = (consoleRef.apiStatusRequest || 0) + 1;
+                consoleRef.confirmedApiProfile = null;
+                consoleRef.apiConfigured = false;
+                consoleRef.apiStatusUnconfirmed = true;
+                consoleRef.introductionAvailable = false;
+                consoleRef.apiKeyName = "";
+            }
+            readSettings = hasIdentity && (refreshSettings || !sameStore || !wasReady);
             saveOfflineLauncherTarget(consoleRef.storageIdentity);
             if (hasIdentity) consoleRef.restoreHostPreference?.(previousPath);
             consoleRef.updateJJumList(connected ? status.jjums ?? (sameStore ? consoleRef.allJJums : []) : []);
         }
         const overlay = document.getElementById("storageModalOverlay");
         if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(status);
+        if (readSettings) await consoleRef.refreshApiStatus?.();
     }
 
-    async function autoConnectStorage() {
+    async function autoConnectStorage({ refreshSettings = false } = {}) {
         // 연결 도중의 이전 상태를 읽어 실제 연결 완료 응답을 덮지 않는다.
         while (pendingInit) {
             try { await pendingInit; } catch { /* 연결 오류는 해당 모달에서 안내한다. */ }
@@ -177,8 +191,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     (status.jjums !== undefined && !Array.isArray(status.jjums))))) {
                 throw safeError("저장소 상태를 확인할 수 없습니다.", response.status);
             }
-            applyStorageStatus(status);
-            return status;
+            await applyStorageStatus(status, refreshSettings);
+            return generation === storageRequestGeneration ? status : { stale: true };
         } catch {
             if (generation !== storageRequestGeneration) return { stale: true };
             // A failed check must not clear saved paths or the visible memory list.
@@ -236,9 +250,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 if (result.connected !== true) {
                     throw safeError("저장소 연결 완료를 확인할 수 없어요.", response.status);
                 }
-                applyStorageStatus(result);
-                if (consoleRef && typeof consoleRef.refreshApiStatus === "function") {
-                    await consoleRef.refreshApiStatus();
+                if (typeof result.storageRoot === "string" && result.storageRoot && typeof result.storageId === "string" && result.storageId) {
+                    await applyStorageStatus(result);
                 }
                 if (generation !== storageRequestGeneration) return { stale: true };
                 return { exists: false, connected: true, path: result.path, result };
@@ -258,51 +271,155 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return pending;
     }
 
+    const onboardingKey = "haema_storage_onboarding";
+    let installStep = "download";
+    let installPlatform = "";
+
+    // Only the guide step is shared with the tab opened by the launcher.
+    function rememberStep(step) {
+        installStep = step;
+        try {
+            if (step === "run" || step === "verify") {
+                localStorage.setItem(onboardingKey, JSON.stringify({ step, platform: installPlatform }));
+            } else {
+                localStorage.removeItem(onboardingKey);
+            }
+        } catch { /* The guide remains usable within this tab. */ }
+    }
+
+    function resumeOnboarding() {
+        let saved;
+        try { saved = JSON.parse(localStorage.getItem(onboardingKey)); } catch { return false; }
+        if (!saved || !["run", "verify"].includes(saved.step) || !["windows", "macos"].includes(saved.platform)) return false;
+        installStep = saved.step;
+        installPlatform = saved.platform;
+        openModal();
+        return true;
+    }
+
     function bindDownloads(overlay) {
         const platform = overlay.querySelector("#storageDownloadPlatform");
         const link = overlay.querySelector("#storageDownloadLink");
         const notice = overlay.querySelector("#storageDownloadNotice");
+        const title = overlay.querySelector("#storageInstallTitle");
+        const next = overlay.querySelector("#storageInstallNext");
+        const back = overlay.querySelector("#storageInstallBack");
+        const instructions = overlay.querySelector("#storageInstallInstructions");
+        const retry = overlay.querySelector("#storageCheckConnection");
         const downloads = globalThis.HAEMA_STORAGE_DOWNLOADS;
         let release = { state: "loading" };
-        platform.value = downloads?.detectPlatform?.() || "";
+        let confirming = false;
+        let checking = false;
+        let checkMessage = "";
+        installPlatform ||= downloads?.detectPlatform?.() || "";
+        platform.value = installPlatform;
 
-        function updateLink() {
-            const asset = release.downloads?.[platform.value];
-            link.textContent = asset?.restricted ? "Windows 테스트용 쩜통 다운로드" : "쩜통 다운로드";
+        function renderStep() {
+            const asset = release.downloads?.[installPlatform];
+            const windows = installPlatform === "windows";
+            const entry = asset?.registrationFile || (installPlatform === "macos" ? "Start.command" : "");
+            const download = installStep === "download";
+            const unpack = installStep === "unpack";
+            const run = installStep === "run";
+            const verify = installStep === "verify";
+            const launcherControls = overlay.querySelector("#storageWindowsControls");
+            if (launcherControls) launcherControls.hidden = !windows;
+            title.textContent = download ? "1. 설치 파일 다운로드" : unpack ? "2. 원하는 폴더에 압축 풀기" :
+                run ? "3. 압축을 푼 폴더의 실행 파일 열기" : "쩜통 연결 확인";
+            overlay.querySelector("#storageDownloadChoice").hidden = !download;
+            back.parentElement.hidden = download;
+            next.parentElement.hidden = verify;
+            next.textContent = run ? "실행했습니다" : "다음";
+            next.disabled = confirming || !asset || (run && (!asset.registrationFile || !asset.readyMessage));
+            back.disabled = confirming || checking;
+            retry.disabled = checking;
+            retry.textContent = verify ? "연결 다시 확인" : "이미 설치했어요 · 연결 다시 확인";
+            instructions.textContent = "";
+            link.textContent = asset?.restricted ? "Windows 테스트용 쩜통 다운로드" : "설치 파일 다운로드";
             link.removeAttribute("download");
             if (asset) {
                 link.href = asset.url;
                 link.setAttribute("aria-disabled", "false");
                 if (!asset.restricted) link.download = asset.fileName;
-                if (platform.value === "windows") {
-                    notice.textContent = (asset.restricted ? "공유받은 Google 계정으로 다운로드해 주세요. " : "") +
-                        "ZIP의 압축을 모두 풀고 RegisterWebControls.cmd를 여세요. 쩜통 폴더를 등록하면 해마.ai가 준비 모드로 시작되고 웹콘솔이 자동으로 열려요. " +
-                        "이미 사용 중이면 기존 실행기 폴더의 Stop.cmd로 종료하고 새 ZIP을 별도 폴더에 풀어 주세요. 새 RegisterWebControls.cmd에서 기존 실행기 폴더를 선택해 업데이트하세요. 저장 위치를 따로 바꾼 경우에도 여기서는 실행기 폴더를 선택해 주세요.";
-                } else {
-                    notice.textContent = "압축을 풀고 Start.command 파일을 여세요. 폴더 선택 창에서 쩜통을 보관할 위치를 고른 뒤, 다시 열린 웹콘솔에서 연결을 허용해 주세요.";
-                }
-                return;
+                notice.textContent = asset.restricted ? "공유받은 Google 계정으로 다운로드해 주세요." : "";
+            } else {
+                link.removeAttribute("href");
+                link.setAttribute("aria-disabled", "true");
+                notice.textContent = release.state === "loading" ? "다운로드 파일을 확인하고 있어요." :
+                    !installPlatform ? "사용할 컴퓨터의 운영체제를 선택해 주세요." :
+                    release.state === "unavailable" ? "다운로드 파일을 확인할 수 없어요." : "이 운영체제의 설치 파일은 아직 공개되지 않았어요.";
             }
-            link.removeAttribute("href");
-            link.setAttribute("aria-disabled", "true");
-            if (release.state === "loading") notice.textContent = "다운로드할 수 있는 파일을 확인하고 있어요.";
-            else if (release.state === "unavailable") notice.textContent = "다운로드 파일을 확인할 수 없어요. 잠시 후 쩜통 버튼을 다시 열어 주세요.";
-            else if (!platform.value) notice.textContent = "사용할 컴퓨터의 운영체제를 선택해 주세요.";
-            else notice.textContent = "이 운영체제용 파일은 아직 공개되지 않았어요.";
+            if (download && !asset && installPlatform === "macos" && release.state !== "loading") {
+                instructions.textContent = "이미 설치하셨다면 압축을 푼 폴더의 Start.command를 열어 주세요.";
+            } else if (unpack) {
+                instructions.textContent = "내려받은 ZIP 파일의 압축을 원하는 폴더에 모두 풀어 주세요." +
+                    (windows ? " 기존 설치를 갱신한다면 기존 실행기 폴더의 Stop.cmd로 종료한 뒤 새 ZIP을 별도 폴더에 풀어 주세요." : "");
+            } else if (run && entry) {
+                instructions.textContent = "압축을 푼 폴더에서 " + entry + " 파일을 열고 쩜통 폴더를 선택해 주세요." +
+                    (windows ? " 확장자가 숨겨진 Windows에서는 ‘" + entry.replace(/\.cmd$/i, "") + "’로 표시될 수 있어요. 기존 설치를 갱신할 때는 이전 실행기 폴더를 선택해 주세요." : "") +
+                    (asset && !asset.readyMessage ? " 이 설치본의 완료 문구는 아직 확인되지 않았어요. 이미 설치했다면 연결을 다시 확인해 주세요." : "");
+            } else if (run) {
+                instructions.textContent = notice.textContent;
+            } else if (verify) {
+                instructions.textContent = checkMessage || "실행기와 현재 쩜통의 연결을 확인해 주세요.";
+            }
         }
 
-        platform.addEventListener("change", updateLink);
-        link.addEventListener("click", event => {
-            if (!link.href) event.preventDefault();
+        function moveTo(step) {
+            rememberStep(step);
+            renderStep();
+            title.focus({ preventScroll: true });
+        }
+        async function checkConnection() {
+            if (checking || !isOpen(overlay)) return;
+            checking = true;
+            checkMessage = "현재 쩜통과 연결하는 중이에요.";
+            moveTo("verify");
+            try {
+                const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+                if (connection?.status().connection !== "connected") await connection?.connect();
+                if (connection?.status().connection === "connected" && isOpen(overlay)) await autoConnectStorage();
+            } catch {
+                // The retry stays in the modal even if permission or the local process is unavailable.
+            } finally {
+                checking = false;
+                checkMessage = "아직 연결을 확인하지 못했어요. 실행기가 열려 있는지 확인한 뒤 다시 확인해 주세요.";
+                if (isOpen(overlay)) renderStep();
+            }
+        }
+        platform.addEventListener("change", () => {
+            installPlatform = platform.value;
+            moveTo("download");
         });
-        overlay.querySelector("#storageReconnectBtn")?.addEventListener("click", () => {
-            globalThis.HAEMA_RECONNECT_LOCAL?.();
+        back.addEventListener("click", () => moveTo(installStep === "run" ? "unpack" : "download"));
+        retry.addEventListener("click", checkConnection);
+        next.addEventListener("click", async () => {
+            if (installStep === "download") return moveTo("unpack");
+            if (installStep === "unpack") return moveTo("run");
+            if (installStep !== "run" || confirming) return;
+            const message = release.downloads?.[installPlatform]?.readyMessage;
+            if (!message) return;
+            confirming = true;
+            renderStep();
+            const terminal = installPlatform === "windows" ? "cmd" : "터미널";
+            try {
+                await HAEMA_DIALOG.confirm(terminal + "에 “" + message + "”라고 나왔나요?", {
+                    title: "실행 결과 확인", confirmText: "네, 나왔습니다", cancelText: "아직입니다",
+                    onConfirm: checkConnection,
+                });
+            } finally {
+                confirming = false;
+                if (isOpen(overlay)) {
+                    renderStep();
+                    if (installStep === "run") next.focus();
+                }
+            }
         });
-        updateLink();
+        renderStep();
         void (async () => {
             try { release = await downloads.load(); }
             catch { release = { state: "unavailable" }; }
-            if (isOpen(overlay)) updateLink();
+            if (isOpen(overlay)) renderStep();
         })();
     }
 
@@ -312,10 +429,10 @@ window.HAEMA_STORAGE_MODAL = (function () {
         { key: "stop", handle: "stop", label: "Stop", modalId: "storageStopHaema", name: "해마.ai 종료" },
     ];
     const registrationHint = "Connect로 준비 모드, AI Start로 대화 모드를 열고 Stop으로 종료해요. Windows 확인 창에서 사용할 쩜통 위치를 확인해 주세요.";
-    const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 기존 실행기 폴더의 Stop.cmd로 종료하고 ‘쩜통 설치 파일 다운로드’에서 새 Windows ZIP을 받아 별도 폴더에 풀어 주세요. 새 RegisterWebControls.cmd에서 Stop.cmd가 있던 기존 실행기 폴더를 선택해 업데이트하세요.";
-    const offlineHint = "이 브라우저에서 실행기와 쩜통 위치를 다시 확인해야 해요. 기존 실행기 폴더의 Connect.cmd를 열어 준비 모드로 연결해 주세요. Connect.cmd가 없으면 새 Windows ZIP을 별도 폴더에 풀고 RegisterWebControls.cmd에서 기존 실행기 폴더를 선택해 업데이트하세요.";
+    const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 쩜통 설치 안내에 따라 실행기를 업데이트해 주세요.";
+    const offlineHint = "이 브라우저에서 실행기와 쩜통 위치를 다시 확인해야 해요. 기존 실행기 폴더의 Connect.cmd를 열어 주세요. 파일이 없으면 쩜통 설치 안내에 따라 업데이트해 주세요.";
     const checkingHint = "실행기와 쩜통 위치를 확인하고 있어요. 연결을 확인한 뒤 다시 눌러 주세요.";
-    const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 RegisterWebControls.cmd로 등록해 주세요.";
+    const confirmationHint = "Windows에서 확인해 주세요. 브라우저에서 실행기 열기를 허용한 뒤 표시된 쩜통과 동작을 확인해 주세요. 창이 열리지 않으면 쩜통 설치 안내에서 등록 파일을 확인해 주세요.";
     const platformHint = "Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const onWindows = () => globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === "windows";
     let checkOnLauncherReturn = false;
@@ -386,7 +503,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function renderLauncherKeys(inHeader) {
         const target = launcherTarget();
-        return launcherActions.map(action => {
+        return launcherActions.filter(action => !inHeader || action.key !== "start").map(action => {
             const href = launcherHref(action, target);
             const help = href ? "Windows 실행기에 " + action.name + " 요청" : target.hint;
             const id = inHeader ? "header-launcher-" + action.key : action.modalId;
@@ -485,6 +602,8 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const connected = globalThis.HAEMA_LOCAL_CONNECTION?.status?.().connection === 'connected';
         const showWindowsControls = onWindows();
         const downloadControls = [
+            '        <h3 class="form-label" id="storageInstallTitle" tabindex="-1"></h3>',
+            '        <div id="storageDownloadChoice">',
             '        <label class="form-label" for="storageDownloadPlatform">내 컴퓨터의 운영체제</label>',
             '        <select class="form-input" id="storageDownloadPlatform">',
             '          <option value="">운영체제를 선택해 주세요</option>',
@@ -493,14 +612,22 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '        </select>',
             '        <a class="btn" id="storageDownloadLink" target="_blank" rel="noopener noreferrer" aria-disabled="true">쩜통 다운로드</a>',
             '        <p class="form-hint" id="storageDownloadNotice" role="status"></p>',
+            '        </div>',
+            '        <p id="storageInstallInstructions" aria-live="polite"></p>',
+            '        <div class="input-group">',
+            '          <span><button class="btn" id="storageInstallBack" type="button">이전</button></span>',
+            '          <span><button class="btn btn-create" id="storageInstallNext" type="button">다음</button></span>',
+            '          <span><button class="btn" id="storageCheckConnection" type="button">연결 다시 확인</button></span>',
+            '        </div>',
         ].join("\n");
         const body = !connected ? [
             '      <div class="form-group" id="storageDownloadSetup">',
             downloadControls,
-            '        <button class="btn" id="storageReconnectBtn" type="button">이미 설치한 쩜통 연결</button>',
             '      </div>',
         ].join("\n") : [
             '      <p class="form-hint" id="storageConfirmedPath" role="status"></p>',
+            '      <p id="storageContinueAction" hidden><button class="btn btn-create" id="storageNextApi" type="button">다음 · ② API 연결</button></p>',
+            '      <p id="storageRetryAction" hidden><button class="btn" id="storageRetryStatus" type="button">연결 다시 확인</button></p>',
             '      <details id="storageManageOptions">',
             '        <summary id="storageManageSummary">저장 폴더 설정</summary>',
             '      <div class="form-group">',
@@ -542,14 +669,13 @@ window.HAEMA_STORAGE_MODAL = (function () {
             '<div class="modal-overlay" id="storageModalOverlay">',
             '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">',
             '    <div class="modal-header">',
-            '      <div class="modal-title" id="storageModalTitle">🪣 ' + (connected ? "내 쩜통" : "쩜통 다운로드") + '</div>',
+            '      <div class="modal-title" id="storageModalTitle">① 쩜통 연결</div>',
             '      <button class="modal-close" id="storageModalClose" type="button" aria-label="쩜통 창 닫기">&times;</button>',
             '    </div>',
 
             '    <div class="modal-body">',
-            connected && showWindowsControls ? renderWindowsControls() : '',
             body,
-            !connected && showWindowsControls ? renderWindowsControls() : '',
+            showWindowsControls ? renderWindowsControls() : '',
             '    </div>',
             '  </div>',
             '</div>',
@@ -588,6 +714,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         function openDownloads() {
             if (!downloadOptions.open) return;
             downloadOptions.removeEventListener("toggle", openDownloads);
+            rememberStep("download");
             bindDownloads(overlay);
         }
         downloadOptions.addEventListener("toggle", openDownloads);
@@ -601,6 +728,18 @@ window.HAEMA_STORAGE_MODAL = (function () {
         const folderHint = overlay.querySelector("#storageFolderHint");
 
         const confirmed = overlay.querySelector("#storageConfirmedPath");
+        const continueAction = overlay.querySelector("#storageContinueAction");
+        const retryAction = overlay.querySelector("#storageRetryAction");
+        overlay.querySelector("#storageNextApi").addEventListener("click", () => {
+            if (!consoleRef?.isStorageReady() || continueAction.hidden) return;
+            closeModal(overlay);
+            consoleRef.openApiKeyModal();
+        });
+        overlay.querySelector("#storageRetryStatus").addEventListener("click", async function() {
+            this.disabled = true;
+            confirmed.textContent = "현재 쩜통의 연결 상태를 확인하고 있어요.";
+            try { await autoConnectStorage(); } finally { this.disabled = false; }
+        });
         const options = overlay.querySelector("#storageManageOptions");
         const storedPath = getStoredPath();
         function setInitialPath(value) {
@@ -614,21 +753,27 @@ window.HAEMA_STORAGE_MODAL = (function () {
             state.draft = { value: pathInput.value, hint: folderHint.textContent };
         }
         state.showStatus = status => {
-            if (status?.connected === true && typeof status.storageRoot === "string" && status.storageRoot.trim()) {
-                confirmed.textContent = "연결된 쩜통 위치 · " + status.storageRoot;
+            const ready = status?.connected === true && !!consoleRef?.storageIdentity &&
+                status.storageRoot === consoleRef.storageIdentity.storageRoot && status.storageId === consoleRef.storageIdentity.storageId;
+            continueAction.hidden = !ready;
+            retryAction.hidden = ready || status == null;
+            if (ready) {
+                const folder = status.storageRoot.trim().split(/[\\/]/).filter(Boolean).at(-1) || status.storageRoot;
+                confirmed.textContent = "연결됨 · " + folder;
+                confirmed.title = status.storageRoot;
                 if (!state.draft) setInitialPath(status.storageRoot);
             } else if (status?.state === "unavailable") {
-                confirmed.textContent = "저장 위치를 확인하지 못했어요.";
+                confirmed.textContent = "아직 쩜통 연결을 확인하지 못했어요.";
             } else if (status?.connected === false) {
                 confirmed.textContent = "연결된 저장 폴더가 없어요.";
                 options.open = true;
             } else {
-                confirmed.textContent = "실행 프로그램에서 확인된 저장 위치가 여기에 표시돼요.";
+                confirmed.textContent = "현재 쩜통의 연결 상태를 확인하고 있어요.";
             }
+            if (!ready) confirmed.removeAttribute("title");
         };
         setInitialPath(storedPath);
-        state.showStatus(consoleRef?.storageConnected && consoleRef.storageIdentity
-            ? { connected: true, storageRoot: consoleRef.storageIdentity.storageRoot } : null);
+        state.showStatus(null);
         if (state.draft) {
             options.open = true;
             pathInput.disabled = false;
@@ -726,10 +871,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 if (result.exists) {
                     // 기존 저장소 존재 - 중첩 모달 표시
                     showExistingStorageModal(result.path, overlay, createBtn);
-                } else {
-                    // 새 저장소 생성 성공
-                    closeModal(overlay);
-                }
+                } else await finishStorageSelection(overlay);
 
             } catch (error) {
                 if (!isOpen(overlay)) return;
@@ -742,10 +884,21 @@ window.HAEMA_STORAGE_MODAL = (function () {
             }
         });
         focusInside(overlay);
+        void autoConnectStorage();
+    }
+
+    async function finishStorageSelection(overlay) {
+        const status = await autoConnectStorage();
+        if (status?.connected !== true || !isOpen(overlay)) return;
+        modalFocus.get(overlay).draft = null;
+        modalFocus.get(overlay).showStatus(status);
+        overlay.querySelector("#storageManageOptions").open = false;
+        overlay.querySelector("#storageNextApi").focus();
     }
 
     function closeModal(overlay) {
         if (isOpen(overlay)) {
+            if (overlay.querySelector("#storageContinueAction")?.hidden === false) rememberStep("download");
             modalFocus.get(overlay)?.unsubscribe?.();
             const child = document.getElementById("existingStorageModalOverlay");
             if (modalFocus.get(child)?.parent === overlay) closeExistingModal(child, false);
@@ -821,7 +974,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 const result = await handleDirectInput(existingPath, false, true);
                 if (result.stale || !isOpen(overlay) || !isOpen(parent)) return;
                 closeExistingModal(overlay, false);
-                closeModal(parent);
+                await finishStorageSelection(parent);
             } catch (error) {
                 if (isOpen(overlay)) await showFailure(error, "기존 저장소 연결을 완료하지 못했어요.");
             }
@@ -833,7 +986,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 const result = await handleDirectInput(existingPath, true);
                 if (result.stale || !isOpen(overlay) || !isOpen(parent)) return;
                 closeExistingModal(overlay, false);
-                closeModal(parent);
+                await finishStorageSelection(parent);
             } catch (error) {
                 if (isOpen(overlay)) await showFailure(error, "새 저장소 생성을 완료하지 못했어요.");
             }
@@ -879,6 +1032,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         refreshLauncherControls,
         setConsole: setConsole,
         open: openModal,
+        resumeOnboarding,
         getPath: getStoredPath,
         autoConnect: autoConnectStorage,
         invalidateChecks() { storageRequestGeneration += 1; },

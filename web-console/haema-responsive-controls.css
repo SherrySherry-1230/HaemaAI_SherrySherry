@@ -204,7 +204,7 @@
 @media (max-width: 520px) {
     .conversation-toolbar {
         display: grid;
-        grid-template-columns: repeat(2, 101px);
+        grid-template-columns: repeat(2, max-content);
         grid-template-rows: repeat(2, 44px);
         justify-content: end;
         align-items: center;

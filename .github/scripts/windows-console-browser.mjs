@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
 // ChromeDriver is preinstalled on GitHub's Windows runner. Use its temporary
@@ -55,23 +55,42 @@ export async function verifyPublicConsole(webUrl, root, storageId, { switchTo, l
       } while (Date.now() < until);
       throw new Error(failure);
     };
-    // Both sets of buttons must be bound to the same confirmed server response.
-    // The pre-deployment run uses the current live UI only for switching stores.
+    // All launcher links must target the same confirmed store. Connect belongs inside step ①.
     const checkButtons = async (store, runner) => {
       if (!checkPublished) return;
       await waitFor(`
         const [store, runner] = arguments;
+        if (document.getElementById('header-launcher-start')) return false;
         return ['ai-start','start','stop'].every((action, i) => {
           const expected = 'haema-ai://' + action + '?store=' + store.slice(5) + '&runner=' + runner.slice(5);
-          const ids = ['header-launcher-' + action, ['storageStartAIHaema','storageStartHaema','storageStopHaema'][i]];
-          return ids.every(id => document.getElementById(id)?.getAttribute('href') === expected);
+          const modalId = ['storageStartAIHaema','storageStartHaema','storageStopHaema'][i];
+          const modalLink = document.querySelector('#storageModalOverlay.active #' + modalId);
+          if (!modalLink?.getClientRects().length || modalLink.getAttribute('href') !== expected) return false;
+          return action === 'start' || document.getElementById('header-launcher-' + action)?.getAttribute('href') === expected;
         });
       `, 'WINDOWS_CONSOLE_WRONG_CONTROLS', store, runner);
     };
-    const openStore = async expected => {
-      await click('#storageBtn');
-      await waitFor("return document.getElementById('storageConfirmedPath')?.textContent.includes(arguments[0]);",
-        'WINDOWS_CONSOLE_WRONG_STORE', expected);
+    const checkStoreView = async (scope, onboarding) => {
+      await waitFor(`
+        const [path, id, runner, folder, onboarding] = arguments;
+        const identity = globalThis.HAEMA_CONSOLE?.storageIdentity;
+        if (identity?.storageRoot !== path || identity.storageId !== id || identity.launcherId !== runner) return false;
+        const overlay = document.querySelector('#storageModalOverlay.active');
+        const label = overlay?.querySelector('#storageConfirmedPath')?.textContent.trim();
+        if (!onboarding) return label === '연결된 쩜통 위치 · ' + path;
+        const next = overlay?.querySelector('#storageNextApi');
+        return overlay?.querySelector('#storageModalTitle')?.textContent.trim() === '① 쩜통 연결' &&
+          label === '연결됨 · ' + folder && next?.textContent.trim() === '다음 · ② API 연결' &&
+          !next.disabled && next.getClientRects().length > 0;
+      `, 'WINDOWS_CONSOLE_WRONG_STORE', scope.storageRoot, scope.storageId, scope.launcherId, win32.basename(scope.storageRoot), onboarding);
+    };
+    const checkNext = async () => {
+      if (!checkPublished) return;
+      await click('#storageNextApi');
+      await waitFor(`
+        return !document.querySelector('#storageModalOverlay.active') && globalThis.HAEMA_CONSOLE?.modalMode === 'apiKey' &&
+          !!document.querySelector('#modalOverlay.active #modalApiModel')?.getClientRects().length;
+      `, 'WINDOWS_CONSOLE_API_STEP_NOT_OPEN');
     };
     const readScope = async () => {
       const status = await post('/execute/async', {script:`
@@ -122,9 +141,17 @@ export async function verifyPublicConsole(webUrl, root, storageId, { switchTo, l
       if (result === 'ready') {
         const first = await readScope();
         if (first.storageRoot !== root || first.storageId !== storageId) throw new Error('WINDOWS_CONSOLE_WRONG_STORE');
-        if (!switchTo) return first;
-        await openStore(root);
+        if (!switchTo && !checkPublished) return first;
+        if (!await evaluate("return !!document.querySelector('#storageModalOverlay.active');")) await click('#storageBtn');
+        await waitFor("return !!document.querySelector('#storageModalOverlay.active #storageConfirmedPath');", 'WINDOWS_CONSOLE_STORE_NOT_OPEN');
+        // Before deployment the live site may still close its unnumbered storage modal after a switch.
+        const onboarding = checkPublished || await evaluate("return !!document.getElementById('storageNextApi');");
+        await checkStoreView(first, onboarding);
         await checkButtons(first.storageId, first.launcherId);
+        if (!switchTo) {
+          await checkNext();
+          return first;
+        }
         await click('#storageManageSummary');
         await click('#storageDirectInputBtn');
         // ChromeDriver sendKeys on Windows cannot type the non-BMP folder emoji.
@@ -137,15 +164,17 @@ export async function verifyPublicConsole(webUrl, root, storageId, { switchTo, l
         `, switchTo);
         await click('#storageCreateBtn');
         await waitFor(`
-          return !document.querySelector('#storageModalOverlay') &&
-            globalThis.HAEMA_CONSOLE?.storageIdentity?.storageRoot === arguments[0];
-        `, 'WINDOWS_CONSOLE_SWITCH_FAILED', switchTo);
+          const active = !!document.querySelector('#storageModalOverlay.active');
+          return active === arguments[1] && globalThis.HAEMA_CONSOLE?.storageIdentity?.storageRoot === arguments[0];
+        `, 'WINDOWS_CONSOLE_SWITCH_FAILED', switchTo, onboarding);
         const second = await readScope();
         if (second.storageRoot !== switchTo || second.storageId === first.storageId) {
           throw new Error('WINDOWS_CONSOLE_WRONG_STORE');
         }
-        await openStore(switchTo);
+        if (!onboarding) await click('#storageBtn');
+        await checkStoreView(second, onboarding);
         await checkButtons(second.storageId, second.launcherId);
+        await checkNext();
         return second;
       }
       if (['permission-denied','connection-error','events-error','wrong-mode','wrong-store'].includes(result)) {
