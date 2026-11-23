@@ -37,21 +37,25 @@
             color: #26292E;
             font-family: "CookieRun", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
         }
-        main { width: min(100%, 371px); }
+        main {
+            --haema-width: min(54%, 202px);
+            width: min(100%, 440px);
+        }
         .haema {
             display: block;
-            width: clamp(96px, 32vw, 128px);
+            width: var(--haema-width);
             height: auto;
-            margin: 0 0 4px 6%;
         }
         .speech-bubble {
             display: grid;
             align-content: center;
-            min-height: clamp(140px, 44vw, 166px);
-            margin: 0;
-            padding: 25px 16px 20px;
+            min-height: clamp(128px, 34vw, 152px);
+            /* The Figma vector's top-left tail points toward Haema's lower-right side. */
+            margin: calc(var(--haema-width) * -0.22) 0 0;
+            margin-inline-start: calc(var(--haema-width) * 0.78);
+            padding: 22px clamp(10px, 3.25vw, 16px) 20px;
             background: url("Resources/haema-design/mobile-notice-bubble.svg") center / 100% 100% no-repeat;
-            font-size: clamp(15px, 4.6vw, 18px);
+            font-size: clamp(14px, 4vw, 18px);
             font-weight: 400;
             line-height: 1.55;
             text-align: center;
@@ -62,6 +66,17 @@
             color: #8A3150;
             font-size: 1.35em;
             font-weight: 900;
+        }
+        @media (orientation: landscape) and (max-height: 500px) {
+            body {
+                padding-block: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-bottom));
+            }
+            main { --haema-width: min(54%, 155px, 39vh); }
+            .speech-bubble {
+                min-height: 128px;
+                margin-block-start: calc(var(--haema-width) * -0.33);
+                padding-block: 15px 13px;
+            }
         }
     </style>
 </head>
