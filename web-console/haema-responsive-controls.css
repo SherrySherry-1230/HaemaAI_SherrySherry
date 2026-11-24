@@ -235,6 +235,35 @@
     }
 }
 
+/* @editedBy YAONG1230 2026-11-24: storage modal heading and description. */
+#storageModal .modal-header {
+    gap: 12px;
+}
+
+.storage-modal-heading {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 28px;
+}
+
+.storage-modal-heading .modal-title {
+    white-space: nowrap;
+}
+
+.storage-modal-bucket::before {
+    content: "🪣";
+    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+.storage-modal-description {
+    flex: 1 1 190px;
+    margin: 0;
+    font: 400 11px/1.5 Pretendard, sans-serif;
+    word-break: keep-all;
+}
+
 /* @editedBy YAONG1230 2026-11-17: storage actions share the original sliced frame. */
 :is(#storageModal, #existingStorageModal) .btn {
     --storage-control-art: url("../Resources/haema-design/button-raster-4x/04-card-new-outline.png");
