@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-24
 // @editedBy YAONG1230 2026-11-23
 // @editedBy SherrySherry 2026-11-22
 const repository = 'SherrySherry-1230/HaemaAI_SherrySherry';
@@ -10,18 +11,20 @@ const installers = Object.freeze({
         registrationFile: '쩜통_연결.cmd',
         readyMessage: '해마.ai가 준비됐어요.',
     }),
-    // Add macOS with the verified Start.command output when its installer ships.
+    macos: Object.freeze({
+        fileName: 'haema-ai-macos-20261124-r3.zip',
+        registrationFile: '쩜통_연결.command',
+        readyMessage: '해마.ai가 준비됐어요.',
+    }),
 });
 // Unpaired setup uses these handles. Paired controls also pin the active store and launcher.
-export const windowsLauncherHandles = Object.freeze({
+export const launcherHandles = Object.freeze({
     aiStart: 'haema-ai://ai-start',
     start: 'haema-ai://start',
     stop: 'haema-ai://stop',
 });
-const windowsDownload = Object.freeze({
-    ...installers.windows,
-    url: downloadBase + installers.windows.fileName,
-});
+// Keep the existing export for Windows console integrations.
+export const windowsLauncherHandles = launcherHandles;
 
 export function detectDownloadPlatform(navigator = globalThis.navigator) {
     const platform = navigator?.userAgentData?.platform || navigator?.platform || navigator?.userAgent || '';
@@ -56,7 +59,11 @@ export async function loadDownloads(fetcher = globalThis.fetch) {
         });
         if (response.status === 404) return { state: 'unpublished', downloads: {} };
         if (response.ok) return parseInstallerRelease(await response.json());
-    } catch { /* The published Windows asset also has a stable download URL. */ }
+    } catch { /* Published installers also have stable download URLs. */ }
     // GitHub limits anonymous metadata requests independently of release downloads.
-    return { state: 'unavailable', downloads: { windows: windowsDownload } };
+    const downloads = {};
+    for (const [platform, installer] of Object.entries(installers)) {
+        downloads[platform] = { ...installer, url: downloadBase + installer.fileName };
+    }
+    return { state: 'unavailable', downloads };
 }
