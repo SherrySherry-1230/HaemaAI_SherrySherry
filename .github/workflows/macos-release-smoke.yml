@@ -1,0 +1,38 @@
+name: macOS installer smoke test
+
+on:
+  push:
+    branches: [feat/macos-console-20261124]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event.repository.private == false
+    name: macOS ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Verify published installer and registered controls
+        env:
+          EXPECTED_NODE_ARCH: ${{ matrix.arch }}
+          MACOS_SMOKE_LAUNCH_SERVICES: hosted
+          RELEASE_SHA256: 99b05518ba681306e75a4620e0d4537172b216ef00d23410b101ad8cea7c095e
+        run: |
+          asset="$RUNNER_TEMP/haema-ai-macos-20261124-r2.zip"
+          curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-macos-20261124-r2.zip' -o "$asset"
+          bash .github/scripts/macos-release-smoke.sh "$asset" "$RELEASE_SHA256"

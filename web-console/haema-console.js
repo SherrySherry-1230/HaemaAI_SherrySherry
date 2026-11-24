@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-24
 // @editedBy YAONG1230 2026-11-24
 // @editedBy YAONG1230 2026-11-23: guide first use from storage through API settings.
 // @editedBy YAONG1230 2026-11-23: refresh launcher controls during composition.
@@ -1330,10 +1331,9 @@ HAEMA_CONSOLE.runtimeReadinessLabel = function() {
 
 HAEMA_CONSOLE.setupModeNotice = function() {
     const platform = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.();
-    if (platform === 'windows') {
-        return '지금은 API 설정과 자기소개를 저장할 수 있는 준비 모드예요. 대화하려면 상단 AI Start를 누르고 Windows에서 등록한 쩜통과 모드 전환을 확인해 주세요.';
+    if (platform === 'windows' || platform === 'macos') {
+        return '지금은 API 설정과 자기소개를 저장할 수 있는 준비 모드예요. 대화하려면 상단 AI Start를 누르고 실행기에서 쩜통과 모드 전환을 확인해 주세요.';
     }
-    if (platform === 'macos') return '현재 Mac용 공개 쩜통에서는 API 설정을 저장할 수 있어요. 실제 대화에는 대화 기능이 포함된 Mac용 실행 프로그램이 필요해요.';
     return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. 실제 대화는 이 컴퓨터의 대화용 실행 프로그램에서 웹콘솔을 열어 시작해 주세요.';
 };
 

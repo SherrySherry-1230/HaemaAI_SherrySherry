@@ -1,3 +1,4 @@
+// @editedBy SherrySherry 2026-11-24
 // @editedBy YAONG1230 2026-11-23: verify the active API profile only on a new model reply.
 // @editedBy YAONG1230 2026-11-22
 // @editedBy SherrySherry 2026-11-19
@@ -30,8 +31,8 @@ window.HAEMA_TEST_HOST = (() => {
         HOST_RESPONSE_INVALID: '호스트 응답 형식을 확인하지 못했어요. 대화 상태 확인으로 다시 확인해 주세요.',
         HOST_HTTP_NOT_FOUND: '호스트 연결 기능을 찾지 못했어요. 실행 프로그램을 확인한 뒤 대화 상태 확인을 눌러 주세요.',
         UNAVAILABLE: '호스트 대화 준비를 확인하지 못했어요. 연결 상태를 다시 확인해 주세요.',
-        SERVICE_PREPARATION_UNAVAILABLE: globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.() === 'windows'
-            ? '대화 서비스에 연결하지 못했어요. 상단 AI Start를 누르고 Windows에서 쩜통을 확인한 뒤 다시 시도해 주세요.'
+        SERVICE_PREPARATION_UNAVAILABLE: ['windows', 'macos'].includes(globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.())
+            ? '대화 서비스에 연결하지 못했어요. 상단 AI Start를 누르고 실행기에서 쩜통을 확인한 뒤 다시 시도해 주세요.'
             : '대화 서비스에 연결하지 못했어요. 이 컴퓨터의 해마.ai 실행 프로그램에서 대화 모드를 확인한 뒤 다시 시도해 주세요.',
         HOST_MEMORY_PROCESSING_FAILED: '이 메시지의 기억 처리를 완료하지 못했어요. 대화 기록은 쩜통에 남아 있어요.',
         MEMORY_RESPONSE_INVALID: '기억 추출 결과의 형식이 맞지 않아 답변을 만들지 못했어요. 메시지는 쩜통에 남아 있어요.',

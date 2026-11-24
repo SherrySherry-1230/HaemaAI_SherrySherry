@@ -1,8 +1,9 @@
+// @editedBy SherrySherry 2026-11-24
 // @editedBy YAONG1230 2026-11-23: load current launcher and chat controls
 // @editedBy SherrySherry 2026-11-22
-import { connection } from './haema-local-connection.mjs?v=20261122-store-location-r3';
-import { detectDownloadPlatform, loadDownloads, windowsLauncherHandles } from './storage-downloads.mjs?v=20261123-first-use';
-globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, windowsLauncherHandles });
+import { connection } from './haema-local-connection.mjs?v=20261124-macos';
+import { detectDownloadPlatform, loadDownloads, launcherHandles } from './storage-downloads.mjs?v=20261124-macos';
+globalThis.HAEMA_STORAGE_DOWNLOADS = Object.freeze({ detectPlatform: detectDownloadPlatform, load: loadDownloads, launcherHandles, windowsLauncherHandles: launcherHandles });
 const connectionStarted = connection.start();
 const setupMessage = '① 쩜통 연결에서 이 컴퓨터에 맞는 설치 파일을 내려받고 연결 안내를 따라 주세요.';
 const resettable = new Set(['REMEMBERED_CONNECTION_REJECTED', 'REMEMBERED_CONNECTION_IDENTITY_MISMATCH',
@@ -33,7 +34,7 @@ globalThis.HAEMA_RECONNECT_LOCAL = () => {
     });
     return pending;
 };
-const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261123-locked-controls", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261123-first-use", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261123-locked-controls", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261123-locked-controls"];
+const scripts = ["web-console/haema-dialog.js?v=2", "web-console/configStore.js?v=12", "web-console/haema-api-key-modal.js?v=20261123-locked-controls", "web-console/haema-conversation-session.js?v=4", "web-console/haema-incremental-client.js?v=1", "web-console/haema-incremental-controller.js?v=1", "web-console/haema-token-usage.js?v=6", "web-console/haema-token-meter.js?v=5", "web-console/haema-introduction.js?v=20261119-intro-memory", "web-console/haema-introduction-modal.js?v=20261119-intro-memory", "web-console/haema-test-host.js?v=20261124-macos", "web-console/haema-seon.js?v=2", "web-console/haema-console.js?v=20261124-macos", "web-console/haema-storage-db.js?v=11", "web-console/haema-storage-modal.js?v=20261124-macos"];
 for (const source of scripts) {
     await new Promise((resolve, reject) => {
         const script = document.createElement('script');
