@@ -4,7 +4,7 @@ import childProcess from 'node:child_process';
 import { lstat, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { createLocalConnectionClient } from '../../web-console/local-connection-client.mjs';
@@ -75,6 +75,21 @@ async function run() {
     return originalSpawn.call(this, file, ...args);
   };
   childProcess.execFile[promisify.custom] = async (file, args, options) => {
+    if (hosted && basename(file) === 'mac-web-helper.bin' && args[0] === '--register') {
+      // At this point the signed helper app and the chosen installation both
+      // exist. Check the same path the native registration will receive.
+      assert.ok(args[2].startsWith('/private/tmp/'));
+      const pathCheck = await execFile(file, ['--check', args[1], args[2]], options);
+      assert.equal(pathCheck.stdout.trim(), 'CHANGED');
+      console.log('Verified canonical macOS temp installation before registration.');
+      const result = await execFile(file, args, options);
+      const status = result.stdout.trim();
+      const known = ['REGISTERED', 'CHANGED', 'INVALID_APP_PATH', 'INVALID_STORE_PATH', 'INVALID_STORE_FILES', 'LOCK_FAILED', 'BUSY',
+        'CONFLICT', 'LS_REGISTER_FAILED', 'LS_DEFAULT_FAILED', 'LS_DEFAULT_TIMEOUT', 'HANDLER_MISMATCH',
+        'RECORD_WRITE_FAILED', 'RECORD_MISMATCH'];
+      console.log('Native registration:', known.includes(status) ? status : 'UNCLASSIFIED');
+      return result;
+    }
     if (file !== '/usr/bin/open') return execFile(file, args, options);
     assert.equal(args.length, 3);
     assert.deepEqual(args.slice(0, 2), ['-b', 'com.google.Chrome']);
@@ -166,6 +181,7 @@ async function run() {
     }), 240000);
     assert.equal(await entry.resolveWebControlTarget(source), root);
     await assertRegistered(root);
+    await execFile(join(root, '.haema/mac-web-helper.bin'), ['--validate-store', root]);
     assert.equal((await lstat(join(support, 'Haema AI Controls.app'))).uid, process.getuid());
     const first = await entry.inspectWebControlTarget(root);
     assert.equal(first.running.status.mode, 'setup');

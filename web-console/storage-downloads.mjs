@@ -12,7 +12,7 @@ const installers = Object.freeze({
         readyMessage: '해마.ai가 준비됐어요.',
     }),
     macos: Object.freeze({
-        fileName: 'haema-ai-macos-20261124-r2.zip',
+        fileName: 'haema-ai-macos-20261124-r3.zip',
         registrationFile: '쩜통_연결.command',
         readyMessage: '해마.ai가 준비됐어요.',
     }),

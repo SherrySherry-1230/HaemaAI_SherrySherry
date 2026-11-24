@@ -29,10 +29,11 @@ jobs:
       - name: Verify published installer and registered controls
         env:
           EXPECTED_NODE_ARCH: ${{ matrix.arch }}
+          HAEMA_SMOKE_TEMP: /private/tmp
           MACOS_SMOKE_LAUNCH_SERVICES: hosted
-          RELEASE_SHA256: 99b05518ba681306e75a4620e0d4537172b216ef00d23410b101ad8cea7c095e
+          RELEASE_SHA256: 92cbfa25fba6ff77da917ac74f9541992f1659060d41e14b7b33de4b8230a8c7
         run: |
-          asset="$RUNNER_TEMP/haema-ai-macos-20261124-r2.zip"
+          asset="$RUNNER_TEMP/haema-ai-macos-20261124-r3.zip"
           curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
-            'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-macos-20261124-r2.zip' -o "$asset"
+            'https://github.com/SherrySherry-1230/HaemaAI_SherrySherry/releases/download/console-installers/haema-ai-macos-20261124-r3.zip' -o "$asset"
           bash .github/scripts/macos-release-smoke.sh "$asset" "$RELEASE_SHA256"
