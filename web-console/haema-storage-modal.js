@@ -632,9 +632,12 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
         const modalHtml = [
             '<div class="modal-overlay" id="storageModalOverlay">',
-            '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle">',
+            '  <div class="modal" id="storageModal" role="dialog" aria-modal="true" aria-labelledby="storageModalTitle" aria-describedby="storageModalDescription">',
             '    <div class="modal-header">',
-            '      <div class="modal-title" id="storageModalTitle">① 쩜통 연결</div>',
+            '      <div class="storage-modal-heading">',
+            '        <div class="modal-title" id="storageModalTitle">① <span class="storage-modal-bucket" aria-hidden="true"></span>쩜통<span class="storage-modal-bucket" aria-hidden="true"></span> 연결</div>',
+            '        <p class="storage-modal-description" id="storageModalDescription">쩜통은 생각의 가장 작은 단위인 ‘쩜’을 내 컴퓨터에 보관하는 해마AI 전용 데이터베이스예요.</p>',
+            '      </div>',
             '      <button class="modal-close" id="storageModalClose" type="button" aria-label="쩜통 창 닫기">&times;</button>',
             '    </div>',
 
