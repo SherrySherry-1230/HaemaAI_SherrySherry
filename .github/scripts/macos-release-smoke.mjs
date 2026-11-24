@@ -16,9 +16,19 @@ const hosted = process.env.MACOS_SMOKE_LAUNCH_SERVICES === 'hosted';
 const page = 'https://sherrysherry-1230.github.io/HaemaAI_SherrySherry/';
 const load = (root, name) => import(pathToFileURL(join(root, '.haema', name)).href);
 let phase;
+let failed = false;
 function step(name) {
   phase = name;
   console.log('STEP', name);
+}
+function reportFailure(error) {
+  if (failed) return;
+  failed = true;
+  const classification = error?.code ?? error?.message;
+  const code = /^[A-Z_]{1,56}$/.test(classification) ? classification : 'CHECK_FAILED';
+  // Assertions can contain connection URLs. Report only the smoke check's line.
+  const location = error?.stack?.match(/(macos-(?:release|chrome)-smoke\.mjs:\d+):\d+\)?(?:\n|$)/)?.[1];
+  console.error('FAIL', phase, code, location ?? '');
 }
 
 async function connect(url) {
@@ -95,7 +105,11 @@ async function run() {
     assert.deepEqual(args.slice(0, 2), ['-b', 'com.google.Chrome']);
     if (!closing) {
       assert.ok(nextOpen);
-      if (useDesktop) await execFile(file, args, options);
+      if (useDesktop) {
+        step('DELIVER_URL_THROUGH_LAUNCH_SERVICES');
+        await execFile(file, args, options);
+        console.log('macOS accepted the installed Chrome handoff.');
+      }
       nextOpen(args[2]);
     }
     return { stdout: '', stderr: '' };
@@ -199,11 +213,13 @@ async function run() {
       await execFile('/usr/bin/open', ['-W', 'haema-ai://unsupported-smoke'], { timeout: 20000 });
       step('OPEN_INSTALLED_CHROME_THROUGH_LAUNCH_SERVICES');
       const { launchHostedChrome } = await import('./macos-chrome-smoke.mjs');
-      chrome = await launchHostedChrome(scratch, page, execFile);
+      chrome = await launchHostedChrome(scratch, page, execFile, step);
       useDesktop = true;
       const inChrome = await opening(() => execFile(join(root, 'Start.command'), [], { timeout: 30000 }));
       await inChrome.run;
       useDesktop = false;
+      await chrome.close();
+      chrome = undefined;
     }
 
     step('REOPEN_USING_INSTALLED_COMMAND');
@@ -251,16 +267,33 @@ async function run() {
     await execFile(join(root, 'Stop.command'), [], { timeout: 30000 });
     await restarted.run;
     assert.equal((await entry.inspectWebControlTarget(root)).running, null);
+  } catch (error) {
+    reportFailure(error);
+    throw error;
   } finally {
     closing = true;
     for (const client of clients) client.close();
     // Only this disposable installation can own the test controller.
-    await entry.runInstaller({ bundleRoot: root, action: 'stop' }).catch(() => {});
-    await Promise.allSettled(runs);
-    await chrome?.close();
-    childProcess.execFile = originalExec;
-    childProcess.spawn = originalSpawn;
-    syncBuiltinESMExports();
+    let cleanupExpired = false;
+    const drainTimeout = setTimeout(() => {
+      cleanupExpired = true;
+      process.exitCode = 1;
+      console.error('FAIL', phase, 'DISPOSABLE_RUNNER_CLEANUP_TIMEOUT');
+      const deadline = setTimeout(() => process.exit(1), 6500);
+      deadline.unref();
+      process.kill(process.pid, 'SIGTERM');
+    }, 25000);
+    try {
+      await chrome?.close();
+      await entry.runInstaller({ bundleRoot: root, action: 'stop' }).catch(() => {});
+      await Promise.allSettled(runs);
+    } finally {
+      clearTimeout(drainTimeout);
+      childProcess.execFile = originalExec;
+      childProcess.spawn = originalSpawn;
+      syncBuiltinESMExports();
+    }
+    if (cleanupExpired) throw new Error('DISPOSABLE_RUNNER_CLEANUP_TIMEOUT');
   }
 }
 
@@ -268,10 +301,6 @@ try {
   await run();
   console.log('PASS: macOS installer, setup connection, scoped controls and saved store.');
 } catch (error) {
-  const classification = error?.code ?? error?.message;
-  const code = /^[A-Z_]{1,56}$/.test(classification) ? classification : 'CHECK_FAILED';
-  // Assertions can contain connection URLs. Report only the smoke check's line.
-  const line = error?.stack?.match(/macos-release-smoke\.mjs:(\d+):\d+\)?(?:\n|$)/)?.[1];
-  console.error('FAIL', phase, code, line ? 'at smoke line ' + line : '');
+  reportFailure(error);
   process.exitCode = 1;
 }

@@ -1,5 +1,6 @@
 // @editedBy SherrySherry 2026-11-24
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -20,8 +21,15 @@ async function devtools(address) {
   assert.equal(endpoint.hostname, '127.0.0.1');
   const socket = new WebSocket(address);
   await new Promise((resolve, reject) => {
-    socket.addEventListener('open', resolve, { once: true });
-    socket.addEventListener('error', () => reject(new Error('CHROME_CONNECTION_FAILED')), { once: true });
+    const timer = setTimeout(() => {
+      reject(new Error('CHROME_DEBUG_CONNECTION_TIMEOUT'));
+      socket.close();
+    }, 8000);
+    socket.addEventListener('open', () => { clearTimeout(timer); resolve(); }, { once: true });
+    socket.addEventListener('error', () => {
+      clearTimeout(timer);
+      reject(new Error('CHROME_CONNECTION_FAILED'));
+    }, { once: true });
   });
   let id = 0;
   // Commands are sent one at a time. Do not print messages or navigation URLs.
@@ -47,27 +55,55 @@ async function devtools(address) {
   return { command, close: () => socket.close() };
 }
 
-export async function launchHostedChrome(scratch, page, execFile) {
+export async function launchHostedChrome(scratch, page, execFile, step) {
   assert.equal(process.env.RUNNER_ENVIRONMENT, 'github-hosted');
-  await assert.rejects(execFile('/usr/bin/pgrep', ['-x', 'Google Chrome']), { code: 1 });
+  step('LOCATE_INSTALLED_CHROME');
+  await assert.rejects(execFile('/usr/bin/pgrep', ['-x', 'Google Chrome'], { timeout: 5000 }), { code: 1 });
+  const { stdout } = await execFile('/usr/bin/osascript', ['-l', 'JavaScript', '-e',
+    "ObjC.import('AppKit'); const app = $.NSWorkspace.sharedWorkspace.URLForApplicationWithBundleIdentifier('com.google.Chrome'); ObjC.unwrap($.NSBundle.bundleWithURL(app).executableURL.path);"],
+  { timeout: 5000 });
+  const binary = stdout.trim();
+  assert.ok(binary.startsWith('/') && binary.endsWith('/Google Chrome.app/Contents/MacOS/Google Chrome'));
   const profile = join(scratch, 'smoke-chrome');
-  await execFile('/usr/bin/open', ['-n', '-b', 'com.google.Chrome', '--args', '--user-data-dir=' + profile,
-    '--no-first-run', '--no-default-browser-check', '--disable-search-engine-choice-screen', '--remote-debugging-port=0', 'about:blank']);
-  const portFile = await until(() => readFile(join(profile, 'DevToolsActivePort'), 'utf8').catch(error => {
-    if (error.code !== 'ENOENT') throw error;
-  }), 'CHROME_PROFILE_NOT_READY');
-  const [port, browserPath] = portFile.trim().split('\n');
-  assert.match(port, /^[1-9]\d{0,4}$/);
-  assert.match(browserPath, /^\/devtools\/browser\/[a-f0-9-]+$/);
-  const address = '127.0.0.1:' + port;
-  const browser = await devtools('ws://' + address + browserPath);
+  step('START_DISPOSABLE_CHROME_PROFILE');
+  // Only the test fixture is bootstrapped this way. The URL is delivered by
+  // the unmodified release's /usr/bin/open invocation after the profile is ready.
+  const chrome = spawn(binary, ['--user-data-dir=' + profile, '--no-first-run', '--no-default-browser-check',
+    '--disable-search-engine-choice-screen', '--remote-debugging-port=0', 'about:blank'], { stdio: 'ignore' });
+  let ended = false;
+  const exited = new Promise(resolve => {
+    const finish = () => { ended = true; resolve(); };
+    chrome.once('error', finish);
+    chrome.once('exit', finish);
+  });
+  let address, browser;
   async function close() {
-    await browser.command('Browser.close').catch(() => {});
-    browser.close();
+    if (browser) {
+      await browser.command('Browser.close').catch(() => {});
+      browser.close();
+    }
+    if (!ended) {
+      chrome.kill('SIGTERM');
+      await Promise.race([exited, delay(2500, undefined, { ref: false })]);
+      if (!ended) chrome.kill('SIGKILL');
+    }
   }
   try {
+    const portFile = await until(() => {
+      if (ended) throw new Error('CHROME_EXITED_BEFORE_READY');
+      return readFile(join(profile, 'DevToolsActivePort'), 'utf8').catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+    }, 'CHROME_PROFILE_NOT_READY');
+    const [port, browserPath] = portFile.trim().split('\n');
+    assert.match(port, /^[1-9]\d{0,4}$/);
+    assert.match(browserPath, /^\/devtools\/browser\/[a-f0-9-]+$/);
+    address = '127.0.0.1:' + port;
+    step('CONNECT_CHROME_TEST_PROFILE');
+    browser = await devtools('ws://' + address + browserPath);
     assert.match((await browser.command('Browser.getVersion')).product, /^Chrome\//);
     // Same site permission a person grants, scoped to this throwaway profile.
+    step('GRANT_TEST_PROFILE_LOOPBACK_PERMISSION');
     await browser.command('Browser.grantPermissions', { origin: new URL(page).origin, permissions: ['loopbackNetwork'] });
   } catch (error) {
     await close();
@@ -76,10 +112,12 @@ export async function launchHostedChrome(scratch, page, execFile) {
   async function verifyStore(expectedRoot) {
     // A real /usr/bin/open handoff must create this tab in the profile we
     // started. Never navigate to the URL ourselves or expose its pairing code.
+    step('VERIFY_REAL_CHROME_TAB');
     const tab = await until(async () => {
       const response = await fetch('http://' + address + '/json/list', { signal: AbortSignal.timeout(4000) });
       return (await response.json()).find(item => item.type === 'page' && item.url.split('#')[0] === page);
     }, 'CHROME_HANDOFF_MISSING');
+    step('VERIFY_CHROME_CONSOLE_CONNECTION');
     const session = await devtools(tab.webSocketDebuggerUrl);
     try {
       const expression = '(' + function (root) {
