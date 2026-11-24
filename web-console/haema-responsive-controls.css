@@ -261,6 +261,7 @@
     flex: 1 1 190px;
     margin: 0;
     font: 400 11px/1.5 Pretendard, sans-serif;
+    word-break: keep-all;
 }
 
 /* @editedBy YAONG1230 2026-11-17: storage actions share the original sliced frame. */
