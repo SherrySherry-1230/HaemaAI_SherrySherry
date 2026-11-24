@@ -31,9 +31,8 @@ for entry in 쩜통_연결.command Start.command StartAI.command Stop.command; d
   [[ -x "$source_root/$entry" ]] || { echo 'Launcher command is missing or not executable.' >&2; exit 1; }
   /bin/bash -n "$source_root/$entry"
 done
-for arch in arm64 x86_64; do
-  /usr/bin/lipo -verify_arch "$arch" "$source_root/.haema/mac-web-helper.bin"
-done
+slices=" $(/usr/bin/lipo -archs "$source_root/.haema/mac-web-helper.bin") "
+[[ "$slices" == *" arm64 "* && "$slices" == *" x86_64 "* ]] || { echo 'Mac helper is missing a CPU slice.' >&2; exit 1; }
 node="$source_root/.haema/node/darwin-$package_arch/bin/node"
 [[ -x "$node" && "$("$node" -p 'process.arch')" == "$package_arch" ]]
 echo "Testing macOS $(sw_vers -productVersion) $package_arch with bundled Node $("$node" --version)"
