@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-23: verify the active API profile only on a new model reply.
 // @editedBy YAONG1230 2026-11-22
 // @editedBy SherrySherry 2026-11-19
 // @editedBy YAONG1230 2026-11-16
@@ -9,6 +10,7 @@ window.HAEMA_TEST_HOST = (() => {
         { id: 'creative', name: '창작해,마' }, { id: 'pet', name: '키워달라해마해,마' }
     ];
     const sessions = new Map();
+    const sentWithProfile = new WeakMap();
     const unconnectedDrafts = new Map();
     const unconnectedNotice = '연결 전 초안을 이 탭에 보관하고 있어요. 저장소를 연결해도 자동으로 옮기거나 보내지 않아요.';
     const empty = () => ({ turns: [], draft: '', status: '', loading: false, sending: false, ready: false, uncertain: false,
@@ -186,6 +188,11 @@ window.HAEMA_TEST_HOST = (() => {
                 if (found.state !== 'failed' && session.draft === session.pending.text && session.draftRevision === session.pending.draftRevision) {
                     session.draft = ''; session.draftRevision += 1;
                 }
+                if (found.state === 'complete' && found.reply?.text && found.reply.usage?.scope === 'host' &&
+                    [found.reply.usage.inputTokens, found.reply.usage.outputTokens, found.reply.usage.totalTokens]
+                        .some(count => Number.isSafeInteger(count) && count > 0) && sentWithProfile.has(session.pending)) {
+                    HAEMA_API_KEY_MODAL.confirmAiConnection(sentWithProfile.get(session.pending));
+                }
                 if (found.state !== 'pending') session.pending = null;
                 session.uncertain = false;
                 persist(session);
@@ -343,6 +350,8 @@ window.HAEMA_TEST_HOST = (() => {
         session.pending = { turnId: crypto.randomUUID(), text, ...(zone === undefined ? {} : { timeZone: zone }), draftRevision: session.draftRevision };
         session.draft = text; session.pollCount = 0;
         try { persist(session); } catch { session.pending = null; session.persistenceFailed = true; session.ready = false; session.status = '전송 식별자를 보관하지 못해 메시지를 보내지 않았어요.'; changed(session); return Promise.resolve(false); }
+        const proof = typeof HAEMA_API_KEY_MODAL !== 'undefined' && HAEMA_API_KEY_MODAL.captureAiConnection();
+        if (proof) sentWithProfile.set(session.pending, proof);
         return deliver(session);
     }
     async function retry() {

@@ -22,9 +22,14 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 }
-#apiKeyBtn.tool-button,
-#storageBtn.tool-button { padding-inline: 2px; }
-
+/* Numbered first-use actions keep the same nine-slice corners as the other controls. */
+.conversation-toolbar #apiKeyBtn,
+.conversation-toolbar #storageBtn {
+    flex: 0 0 auto;
+    width: max-content;
+    max-width: 100%;
+    padding-inline: 9px;
+}
 /* @editedBy YAONG1230 2026-10-28
    Use four-pixel-per-CSS-pixel exports of the original colored artwork.
    Fixed source/output corners leave only the middle strips to accommodate labels.

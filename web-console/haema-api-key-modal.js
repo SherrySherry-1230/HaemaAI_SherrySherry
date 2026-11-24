@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-23: confirm onboarding settings against the connected store.
 // @editedBy YAONG1230 2026-11-20: adapt the open model field to the confirmed runtime mode.
 // @editedBy YAONG1230 2026-11-19: preserve the open model picker during refresh.
 // @editedBy SherrySherry 2026-11-19
@@ -314,9 +315,9 @@ function renderModelControl(manual, model) {
 function renderApiKeyModalContent(data = {}) {
     // The edit identity belongs to this form, not a previously closed modal.
     editingKeyId = data.keyId || "";
-    const savedProvider = data.provider || localStorage.getItem("haema_api_provider") || "";
-    const savedModel = data.model || localStorage.getItem("haema_api_model") || "";
-    const savedBaseUrl = safeBaseUrl(data.baseURL ?? localStorage.getItem("haema_api_base_url")) || "";
+    const savedProvider = data.provider || "";
+    const savedModel = data.model || "";
+    const savedBaseUrl = safeBaseUrl(data.baseURL) || "";
     const displayedBaseUrl = savedBaseUrl || (isLocalProvider(savedProvider) ? getDefaultBaseUrl(savedProvider) : "");
     const savedKey = data.apiKey || "";
     const savedName = data.name || "";
@@ -356,7 +357,7 @@ function renderApiKeyModalContent(data = {}) {
     // 키 이름 입력칸
     const apiKeyNameInput = `
         <div class="form-group">
-            <label class="form-label" for="modalApiKeyName">설정 이름</label>
+            <label class="form-label" for="modalApiKeyName">설정 이름 (선택사항)</label>
             <input class="form-input" id="modalApiKeyName" type="text"
                 value="${escapeHtml(savedName)}"
                 placeholder="예: OpenAI 테스트">
@@ -399,6 +400,11 @@ function renderApiKeyModalContent(data = {}) {
     `;
 
     return `
+        <section class="form-group" aria-label="현재 쩜통의 API 설정">
+            <strong class="form-label">현재 쩜통의 API 설정</strong>
+            <div class="form-hint" id="currentApiSettings" role="status">저장된 설정 확인 중…</div>
+            <button class="btn btn-primary" type="button" id="apiOnboardingNext" hidden>다음 · ③ 자기소개</button>
+        </section>
         ${apiKeyNameInput}
         ${providerSelect}
         ${baseUrlGroup}
@@ -462,6 +468,11 @@ function maskApiKey(key) {
     if (!key) return "";
     if (key.length <= 8) return "*".repeat(key.length);
     return key.slice(0, 4) + "****" + key.slice(-4);
+}
+
+function displayMaskedKey(value) {
+    if (value === "") return "";
+    return typeof value === "string" && /^(?:\*{1,8}|[^\s]{4}\*{4}[^\s]{4})$/.test(value) ? value : undefined;
 }
 
 // =========================================================
@@ -565,6 +576,45 @@ function confirmedProfile() {
         ? profile : null;
 }
 
+let settingsRevision = 0;
+let verifiedAiConnection = null;
+
+function invalidateAiConnection() {
+    ++settingsRevision;
+    verifiedAiConnection = null;
+}
+
+function captureAiConnection() {
+    const profile = confirmedProfile();
+    const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
+    if (!profile || state?.connection !== "connected" || state.runtimeMode !== "full" || !state.aiReady) return null;
+    return { profile, revision: settingsRevision };
+}
+
+function isCurrentAiConnection(proof) {
+    const current = captureAiConnection();
+    return !!current && !!proof && proof.revision === current.revision &&
+        sameStorageScope(proof.profile.scope, current.profile.scope) &&
+        sameConnection(proof.profile, current.profile) && proof.profile.maskedKey === current.profile.maskedKey;
+}
+
+// Only a newly returned model answer verifies the AI. A stored configuration or model list can exist offline.
+function confirmAiConnection(proof) {
+    if (!isCurrentAiConnection(proof)) return;
+    verifiedAiConnection = proof;
+    syncOpenForm();
+}
+
+async function readBackSettings(item, scope) {
+    checkProfileActionScope(scope);
+    const saved = await consoleRef.refreshApiStatus();
+    checkProfileActionScope(scope);
+    if (!saved || saved !== confirmedProfile() || !sameConnection(item, saved) ||
+        (item.apiKey && saved.maskedKey !== maskApiKey(item.apiKey))) {
+        throw safeError("저장 요청은 받았지만 현재 쩜통에서 같은 설정을 다시 확인하지 못했어요. 입력한 설정을 유지했어요.");
+    }
+}
+
 // Older rows have no store identity. They can keep the server's current settings,
 // but matching a provider and model cannot establish which credential was used.
 function savedProfileState(item) {
@@ -620,9 +670,10 @@ let profileActionBusy = false;
 
 function setProfileActionBusy(busy) {
     profileActionBusy = busy;
+    if (!document.getElementById("modalApiProvider")) return;
     document.querySelectorAll('#modalBody input, #modalBody select, #modalBody .saved-key-actions button, #modalRefreshModels, #modalSave')
         .forEach(control => { control.disabled = busy; });
-    if (!busy) syncOpenForm();
+    syncOpenForm();
 }
 
 async function saveApiKeyModal() {
@@ -633,7 +684,7 @@ async function saveApiKeyModal() {
     const model = document.getElementById("modalApiModel")?.value.trim();
     const apiKey = document.getElementById("modalApiKey")?.value.trim();
     const baseURL = document.getElementById("modalApiBaseUrl")?.value.trim();
-    const name = document.getElementById("modalApiKeyName")?.value.trim();
+    const name = document.getElementById("modalApiKeyName")?.value.trim() || [provider, model].filter(Boolean).join(" / ");
     const setupOnly = isSetupOnlyRuntime();
     const formData = consoleRef?.modalData;
     const targetKeyId = editingKeyId;
@@ -644,10 +695,6 @@ async function saveApiKeyModal() {
         await HAEMA_DIALOG.alert(baseUrlNotice, { tone: 'warning' });
         return false;
     }
-    if (!name) {
-        await HAEMA_DIALOG.alert("설정 이름을 입력해주세요!", { tone: 'warning' });
-        return false;
-    }
     if (!provider) {
         await HAEMA_DIALOG.alert("API 제공자를 선택해주세요!", { tone: 'warning' });
         return false;
@@ -656,19 +703,28 @@ async function saveApiKeyModal() {
         await HAEMA_DIALOG.alert(setupOnly ? "모델 ID를 입력해 주세요." : "모델을 선택해주세요!", { tone: 'warning' });
         return false;
     }
-    if (!apiKey && targetKeyId) {
+    const serverProfile = confirmedProfile();
+    if (!apiKey && sameConnection({ provider, model, baseURL }, serverProfile)) {
+        setProfileActionBusy(true);
         try {
-            const target = readProfileMetadata().find(item => item.keyId === targetKeyId);
-            if (savedProfileState(target) && target.name === name && sameConnection(target, { provider, model, baseURL })) {
+            const target = targetKeyId ? readProfileMetadata().find(item => item.keyId === targetKeyId) : serverProfile;
+            const reuse = targetKeyId ? savedProfileState(target) && target.name === name :
+                !document.getElementById("modalApiKeyName")?.value.trim();
+            if (reuse) {
+                await readBackSettings(target, targetScope);
                 keepServerSettings(target);
+                form?.markSaved();
                 return true;
             }
         } catch (error) {
-            await HAEMA_DIALOG.alert(safeFailure(error, "저장된 연결 설정을 확인하지 못했어요."), { tone: 'warning' });
+            await HAEMA_DIALOG.alert(safeFailure(error, "저장된 설정을 다시 확인하지 못했어요."), { tone: "warning" });
             return false;
+        } finally {
+            setProfileActionBusy(false);
         }
     }
-    if ((!isLocalProvider(provider) || (consoleRef?.modalData?.requiresKey && consoleRef.modalData.provider === provider)) && !apiKey) {
+    const sameKeyedProvider = serverProfile?.provider === provider && serverProfile.maskedKey;
+    if ((!isLocalProvider(provider) || sameKeyedProvider || (consoleRef?.modalData?.requiresKey && consoleRef.modalData.provider === provider)) && !apiKey) {
         await HAEMA_DIALOG.alert("API 키를 입력해주세요!", { tone: 'warning' });
         return false;
     }
@@ -712,12 +768,12 @@ async function saveApiKeyModal() {
             return false;
         }
 
+        await readBackSettings(keyItem, targetScope);
         persistProfileMetadata(keyItem, !targetKeyId, targetScope);
         setActiveKeyMetadata(keyItem);
         localStorage.setItem("haema_api_configured", "true");
 
         if (consoleRef) {
-            consoleRef.apiConfigured = true;
             if (consoleRef.modalData === formData) consoleRef.modalData = {
                 keyId: keyItem.keyId,
                 provider,
@@ -726,6 +782,7 @@ async function saveApiKeyModal() {
                 name,
                 apiKey: ""
             };
+            consoleRef.render();
         }
 
         await notifySaveResult(true, provider, model, setupOnly);
@@ -733,12 +790,9 @@ async function saveApiKeyModal() {
     } catch (error) {
         if (await notifyConnectionFailure(error)) return false;
         if (serverSaved) {
-            const message = safeFailure(error, "연결 설정은 서버에 적용했지만 브라우저에 프로필을 저장하지 못했어요. 입력한 설정은 그대로 두었으니 저장 공간을 확인하고 다시 저장해주세요.");
-            if (consoleRef) {
-                if (!targetScope || sameStorageScope(targetScope, currentStorageScope())) consoleRef.apiConfigured = true;
-                consoleRef.statusText = message;
-            }
-            await HAEMA_DIALOG.alert(message, { title: '서버 연결 설정은 적용했어요', tone: 'warning' });
+            const message = safeFailure(error, "저장 요청을 보냈지만 결과를 확인하는 중 문제가 생겼어요. 입력한 설정은 그대로 두었어요.");
+            if (consoleRef) consoleRef.statusText = message;
+            await HAEMA_DIALOG.alert(message, { title: '저장 결과를 확인해 주세요', tone: 'warning' });
             return false;
         }
         await notifySaveResult(false, provider, model, false, safeFailure(error, "API 설정을 저장하지 못했어요. 입력한 설정을 유지한 채 다시 확인해 주세요."));
@@ -768,6 +822,7 @@ async function validateProviderConnection(provider, apiKey, baseUrl, model) {
 // =========================================================
 // 명시적인 성공 응답을 받은 뒤 선택한 프로필을 반영한다.
 async function saveConnectionSettings(keyItem) {
+    invalidateAiConnection();
     const response = await requestLocal("settings.save", {
         provider: keyItem.provider,
         model: keyItem.model,
@@ -825,6 +880,7 @@ async function refreshConsoleAfterProfileAction(message) {
 }
 
 async function clearLocalServerConfig() {
+    invalidateAiConnection();
     const response = await requestLocal("settings.clear");
     const payload = await response.json().catch(() => null);
     return response.ok && payload?.success === true;
@@ -877,10 +933,10 @@ async function switchToKey(keyId) {
         }
 
         checkProfileActionScope(targetScope);
+        await readBackSettings(target, targetScope);
         setActiveKeyMetadata(target);
         localStorage.setItem("haema_api_configured", "true");
         if (consoleRef) {
-            consoleRef.apiConfigured = true;
             consoleRef.modalData = {
                 keyId: target.keyId,
                 provider: target.provider,
@@ -1241,7 +1297,7 @@ async function bindEvents() {
             } else {
                 connectionStatus.textContent = isLocalProvider(provider) && modelSelect.options.length <= 1
                     ? "연결은 확인했지만 사용할 수 있는 모델이 없어요. 로컬 서버에서 모델을 준비하고 다시 조회해주세요."
-                    : "✅ API 연결 확인됨. 모델을 선택하세요.";
+                    : "모델 목록을 받았어요. 사용할 모델을 선택하세요.";
             }
         } catch (error) {
             if (!await canApplyModelList(requestVersion)) return;
@@ -1309,9 +1365,47 @@ async function bindEvents() {
         if (!profileActionBusy && event.target.closest("#modalRefreshModels")) scheduleModelRefresh();
     });
 
+    const next = document.getElementById("apiOnboardingNext");
+    const currentSettings = document.getElementById("currentApiSettings");
+    let formEdited = !!editingKeyId;
+    let hydratedProfile = null;
+    let unsavedEdits = false;
+    const markEdited = () => { formEdited = true; unsavedEdits = true; next.hidden = true; };
+    modalBody.addEventListener("input", markEdited);
+    modalBody.addEventListener("change", markEdited);
+    next.addEventListener("click", () => {
+        if (!unsavedEdits && !profileActionBusy && isReady() && confirmedProfile()) consoleRef.openIntroduction();
+    });
+
     function sync() {
         const mode = confirmedMode();
         const available = isReady();
+        const profile = available ? confirmedProfile() : null;
+        let summary = !available || consoleRef?.apiStatusUnconfirmed
+            ? "현재 쩜통의 저장된 설정을 확인하지 못했어요." : "이 쩜통에 저장된 API 설정이 없어요.";
+        if (profile) {
+            const mask = profile.maskedKey;
+            const keyLabel = mask ? "키 " + mask : mask === "" ? "키 없음" : "키 표시 정보 없음";
+            const verified = isCurrentAiConnection(verifiedAiConnection);
+            summary = ["설정 저장됨", profile.provider, profile.model, keyLabel,
+                verified ? "AI 연결 확인됨" : "AI 응답 확인 전"].join(" · ");
+            if (!formEdited && !sameConnection(profile, hydratedProfile)) {
+                hydratedProfile = profile;
+                ++modelRequestVersion;
+                clearTimeout(modelRefreshTimer);
+                providerSelect.value = profile.provider;
+                baseUrlInput.value = profile.baseURL || "";
+                previousBaseUrl = baseUrlInput.value;
+                if (!manualModel) modelSelect.replaceChildren(new Option(profile.model, profile.model, true, true));
+                modelSelect.value = profile.model;
+                modelSelect.dataset.selectedModel = profile.model;
+                if (manualModel) updateModelSuggestions();
+            }
+            apiKeyInput.placeholder = !formEdited && mask ? mask : "API 키 입력";
+        }
+        if (currentSettings.textContent !== summary) currentSettings.textContent = summary;
+        next.hidden = !profile || unsavedEdits;
+        next.disabled = !profile || profileActionBusy;
         for (const button of modalBody.querySelectorAll("#modalRefreshModels, .saved-key-actions button")) {
             button.disabled = profileActionBusy || !available;
         }
@@ -1365,7 +1459,7 @@ async function bindEvents() {
         modelControl.querySelectorAll("input, select, button").forEach(control => { control.disabled = profileActionBusy; });
         if (restoreFocus) modelSelect.focus({ preventScroll: true });
     }
-    boundModalBodies.set(modalBody, { scope, isReady, sync });
+    boundModalBodies.set(modalBody, { scope, isReady, sync, markSaved() { unsavedEdits = false; sync(); } });
     sync();
 
     document.getElementById("modalApiKeyName")?.addEventListener("input", refreshKeyHint);
@@ -1387,6 +1481,11 @@ async function bindEvents() {
 return {
     setConsole,
     safeBaseUrl,
+    displayMaskedKey,
+    confirmedProfile,
+    captureAiConnection,
+    confirmAiConnection,
+    invalidateAiConnection,
     savedProfileState,
     renderApiKeyModalContent,
     refreshKeyHint,
