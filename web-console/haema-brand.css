@@ -1,4 +1,4 @@
-/* @editedBy YAONG1230 2026-11-23: launcher controls and storage connection action. */
+/* @editedBy YAONG1230: console branding and launcher controls. */
 @font-face {
   font-family: "Haema CookieRun";
   src: url("../Resources/haema-design/fonts/CookieRunWebBlack.woff2") format("woff2");
@@ -179,54 +179,44 @@
 }
 
 .launcher-key {
-  position: relative;
-  isolation: isolate;
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-content: center;
   flex: none;
-  width: 54px;
-  height: 52px;
+  width: 56px;
+  min-height: 68px;
   padding: 0;
   border: 0;
-  border-radius: 45%;
+  border-radius: 14px;
   background: transparent;
-  color: var(--haema-white);
-  font: 400 12px/1 "CookieRun Regular", sans-serif;
-  paint-order: stroke fill;
-  -webkit-text-stroke: 1.45px #624f52;
-  text-shadow: 0 -1px .65px #4e4043, 0 1px 1px rgb(74 53 56 / 64%);
-  text-decoration: none;
-  white-space: nowrap;
+  color: var(--ink, #26292e);
+  font: 400 12px/1.2 "CookieRun Regular", sans-serif;
   cursor: pointer;
   touch-action: manipulation;
 }
 
-#header-launcher-ai-start {
-  --shape: url("../Resources/haema-design/header-launcher/ai-start.svg");
-  --fill: #a2ed99;
-}
-
-#header-launcher-stop {
-  --shape: url("../Resources/haema-design/header-launcher/stop.svg");
-  --fill: #ffa5b7;
-}
-
-/* The mask clips only the enamel. Its soft shadow falls outside the vector. */
+/* The three columns are the hand-drawn controls. Rows are off, white, green and red. */
+#header-launcher-power { --lamp-column: 0%; --initial-lamp-row: 33.333333%; }
+#header-launcher-ai-start { --lamp-column: 50%; }
+#header-launcher-stop { --lamp-column: 100%; }
+.launcher-key[data-lamp="white"] { --lamp-row: 33.333333%; }
+.launcher-key[data-lamp="green"] { --lamp-row: 66.666667%; }
+.launcher-key[data-lamp="red"] { --lamp-row: 100%; }
 .launcher-key-face {
-  display: grid;
-  position: relative;
-  isolation: isolate;
-  place-items: center;
-  width: 48.2773px;
-  height: 48.3271px;
-  filter: drop-shadow(0 2px 2px rgb(63 44 46 / 19%));
-  transition: transform 130ms ease, filter 130ms ease;
+  width: 54px;
+  height: 54px;
+  background: url("../Resources/haema-design/header-launcher/glass-controls.svg")
+    var(--lamp-column) var(--lamp-row, var(--initial-lamp-row, 0%)) / 300% 400% no-repeat;
+  forced-color-adjust: none;
+  transition: transform 130ms ease;
 }
+
+.launcher-key-label { white-space: nowrap; }
 
 .header-launcher-hint {
   position: absolute;
   z-index: 4;
-  top: calc(50% + 30px);
+  top: calc(50% + 38px);
   left: 10px;
   display: none;
   width: min(290px, calc(100vw - 34px));
@@ -240,37 +230,30 @@
   overflow-wrap: anywhere;
 }
 
-.header-launcher:is(:focus-within, :hover) .header-launcher-hint:not(:empty) { display: block; }
+.header-launcher:is(:focus-within, :hover) .header-launcher-hint:has(span:not(:empty)),
+.header-launcher-hint:has(#header-launcher-keep:not([hidden])) { display: block; }
 
-.launcher-key-face::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background:
-    radial-gradient(ellipse at 28% 19%, rgb(255 250 222 / 80%), transparent 43%),
-    linear-gradient(to top, rgb(81 53 49 / 23%), transparent 14%),
-    var(--fill);
-  mask: var(--shape) center / 100% 100% no-repeat;
+#header-launcher-keep:not([hidden]) {
+  display: block;
+  margin-top: 5px;
+  min-height: 30px;
+  padding: 2px 12px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
 }
 
 @media (hover: hover) {
   .launcher-key:enabled:hover .launcher-key-face {
     transform: translateY(-2px);
-    filter: drop-shadow(0 -1px 0 #fffade) drop-shadow(0 1px 0 #fffade) drop-shadow(0 4px 3px rgb(63 44 46 / 22%));
   }
 }
 
 .launcher-key:enabled:active .launcher-key-face {
   transform: translateY(2px);
-  filter: drop-shadow(0 1px 1px rgb(63 44 46 / 16%));
-}
-
-.launcher-key:enabled:active .launcher-key-face::before {
-  background:
-    radial-gradient(ellipse at 27% 25%, rgb(255 250 222 / 40%), transparent 44%),
-    linear-gradient(to bottom, rgb(73 47 45 / 32%), transparent 18%),
-    color-mix(in srgb, var(--fill), #62453d 10%);
 }
 
 .launcher-key:focus-visible {
@@ -279,12 +262,6 @@
 }
 
 .launcher-key:disabled { cursor: not-allowed; }
-.launcher-key:disabled .launcher-key-face {
-  filter: grayscale(1) drop-shadow(0 1px 1px rgb(63 44 46 / 11%));
-}
-.launcher-key:disabled .launcher-key-face::before {
-  background: linear-gradient(155deg, #ebe9e5, #c5c2be);
-}
 
 #storageWindowsControls .storage-connect-row {
   display: flex;
