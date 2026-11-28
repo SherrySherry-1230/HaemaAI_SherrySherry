@@ -1,3 +1,4 @@
+// @editedBy YAONG1230 2026-11-29
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
@@ -55,18 +56,24 @@ export async function verifyPublicConsole(webUrl, root, storageId, { switchTo, l
       } while (Date.now() < until);
       throw new Error(failure);
     };
-    // All launcher links must target the same confirmed store. Connect belongs inside step ①.
+    // The two fresh stores have no API configuration. Only Connect can open the runner.
     const checkButtons = async (store, runner) => {
       if (!checkPublished) return;
       await waitFor(`
         const [store, runner] = arguments;
-        if (document.getElementById('header-launcher-start')) return false;
-        return ['ai-start','start','stop'].every((action, i) => {
-          const expected = 'haema-ai://' + action + '?store=' + store.slice(5) + '&runner=' + runner.slice(5);
-          const modalId = ['storageStartAIHaema','storageStartHaema','storageStopHaema'][i];
-          const modalLink = document.querySelector('#storageModalOverlay.active #' + modalId);
-          if (!modalLink?.getClientRects().length || modalLink.getAttribute('href') !== expected) return false;
-          return action === 'start' || document.getElementById('header-launcher-' + action)?.getAttribute('href') === expected;
+        const expected = 'haema-ai://start?store=' + store.slice(5) + '&runner=' + runner.slice(5);
+        const modal = document.querySelector('#storageModalOverlay.active');
+        const connect = modal?.querySelector('button[data-launcher="start"]');
+        if (!connect?.getClientRects().length || connect.disabled || connect.dataset.target !== expected ||
+            modal.querySelectorAll('[data-launcher]').length !== 1) return false;
+
+        const header = document.getElementById('headerLauncher');
+        if (header?.querySelectorAll('[data-launcher]').length !== 3) return false;
+        return ['power', 'aiStart', 'stop'].every(action => {
+          const button = header.querySelector('button[data-launcher="' + action + '"]');
+          const isPower = action === 'power';
+          return button?.getClientRects().length && button.disabled === !isPower &&
+            button.dataset.lamp === (isPower ? 'white' : 'off') && !button.hasAttribute('data-target');
         });
       `, 'WINDOWS_CONSOLE_WRONG_CONTROLS', store, runner);
     };
