@@ -2671,7 +2671,7 @@ HAEMA_CONSOLE.renderToolbarContent = function(icon, label, connected, isApiLabel
     return '<span class="tool-button-content"><span class="tool-button-icon" aria-hidden="true">' +
         this.escapeHtml(icon) + '</span><span class="tool-button-separator" aria-hidden="true">:</span>' +
         '<span class="tool-button-label' + (isApiLabel ? ' api-key-label' : '') + '">' + this.escapeHtml(label) + '</span>' +
-        '<span class="tool-button-status" aria-hidden="true">' + (connected === null ? '⏳' : connected ? '✅' : '❌') + '</span></span>';
+        '<span class="tool-button-status" aria-hidden="true">' + (connected === null ? '⏳' : connected ? '✅' : '🫥') + '</span></span>';
 };
 
 HAEMA_CONSOLE.renderIntroductionButton = function() {
