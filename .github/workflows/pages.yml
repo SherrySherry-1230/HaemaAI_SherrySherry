@@ -105,6 +105,7 @@ jobs:
               "Resources/haema-design/haema-preview-character.png",
               "Resources/haema-design/haema-preview-token-glass.svg",
               "Resources/haema-design/header-launcher/ai-start.svg",
+              "Resources/haema-design/header-launcher/glass-controls.svg",
               "Resources/haema-design/header-launcher/start.svg",
               "Resources/haema-design/header-launcher/stop.svg",
               "Resources/haema-design/host-dropdown-open.svg",

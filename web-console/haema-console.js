@@ -1332,7 +1332,7 @@ HAEMA_CONSOLE.runtimeReadinessLabel = function() {
 HAEMA_CONSOLE.setupModeNotice = function() {
     const platform = globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.();
     if (platform === 'windows' || platform === 'macos') {
-        return '지금은 API 설정과 자기소개를 저장할 수 있는 준비 모드예요. 대화하려면 상단 AI Start를 누르고 실행기에서 쩜통과 모드 전환을 확인해 주세요.';
+        return '지금은 API 설정과 자기소개를 저장할 수 있는 준비 모드예요. 대화하려면 상단 재생 버튼을 누르고 실행기에서 쩜통과 모드 전환을 확인해 주세요.';
     }
     return '지금은 API 설정을 저장할 수 있는 설정 전용 모드예요. 실제 대화는 이 컴퓨터의 대화용 실행 프로그램에서 웹콘솔을 열어 시작해 주세요.';
 };

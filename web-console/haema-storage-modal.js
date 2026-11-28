@@ -15,6 +15,25 @@ window.HAEMA_STORAGE_MODAL = (function () {
     let consoleRef = null;
     let storageRequestGeneration = 0;
     let pendingInit = null;
+    const reloadKey = "haema_storage_reload_required";
+    let reloadRequired = false;
+    try { reloadRequired = sessionStorage.getItem(reloadKey) === "1"; } catch { /* This tab still tracks it in memory. */ }
+    function storedReloadRequired(suffix) {
+        try { return !!suffix && localStorage.getItem(reloadKey + suffix) === "1"; } catch { return false; }
+    }
+    function requireReload(required, suffix = "") {
+        reloadRequired = required;
+        try {
+            if (required) sessionStorage.setItem(reloadKey, "1");
+            else sessionStorage.removeItem(reloadKey);
+        } catch { /* Storage can be unavailable in private browsing. */ }
+        if (suffix) {
+            try {
+                if (required) localStorage.setItem(reloadKey + suffix, "1");
+                else localStorage.removeItem(reloadKey + suffix);
+            } catch { /* The tab-local barrier still applies. */ }
+        }
+    }
     const modalFocus = new WeakMap();
     const safeMessages = new WeakMap();
     const missingConnections = new WeakSet();
@@ -156,6 +175,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
             consoleRef.storageIdentity = hasIdentity
                 ? { storageRoot: status.storageRoot, storageId: status.storageId, launcherId: status.launcherId }
                 : null;
+            rememberLauncherTarget(consoleRef.storageIdentity);
+            const suffix = targetSuffix(consoleRef.storageIdentity);
+            if (stopTarget && suffix && suffix !== stopTarget) setStopTarget("");
             if (!sameStore || !wasReady || !hasIdentity) {
                 // A provider or a late status response from another store cannot unlock this one.
                 if (typeof HAEMA_API_KEY_MODAL !== "undefined") HAEMA_API_KEY_MODAL.invalidateAiConnection();
@@ -184,11 +206,18 @@ window.HAEMA_STORAGE_MODAL = (function () {
         if (readSettings) await consoleRef.refreshApiStatus?.();
     }
 
-    async function autoConnectStorage({ refreshSettings = false } = {}) {
+    async function autoConnectStorage({ refreshSettings = false, userInitiated = false } = {}) {
         // 연결 도중의 이전 상태를 읽어 실제 연결 완료 응답을 덮지 않는다.
         while (pendingInit) {
             try { await pendingInit; } catch { /* 연결 오류는 해당 모달에서 안내한다. */ }
         }
+        function promptReload() {
+            const status = { connected: false, state: "reload-required" };
+            const overlay = document.getElementById("storageModalOverlay");
+            if (isOpen(overlay)) modalFocus.get(overlay)?.showStatus?.(status);
+            return status;
+        }
+        if (reloadRequired && !userInitiated) return promptReload();
         const generation = ++storageRequestGeneration;
         try {
             const response = await requestLocal("storage.status");
@@ -201,6 +230,17 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     (status.jjums !== undefined && !Array.isArray(status.jjums))))) {
                 throw safeError("저장소 상태를 확인할 수 없습니다.", response.status);
             }
+            const suffix = targetSuffix(status);
+            if (!userInitiated && status.connected && storedReloadRequired(suffix)) {
+                requireReload(true);
+                if (consoleRef) {
+                    consoleRef.storageConnected = false;
+                    consoleRef.storageStatusUnconfirmed = true;
+                    consoleRef.render?.();
+                }
+                return promptReload();
+            }
+            if (userInitiated && status.connected) requireReload(false, suffix);
             await applyStorageStatus(status, refreshSettings);
             return generation === storageRequestGeneration ? status : { stale: true };
         } catch {
@@ -261,6 +301,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
                     throw safeError("저장소 연결 완료를 확인할 수 없어요.", response.status);
                 }
                 if (typeof result.storageRoot === "string" && result.storageRoot && typeof result.storageId === "string" && result.storageId) {
+                    requireReload(false, targetSuffix(result));
                     await applyStorageStatus(result);
                 }
                 if (generation !== storageRequestGeneration) return { stale: true };
@@ -388,7 +429,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
             try {
                 const connection = globalThis.HAEMA_LOCAL_CONNECTION;
                 if (connection?.status().connection !== "connected") await connection?.connect();
-                if (connection?.status().connection === "connected" && isOpen(overlay)) await autoConnectStorage();
+                if (connection?.status().connection === "connected" && document.getElementById("storageModalOverlay")?.classList.contains("active")) {
+                    await autoConnectStorage({ userInitiated: true });
+                }
             } catch {
                 // The retry stays in the modal even if permission or the local process is unavailable.
             } finally {
@@ -436,8 +479,9 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     const launcherActions = [
         { id: "storageStartHaema", handle: "start", label: "Connect", name: "준비 모드 연결" },
-        { id: "header-launcher-ai-start", handle: "aiStart", label: "AI Start", name: "AI 대화 시작" },
-        { id: "header-launcher-stop", handle: "stop", label: "Stop", name: "해마.ai 종료" },
+        { id: "header-launcher-power", handle: "power", label: "전원", name: "해마.ai 전원" },
+        { id: "header-launcher-ai-start", handle: "aiStart", label: "재생", name: "AI 대화 시작" },
+        { id: "header-launcher-stop", handle: "stop", label: "정지", name: "해마.ai 정지" },
     ];
     const registrationHint = "현재 쩜통의 준비 모드를 열어요. 실행기 확인 창에서 쩜통 위치를 확인해 주세요.";
     const updateHint = "현재 실행기에서는 쩜통 위치를 확인할 수 없어요. 쩜통 설치 안내에 따라 실행기를 업데이트해 주세요.";
@@ -448,6 +492,23 @@ window.HAEMA_STORAGE_MODAL = (function () {
     const platformHint = "macOS와 Windows에 설치한 해마.ai 실행기에서 사용할 수 있어요.";
     const supportsLauncher = platform => platform === "macos" || platform === "windows";
     let checkOnLauncherReturn = false;
+    const stopIntentKey = "haema_launcher_stop_requested";
+    let stopTarget = "";
+    try {
+        const saved = sessionStorage.getItem(stopIntentKey);
+        if (/^\?store=[0-9a-f]{64}&runner=[0-9a-f]{64}$/.test(saved || "")) stopTarget = saved;
+    } catch { /* The stop request can still be tracked without tab storage. */ }
+    let powerPending = false;
+    let launcherNotice = "";
+    const stopHint = "정지를 요청했어요. 실행기에서 확인한 뒤 전원을 누르면 연결을 해제해요.";
+
+    function setStopTarget(suffix) {
+        stopTarget = suffix;
+        try {
+            if (suffix) sessionStorage.setItem(stopIntentKey, suffix);
+            else sessionStorage.removeItem(stopIntentKey);
+        } catch { /* The current tab still has the request. */ }
+    }
 
     function recheckAfterLauncher() {
         if (!checkOnLauncherReturn || document.visibilityState === "hidden") return;
@@ -461,49 +522,111 @@ window.HAEMA_STORAGE_MODAL = (function () {
         return typeof value === "string" && value.length === 69 && /^file:[0-9a-f]{64}$/.test(value);
     }
 
+    function targetSuffix(identity) {
+        return validFileId(identity?.storageId) && validFileId(identity?.launcherId)
+            ? "?store=" + identity.storageId.slice(5) + "&runner=" + identity.launcherId.slice(5) : "";
+    }
+
+    function rememberLauncherTarget(identity, configured) {
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+        const scope = connection?.rememberedLauncherScope?.();
+        if (!scope || connection.status().connection !== "connected") return;
+        try {
+            if (!targetSuffix(identity)) return localStorage.removeItem(scope);
+            const previous = localStorage.getItem(scope);
+            let saved;
+            try { saved = JSON.parse(previous); } catch { /* Replace incomplete cache entries. */ }
+            const same = identity.storageId === saved?.storageId && identity.launcherId === saved?.launcherId;
+            const next = JSON.stringify({ storageId: identity.storageId, launcherId: identity.launcherId,
+                configured: configured ?? (same && saved.configured === true) });
+            if (next !== previous) localStorage.setItem(scope, next);
+        } catch { /* Online controls use the authenticated identity directly. */ }
+    }
+
     function launcherTarget() {
-        if (!supportsLauncher(globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.())) return { hint: platformHint };
-        const state = globalThis.HAEMA_LOCAL_CONNECTION?.status?.();
-        if (pendingInit || state?.recovering || ["connecting", "reconnecting"].includes(state?.connection)) return { hint: checkingHint };
-        if (!consoleRef?.isStorageReady?.() || state?.connection !== "connected") return { hint: storageHint };
-        // A confirmed profile can start AI from setup mode, before the runtime can accept messages.
-        if (!state.apiConfigured || !HAEMA_API_KEY_MODAL.confirmedProfile() ||
-            (state.runtimeMode !== "setup-only" && !state.aiReady)) return { hint: apiHint };
-        const identity = consoleRef.storageIdentity;
-        if (!validFileId(identity?.storageId) || !validFileId(identity?.launcherId)) return { hint: updateHint };
-        return { suffix: "?store=" + identity.storageId.slice(5) + "&runner=" + identity.launcherId.slice(5), hint: registrationHint };
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+        const state = connection?.status?.();
+        const storageReady = !reloadRequired && state?.connection === "connected" && consoleRef?.isStorageReady?.();
+        const configured = storageReady && state.apiConfigured && !!HAEMA_API_KEY_MODAL.confirmedProfile();
+        const online = configured && ["setup-only", "full"].includes(state.runtimeMode);
+        const target = { storageReady, configured, online, canStartAi: online && state.runtimeMode === "setup-only",
+            playing: online && state.runtimeMode === "full" && state.aiReady, hint: storageHint };
+        if (!supportsLauncher(globalThis.HAEMA_STORAGE_DOWNLOADS?.detectPlatform?.())) return { ...target, hint: platformHint };
+        if (pendingInit || state?.recovering || ["connecting", "reconnecting"].includes(state?.connection)) return { ...target, online: false, playing: false, hint: checkingHint };
+        if (storageReady) {
+            const suffix = targetSuffix(consoleRef.storageIdentity);
+            if (!suffix) return { ...target, hint: updateHint };
+            return { ...target, startSuffix: suffix, actionSuffix: online ? suffix : undefined, hint: configured ? registrationHint : apiHint };
+        }
+        // A remembered launcher can be woken while its server is offline, using only its own last confirmed target.
+        if (state?.remembered && ["disconnected", "awaiting-permission"].includes(state.connection)) {
+            const scope = connection.rememberedLauncherScope?.();
+            let identity;
+            try { if (scope) identity = JSON.parse(localStorage.getItem(scope)); } catch { /* No verified target is cached. */ }
+            const suffix = targetSuffix(identity);
+            if (suffix) return { ...target, startSuffix: suffix, coldStart: !reloadRequired && !storedReloadRequired(suffix) && identity.configured === true };
+        }
+        if (state && ["setup-required", "disconnected"].includes(state.connection) &&
+            !state.remembered && !state.firstFailure && !state.rememberNoticeCode) return { ...target, startSuffix: "" };
+        return target;
     }
 
     function launcherHref(action, target) {
         const handle = globalThis.HAEMA_STORAGE_DOWNLOADS?.launcherHandles?.[action.handle];
-        return handle && target.suffix !== undefined ? handle + target.suffix : "";
+        const suffix = action.handle === "start" ? target.startSuffix : target.actionSuffix;
+        return handle && suffix !== undefined ? handle + suffix : "";
+    }
+
+    function launcherControl(action, target) {
+        if (action.handle === "power") {
+            const lamp = stopTarget ? "red" : target.online ? "green" : "white";
+            const help = stopTarget ? "연결 해제 대기 · 누르면 현재 쩜통의 연결을 해제해요." :
+                target.online ? "켜짐 · 현재 쩜통이 연결됐어요." : target.coldStart ? "마지막으로 연결한 쩜통의 준비 모드를 열어요." : "쩜통과 API 연결을 시작해요.";
+            return { lamp, help, disabled: false, href: "" };
+        }
+        const href = launcherHref(action, target);
+        const disabled = !href || !!stopTarget || (action.handle === "aiStart" && !target.canStartAi);
+        const lamp = action.handle === "aiStart" && target.playing && !stopTarget ? "green" : disabled ? "off" : action.handle === "stop" ? "red" : "white";
+        const help = action.handle === "aiStart" && lamp === "green" ? "AI 대화 모드 실행 중" :
+            stopTarget ? "정지 확인 대기 중" : action.handle === "aiStart" && target.online && !target.canStartAi ? "실행기에서 AI 준비 상태를 확인해 주세요." :
+            href ? "해마.ai 실행기에 " + action.name + " 요청" : target.hint;
+        return { href, disabled, lamp, help };
     }
 
     function renderLauncherKeys(inHeader) {
         const target = launcherTarget();
         return launcherActions.filter(action => inHeader === (action.handle !== "start")).map(action => {
-            const href = launcherHref(action, target);
-            const help = href ? "해마.ai 실행기에 " + action.name + " 요청" : target.hint;
+            const { href, help, disabled, lamp } = launcherControl(action, target);
             const classes = inHeader ? "launcher-key" : "btn storage-connect";
-            const description = inHeader ? "" : ' aria-describedby="storageWindowsHint"';
-            const face = inHeader ? '<span class="launcher-key-face">' + action.label + '</span>' : action.label;
-            const targetAttribute = href ? 'data-target="' + href.replace("&", "&amp;") + '"' : 'disabled';
+            const description = inHeader ? ' aria-label="' + action.label + ' · ' + help + '"' : ' aria-describedby="storageWindowsHint"';
+            const face = inHeader ? '<span class="launcher-key-face" aria-hidden="true"></span><span class="launcher-key-label" aria-hidden="true">' + action.label + '</span>' : action.label;
+            const targetAttribute = href && !disabled ? ' data-target="' + href.replace("&", "&amp;") + '"' : '';
             return '<button type="button" id="' + action.id + '" class="' + classes + '" data-launcher="' + action.handle +
-                '" title="' + help + '"' + description + ' ' + targetAttribute + '>' + face + '</button>';
+                '" title="' + help + '" data-lamp="' + lamp + '"' + description + targetAttribute + (disabled ? ' disabled' : '') + '>' + face + '</button>';
         }).join("");
     }
 
     function refreshLauncherControls() {
         const target = launcherTarget();
+        if (target.storageReady && !pendingInit && consoleRef.apiStatusUnconfirmed === false) {
+            rememberLauncherTarget(consoleRef.storageIdentity, !!target.configured);
+        }
         for (const action of launcherActions) {
             const button = document.getElementById(action.id);
             if (!button) continue;
-            const href = launcherHref(action, target);
-            button.disabled = !href;
-            if (href) button.dataset.target = href;
+            const { href, help, disabled, lamp } = launcherControl(action, target);
+            button.disabled = disabled;
+            button.dataset.lamp = lamp;
+            if (href && !disabled) button.dataset.target = href;
             else delete button.dataset.target;
-            button.title = href ? "해마.ai 실행기에 " + action.name + " 요청" : target.hint;
+            button.title = help;
+            if (action.handle !== "start") button.setAttribute("aria-label", action.label + " · " + help);
         }
+        const text = document.getElementById("header-launcher-notice");
+        const message = launcherNotice || (stopTarget ? stopHint : "");
+        if (text && text.textContent !== message) text.textContent = message;
+        const keep = document.getElementById("header-launcher-keep");
+        if (keep) keep.hidden = !stopTarget;
         const hint = document.getElementById("storageWindowsHint");
         if (hint && hint.dataset.launcherHint !== target.hint) {
             hint.dataset.launcherHint = target.hint;
@@ -513,7 +636,102 @@ window.HAEMA_STORAGE_MODAL = (function () {
 
     function renderHeaderLauncher() {
         return '<div class="header-launcher" id="headerLauncher" role="group" aria-label="해마.ai 실행 제어">' +
-            renderLauncherKeys(true) + '<p class="header-launcher-hint" role="status"></p></div>';
+            renderLauncherKeys(true) + '<p class="header-launcher-hint" role="status"><span id="header-launcher-notice"></span>' +
+            '<button type="button" id="header-launcher-keep" hidden>연결 유지</button></p></div>';
+    }
+
+    function setLauncherNotice(message) {
+        launcherNotice = message;
+        refreshLauncherControls();
+    }
+
+    async function releaseStorage() {
+        const connection = globalThis.HAEMA_LOCAL_CONNECTION;
+        if (!connection?.disconnect) return;
+        const requestedTarget = stopTarget;
+        // A newly opened launcher may already be serving a different store.
+        if (connection.status().connection === "connected" && !consoleRef?.isStorageReady?.()) {
+            await autoConnectStorage();
+        }
+        if (!requestedTarget || requestedTarget !== stopTarget || (connection.status().connection === "connected" &&
+            (!consoleRef?.isStorageReady?.() || targetSuffix(consoleRef.storageIdentity) !== requestedTarget))) return;
+        const previousPath = consoleRef?.storageIdentity?.storageRoot;
+        const previousReload = reloadRequired;
+        storageRequestGeneration++;
+        requireReload(true, requestedTarget);
+        checkOnLauncherReturn = false;
+        try {
+            // Only the remembered local pairing and current selection are released.
+            const released = await connection.disconnect();
+            if (!released?.disconnected) throw new Error("DISCONNECT_UNCONFIRMED");
+        } catch {
+            requireReload(previousReload, requestedTarget);
+            setLauncherNotice("해마.ai 연결 해제를 확인하지 못했어요. 다시 시도해 주세요.");
+            return;
+        }
+        // A new pairing or user's new selection owns the newer state.
+        if (requestedTarget !== stopTarget) return;
+        setStopTarget("");
+        if (connection.status().connection === "connected" || !reloadRequired) {
+            refreshLauncherControls();
+            return;
+        }
+        try {
+            if (previousPath && getStoredPath() === previousPath) {
+                clearStoredPath();
+                localStorage.removeItem("haema_storage_path");
+                localStorage.removeItem("haema_storage_mode");
+            }
+        } catch { /* The reload requirement still applies to this tab. */ }
+        if (consoleRef) {
+            consoleRef.storageIdentity = null;
+            consoleRef.storageConnected = false;
+            consoleRef.storageStatusUnconfirmed = false;
+            consoleRef.apiStatusRequest = (consoleRef.apiStatusRequest || 0) + 1;
+            consoleRef.apiConfigured = false;
+            consoleRef.confirmedApiProfile = null;
+            consoleRef.apiStatusUnconfirmed = false;
+            consoleRef.introductionAvailable = false;
+            consoleRef.updateJJumList(null);
+        }
+        rememberStep("download");
+        const state = connection.status();
+        const notice = state.rememberNoticeCode === "REMEMBERED_CONNECTION_STORE_UNAVAILABLE"
+            ? "이 탭의 연결을 해제했어요. 브라우저에 저장된 연결 정보의 삭제 여부는 확인하지 못했어요."
+            : state.noticeCode === "CONNECTION_DISCONNECT_UNCONFIRMED"
+                ? "이 브라우저의 연결을 해제했어요. 실행기의 해제 응답은 확인하지 못했어요. 다시 사용하려면 쩜통을 불러오세요."
+                : "해마.ai 연결을 해제했어요. 전원을 눌러 쩜통을 다시 불러오세요.";
+        setLauncherNotice(notice);
+        consoleRef?.render?.();
+    }
+
+    async function activatePower() {
+        if (powerPending) return;
+        powerPending = true;
+        try {
+            if (stopTarget) return await releaseStorage();
+            const target = launcherTarget();
+            if (target.online) return setLauncherNotice("해마.ai가 켜져 있어요.");
+            if (target.coldStart) {
+                const href = launcherHref({ handle: "start" }, target);
+                if (href) {
+                    try {
+                        globalThis.location.assign(href);
+                        checkOnLauncherReturn = true;
+                        setLauncherNotice(confirmationHint);
+                    } catch { setLauncherNotice("실행기 열기를 요청하지 못했어요. 다시 시도해 주세요."); }
+                    return;
+                }
+            }
+            const confirmed = await HAEMA_DIALOG.confirm("쩜통과 API를 연결해 주세요.", {
+                title: "해마.ai 전원", confirmText: target.storageReady ? "② API 연결" : "① 쩜통 연결", cancelText: "나중에",
+            });
+            if (!confirmed) return;
+            const current = launcherTarget();
+            if (!current.storageReady) openModal();
+            else if (!current.configured) consoleRef.openApiKeyModal();
+            else setLauncherNotice(consoleRef.runtimeReadinessLabel?.() || checkingHint);
+        } finally { powerPending = false; }
     }
 
     function bindLauncherClick(group, hint) {
@@ -521,28 +739,49 @@ window.HAEMA_STORAGE_MODAL = (function () {
             const key = event.target.closest("[data-launcher]");
             if (!key || key.disabled) return;
             const action = launcherActions.find(item => item.handle === key.dataset.launcher);
+            if (!action) return;
+            if (action.handle === "power") {
+                void activatePower();
+                return;
+            }
             const target = launcherTarget();
-            const href = launcherHref(action, target);
-            if (!href || key.dataset.target !== href) {
+            const { href, disabled } = launcherControl(action, target);
+            if (disabled || !href || key.dataset.target !== href) {
                 refreshLauncherControls();
                 return;
             }
-            hint.textContent = confirmationHint;
+            try {
+                globalThis.location.assign(href);
+            } catch {
+                hint.textContent = "실행기 열기를 요청하지 못했어요. 다시 시도해 주세요.";
+                return;
+            }
             checkOnLauncherReturn = true;
-            globalThis.location.assign(href);
+            if (action.handle === "stop") {
+                setStopTarget(target.actionSuffix);
+                setLauncherNotice("");
+                document.getElementById("header-launcher-power")?.focus({ preventScroll: true });
+            } else if (action.handle === "start") {
+                hint.textContent = confirmationHint;
+            } else setLauncherNotice(confirmationHint);
         });
     }
 
     function bindHeaderLauncher(group) {
         if (!group) return;
-        const hint = group.querySelector(".header-launcher-hint");
-        group.addEventListener("focusin", event => {
-            if (event.target.closest(".launcher-key")) hint.textContent = "";
-        });
+        const hint = group.querySelector("#header-launcher-notice");
         bindLauncherClick(group, hint);
-        group.addEventListener("keydown", event => {
-            if (event.key === "Escape") hint.textContent = "";
+        group.querySelector("#header-launcher-keep").addEventListener("click", () => {
+            if (powerPending) return;
+            setStopTarget("");
+            setLauncherNotice("");
+            document.getElementById("header-launcher-power")?.focus({ preventScroll: true });
+            void globalThis.HAEMA_LOCAL_CONNECTION?.recheck?.();
         });
+        group.addEventListener("keydown", event => {
+            if (event.key === "Escape") setLauncherNotice("");
+        });
+        refreshLauncherControls();
     }
 
     function renderStorageControls() {
@@ -708,7 +947,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
         overlay.querySelector("#storageRetryStatus").addEventListener("click", async function() {
             this.disabled = true;
             confirmed.textContent = "현재 쩜통의 연결 상태를 확인하고 있어요.";
-            try { await autoConnectStorage(); } finally { this.disabled = false; }
+            try { await autoConnectStorage({ userInitiated: true }); } finally { this.disabled = false; }
         });
         const options = overlay.querySelector("#storageManageOptions");
         const storedPath = getStoredPath();
@@ -727,11 +966,14 @@ window.HAEMA_STORAGE_MODAL = (function () {
                 status.storageRoot === consoleRef.storageIdentity.storageRoot && status.storageId === consoleRef.storageIdentity.storageId;
             continueAction.hidden = !ready;
             retryAction.hidden = ready || status == null;
+            overlay.querySelector("#storageRetryStatus").textContent = reloadRequired ? "쩜통 다시 불러오기" : "연결 다시 확인";
             if (ready) {
                 const folder = status.storageRoot.trim().split(/[\\/]/).filter(Boolean).at(-1) || status.storageRoot;
                 confirmed.textContent = "연결됨 · " + folder;
                 confirmed.title = status.storageRoot;
                 if (!state.draft) setInitialPath(status.storageRoot);
+            } else if (status?.state === "reload-required") {
+                confirmed.textContent = "다시 사용할 쩜통을 불러오거나 저장 폴더를 선택해 주세요.";
             } else if (status?.state === "unavailable") {
                 confirmed.textContent = "아직 쩜통 연결을 확인하지 못했어요.";
             } else if (status?.connected === false) {
@@ -742,7 +984,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
             }
             if (!ready) confirmed.removeAttribute("title");
         };
-        setInitialPath(storedPath);
+        setInitialPath(reloadRequired ? "" : storedPath);
         state.showStatus(null);
         if (state.draft) {
             options.open = true;
@@ -857,7 +1099,7 @@ window.HAEMA_STORAGE_MODAL = (function () {
     }
 
     async function finishStorageSelection(overlay) {
-        const status = await autoConnectStorage();
+        const status = await autoConnectStorage({ userInitiated: true });
         if (status?.connected !== true || !isOpen(overlay)) return;
         modalFocus.get(overlay).draft = null;
         modalFocus.get(overlay).showStatus(status);
